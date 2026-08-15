@@ -10,9 +10,43 @@ Este proyecto sigue [SemVer](https://semver.org/lang/es/).
 
 ---
 
-## [Sin publicar]
+## [Sin publicar] — v0.3 en curso
 
-Nada pendiente. Siguiente: v0.3 — multijugador real (auth, Supabase, RLS, autoridad).
+### Añadido
+
+**Esquema de base de datos y RLS** — `supabase/migrations/`
+- Seis migraciones: cuentas y metaprogresión, partidas y asientos, estado y órdenes,
+  mensajes y tratados, resultados, y las funciones de lobby y resolución.
+- `game_states` con RLS activa y **ninguna política**: nadie lo lee, solo `service_role`
+  escribe. Los jugadores leen `player_views`, ya filtradas por asiento.
+- Los permisos de columna hacen lo que RLS no puede: `profiles` es editable en nombre e
+  idioma, pero no en facción; `game_players` solo en Órdenes Permanentes.
+- Canal privado por `smallint[]` con índice GIN en vez del `like` ilustrativo del diseño
+  técnico, que dejaba entrar a cualquier asiento cuyo dígito apareciese por casualidad.
+
+**Arnés de Postgres efímero** — `tools/pg/`
+- Levanta un clúster con los binarios del sistema, solo en socket unix, le aplica el shim
+  de Supabase y las migraciones reales. Sin Docker, sin driver, sin dependencias nuevas.
+- `npm run db:up | db:reset | db:down | db:psql`.
+
+**43 tests de seguridad** — `apps/web/tests/security/`
+- Incluyen los **siete bloqueantes** del ROADMAP, y un test que enumera todas las
+  funciones `security definer` invocables por `authenticated`.
+
+### Corregido
+
+- **`begin_resolution` era invocable por cualquier jugador con sesión**, y devuelve el
+  estado autoritativo completo. `revoke all on function ... from public` no anula el
+  GRANT explícito que Supabase concede a `anon` y `authenticated` al crear la función:
+  hay que nombrar los roles. Lo cazó el shim al reproducir los permisos por defecto de
+  Supabase — sin esa fidelidad, el test habría pasado por falta de permisos.
+
+### Decisiones
+
+- [ADR-023](docs/DECISIONS.md#adr-023) — políticas RLS a través de funciones
+  `security definer`, para evitar la recursión de `game_players` consigo misma.
+- [ADR-024](docs/DECISIONS.md#adr-024) — tests de RLS contra un Postgres efímero real.
+- [ADR-025](docs/DECISIONS.md#adr-025) — la resolución se parte en arrendar y confirmar.
 
 ---
 

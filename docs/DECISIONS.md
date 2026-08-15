@@ -539,6 +539,111 @@ ganancia para un paquete privado de monorepo).
 
 ---
 
+<a id="adr-023"></a>
+
+## ADR-023 — Las políticas RLS consultan a través de funciones `security definer`
+**Estado:** aceptada · 2026-08-15
+
+**Contexto.** Casi todas las políticas del juego necesitan la misma pregunta: *¿está este
+usuario sentado en esta partida, y en qué asiento?* La respuesta vive en `game_players`,
+que a su vez tiene RLS. Una política sobre `game_players` que consulte `game_players`
+entra en bucle y Postgres la corta con «infinite recursion detected in policy». El
+esquema ilustrativo de [TECHNICAL_DESIGN §6.3](TECHNICAL_DESIGN.md#63-políticas) escribe
+esa consulta en línea, y así escrita no arranca.
+
+**Decisión.** Tres funciones `security definer` y `stable` —`is_player(game)`,
+`is_seat(game, seat)` y `my_seat(game)`— resuelven la pregunta leyendo la tabla sin RLS.
+Las políticas las invocan en vez de repetir el `exists`.
+
+**Consecuencias.**
+- ✅ Sin recursión, y una sola definición de «estar sentado en una partida».
+- ✅ `stable` permite al planificador evaluarlas una vez por consulta, no una por fila.
+- ⚠️ `security definer` significa que la función ve todo: si se concediera a quien no
+  debe, serviría para sondear cualquier partida del sistema. Se mitiga con `revoke` y con
+  un test que enumera **todas** las funciones `security definer` invocables por
+  `authenticated` y exige que sean exactamente esas tres.
+- ⚠️ Llevan `set search_path = public, pg_temp` obligatoriamente: sin eso, una función
+  `security definer` es un vector de escalada de privilegios de manual.
+
+**Descartado.** Desactivar RLS en `game_players` (la haría legible entera desde
+PostgREST: quién juega a qué y con quién, en todo el sistema); duplicar el `exists` en
+cada política (nueve copias de la misma regla de seguridad, que es como se acaban
+divergiendo).
+
+---
+
+<a id="adr-024"></a>
+
+## ADR-024 — Los tests de RLS corren contra un Postgres efímero, sin Docker ni driver
+**Estado:** aceptada · 2026-08-15
+
+**Contexto.** Los siete tests de RLS son bloqueantes ([ROADMAP](ROADMAP.md#v03--multijugador-real)):
+si uno falla, no hay release. Un test bloqueante que dependa de Docker, de una cuenta en
+la nube o de una conexión se acaba saltando, y un test de seguridad que se salta solo es
+peor que no tenerlo, porque el CI se pone verde igual.
+
+**Decisión.** `tools/pg/harness.mjs` levanta un clúster con los binarios de PostgreSQL
+del sistema, escuchando **solo en socket unix**, le aplica un shim que emula `auth.uid()`
+y los roles de Supabase, y encima las migraciones reales. Los tests hablan con él por
+`psql`, con `set local role` y las claims del JWT — exactamente lo que hace PostgREST.
+
+**Consecuencias.**
+- ✅ Cero dependencias nuevas: ni Docker, ni un driver de Postgres, ni la CLI de Supabase.
+- ✅ Se prueban las migraciones **reales**, no una réplica del esquema.
+- ✅ Sin TCP: un Postgres de pruebas con autenticación `trust` escuchando en un puerto es
+  un agujero, aunque sea local y aunque sea un rato.
+- ⚠️ El shim puede desviarse de lo que hace Supabase de verdad. Se mitiga reproduciendo
+  el `alter default privileges` de Supabase: sin él los tests pasarían por falta de
+  permisos en vez de por las políticas. Ese detalle ya cazó un fallo real —
+  `begin_resolution` era invocable por cualquier jugador.
+- ⚠️ Hace falta PostgreSQL instalado. El arnés falla con un mensaje explícito en vez de
+  saltarse los tests, que es justo lo que no debe hacer.
+
+**Descartado.** `supabase start` (Docker obligatorio, arranque de minutos, imposible en
+muchos CI); `pg-mem` y otras emulaciones en JavaScript (no implementan RLS, que es
+literalmente lo único que hay que probar); probar contra el proyecto remoto (lento,
+compartido y con datos reales).
+
+---
+
+<a id="adr-025"></a>
+
+## ADR-025 — La resolución de turno se parte en arrendar y confirmar
+**Estado:** aceptada · 2026-08-15
+
+**Contexto.** [TECHNICAL_DESIGN §8.2](TECHNICAL_DESIGN.md#82-idempotencia-y-bloqueo)
+describe la resolución dentro de una transacción con `pg_advisory_xact_lock`. Ese lock se
+libera al terminar la transacción, y el motor es TypeScript: la transacción tendría que
+seguir abierta mientras `reduce()` corre en Node. Con PostgREST eso no es posible —cada
+llamada RPC es su propia transacción— y mantener una conexión directa abierta desde una
+función serverless mientras se computa es exactamente el patrón que agota el pool.
+
+**Decisión.** Dos llamadas, cada una atómica:
+`begin_resolution()` cierra la fila con `for update`, comprueba que toca resolver,
+arrienda la partida 30 s y devuelve estado y órdenes; `reduce()` corre en Node; y
+`commit_resolution()` escribe todo condicionado a que `state_version` no haya cambiado.
+
+**Consecuencias.**
+- ✅ Se conservan las tres defensas superpuestas del diseño: `for update` serializa, el
+  turno esperado da idempotencia y el bloqueo optimista es la última red.
+- ✅ Ninguna transacción queda abierta durante un cómputo: la conexión se devuelve al
+  pool de inmediato.
+- ✅ El arrendamiento vence solo. Un resolutor que muera a media faena no deja la partida
+  colgada para siempre; otro lo reintenta en treinta segundos.
+- ⚠️ El arrendamiento **no** es el mecanismo de exclusión: es solo un ahorro de trabajo.
+  La corrección la garantiza el `state_version`. Confundirlo llevaría a alargar el
+  arrendamiento «por seguridad», que es lo contrario de lo que hace falta.
+- ⚠️ Dos resolutores simultáneos pueden computar lo mismo dos veces. Es barato y, como
+  `reduce()` es determinista, el resultado es idéntico: solo uno escribe.
+
+**Descartado.** Mantener la transacción abierta desde Node (agota el pool y ata el diseño
+a una conexión directa); mover `reduce()` a plpgsql (reimplementar el motor en un segundo
+lenguaje es exactamente lo que la regla de «un solo motor» prohíbe); confiar solo en el
+bloqueo optimista sin arrendamiento (correcto, pero con cinco clientes disparando la
+resolución a la vez se computan cinco turnos para tirar cuatro).
+
+---
+
 ## Plantilla para nuevas decisiones
 
 ```markdown

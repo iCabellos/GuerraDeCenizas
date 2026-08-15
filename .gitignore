@@ -30,6 +30,9 @@ reports/
 supabase/.branches/
 supabase/.temp/
 
+# Clúster de Postgres efímero de los tests de RLS (tools/pg/harness.mjs)
+.pgtest/
+
 # Editor / SO
 .DS_Store
 Thumbs.db
