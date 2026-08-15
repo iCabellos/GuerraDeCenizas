@@ -38,6 +38,7 @@ const CHAPTERS = [
   { file: 'docs/UX_MOBILE.md',               title: 'UX / UI — Mobile first',      part: 'IV · Producción' },
   { file: 'docs/ASSET_PIPELINE.md',          title: 'Pipeline de assets',          part: 'IV · Producción' },
   { file: 'docs/TESTING_AND_SIMULATION.md',  title: 'Testing y simulación',        part: 'IV · Producción' },
+  { file: 'docs/DEPLOYMENT.md',              title: 'Despliegue',                  part: 'IV · Producción' },
   { file: 'docs/ROADMAP.md',                 title: 'Roadmap',                     part: 'V · Ejecución' },
   { file: 'docs/DECISIONS.md',               title: 'Registro de decisiones',      part: 'V · Ejecución' },
 ];

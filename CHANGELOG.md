@@ -54,6 +54,22 @@ Este proyecto sigue [SemVer](https://semver.org/lang/es/).
 **26 tests de la capa de autoridad** contra el Postgres real, entre ellos los criterios de
 aceptación de concurrencia, reproducibilidad, ausencias y retención.
 
+**Autenticación e interfaz en red** — `apps/web/app/`
+- Enlace mágico por correo, sin contraseñas. Sesión en cookie httpOnly.
+- Entrada, lista de partidas, sala de espera con código de invitación y tablero en red.
+- Realtime en vez de sondeo: la sala y el tablero se refrescan cuando cambia la base.
+- Borrador de órdenes con retardo de 2 s: cerrar la pestaña no cuesta el turno.
+
+**i18n desde el principio** — `apps/web/lib/i18n/`
+- Diccionarios `es` / `en` y cero literales visibles en los componentes nuevos.
+- Los errores de la API son **códigos**, no frases: el cliente traduce.
+- 16 tests: paridad de claves, paridad de parámetros y cobertura del vocabulario.
+
+**Despliegue documentado** — [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)
+- Supabase, Vercel, el reloj de `pg_cron` y la checklist de comprobación posterior.
+- `0007_schedule.sql` programa el reloj, y se salta solo donde no hay `pg_cron` — el
+  arnés local de tests corre sobre un PostgreSQL pelado.
+
 ### Corregido
 
 - **`begin_resolution` era invocable por cualquier jugador con sesión**, y devuelve el
@@ -66,6 +82,12 @@ aceptación de concurrencia, reproducibilidad, ausencias y retención.
   conviniera. Ahora la lee del estado autoritativo con `lobby_state()`.
 - **`startGame` lanzaba una excepción** con los asientos incompletos, devolviendo un 500
   donde el jugador merece «todavía falta gente».
+
+### Pendiente de verificar
+
+La interfaz compila y pasa el typecheck, pero **no se ha ejecutado contra un Supabase
+real**: sin credenciales no hay auth, ni Realtime, ni sesión. Queda pasar la checklist de
+[DEPLOYMENT §5](docs/DEPLOYMENT.md#5-comprobación-posterior) antes de dar v0.3 por cerrada.
 
 ### Decisiones
 

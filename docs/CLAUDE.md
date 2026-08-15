@@ -59,6 +59,7 @@ va a clonar el repositorio.
 | `DIPLOMACY.md` | Tratados, ofertas, reputación |
 | `METAPROGRESSION.md` | Ciudad, desbloqueos, la regla de oro |
 | `MULTIPLAYER.md` | Turnos, cadencias, ausencias, reconexión |
+| `DEPLOYMENT.md` | Puesta en producción: Supabase, Vercel, el reloj y qué comprobar |
 | `UX_MOBILE.md` | Cualquier cosa con interfaz |
 | `ASSET_PIPELINE.md` | Cualquier cosa visual |
 | `TESTING_AND_SIMULATION.md` | Antes de escribir tests |

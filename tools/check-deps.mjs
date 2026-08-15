@@ -55,13 +55,17 @@ if (existsSync(componentsDir)) {
   if (failures === before) console.log('✓ ningún componente de cliente toca el servidor');
 }
 
-// 4 · la autoridad solo vive en dos sitios
+// 4 · la clave de servicio no sale de la capa de autoridad
 //
-// `lib/server/` y `app/api/` son la capa de autoridad. Cualquier otro archivo de
-// `apps/web` que importe de ahí es un Server Component o —peor— un componente de
-// cliente haciendo de servidor. Un `serviceClient()` en una página se renderiza en el
-// servidor y parece inofensivo, hasta que alguien la convierte en `'use client'`.
+// La distinción que importa no es «servidor o cliente», sino **qué rol de Postgres**.
+// Un Server Component puede leer con el cliente de usuario: RLS decide lo que ve, y eso
+// es exactamente lo que queremos. Lo que no puede salir de `lib/server/` y `app/api/` es
+// `service_role`, que omite RLS y con el que `game_states` se lee entero.
+//
+// Y ningún componente de cliente puede importar `lib/server`, aunque solo fuera para
+// leer: un import así se bundlea hacia el navegador con todo lo que arrastre.
 const AUTHORITY = /from\s+['"](@\/lib\/server|\.\.?\/[^'"]*lib\/server)/;
+const SERVICE = /\b(serviceClient|serviceRpc|SUPABASE_SERVICE_ROLE_KEY)\b/;
 const webDir = path.join(ROOT, 'apps/web');
 if (existsSync(webDir)) {
   const before = failures;
@@ -73,14 +77,14 @@ if (existsSync(webDir)) {
     if (file.startsWith('tests/')) continue;   // los tests ejercitan la autoridad a propósito
 
     const source = await readFile(path.join(webDir, file), 'utf8');
-    if (AUTHORITY.test(source)) {
-      fail(`apps/web/${file} importa lib/server fuera de la capa de autoridad`);
+    if (SERVICE.test(source)) {
+      fail(`apps/web/${file} usa el rol de servicio fuera de la capa de autoridad`);
     }
-    if (/SUPABASE_SERVICE_ROLE_KEY/.test(source)) {
-      fail(`apps/web/${file} nombra la clave de servicio`);
+    if (/^\s*['"]use client['"]/m.test(source) && AUTHORITY.test(source)) {
+      fail(`apps/web/${file} es un componente de cliente y importa lib/server`);
     }
   }
-  if (failures === before) console.log('✓ la capa de autoridad no se filtra fuera de app/api y lib/server');
+  if (failures === before) console.log('✓ el rol de servicio no sale de app/api y lib/server');
 }
 
 if (failures > 0) {

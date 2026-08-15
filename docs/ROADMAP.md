@@ -175,15 +175,24 @@ motor   juego   online  diplo   Núcleo   meta   anom.  balance  móvil    beta 
 **Criterios de aceptación**
 ```
 □ 5 personas juegan una campaña completa en dispositivos distintos
-□ ✱ Los 7 tests de RLS pasan                              ← BLOQUEANTE
-□ 10 peticiones simultáneas de resolución ⇒ 1 sola resolución
-□ Cerrar la pestaña a mitad de turno no pierde el borrador
+■ ✱ Los 7 tests de RLS pasan                              ← BLOQUEANTE · 43 tests
+■ 10 peticiones simultáneas de resolución ⇒ 1 sola resolución
+□ Cerrar la pestaña a mitad de turno no pierde el borrador   · implementado, sin verificar
 □ Reconectar desde otro dispositivo restaura el estado en < 2 s
-□ Un turno vencido se resuelve sin ningún cliente conectado
-□ 3 turnos sin enviar ⇒ Mando Automático; el jugador recupera el asiento
-□ Una partida reproducida desde (seed, órdenes) da el mismo checksum
+■ Un turno vencido se resuelve sin ningún cliente conectado
+■ 3 turnos sin enviar ⇒ Mando Automático; el jugador recupera el asiento
+■ Una partida reproducida desde (seed, órdenes) da el mismo checksum
 □ Desplegado y accesible públicamente
 ```
+
+> **Estado.** El esquema, la RLS, la capa de autoridad y la resolución de turnos están
+> hechos y **verificados contra un Postgres real** (85 tests en `apps/web/tests/`).
+> La interfaz —entrada, lobby y tablero en red— está implementada y compila, pero **no
+> se ha podido verificar ejecutándola**: hace falta un proyecto de Supabase con
+> credenciales, y sin él no hay auth, ni Realtime, ni sesión. Los criterios que dependen
+> de eso siguen marcados como pendientes a propósito: la [definición de hecho](../CLAUDE.md)
+> exige haberlo ejecutado. La checklist de [DEPLOYMENT §5](DEPLOYMENT.md#5-comprobación-posterior)
+> es exactamente lo que queda por pasar.
 
 > **Esta es la versión de riesgo del proyecto.** Concentra la seguridad, la concurrencia
 > y la infraestructura. Conviene presupuestarla como la más larga.
