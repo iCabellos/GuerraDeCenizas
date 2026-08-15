@@ -255,13 +255,17 @@ describe('movimiento', () => {
     const base = toWar(game(2, 11).state);
     const adjacency = buildAdjacency(base.map.regions.length, base.map.edges);
     const a = forcesOf(base, 0)[0] as Force;
-    const neighbour = (adjacency[a.regionId] as RegionId[])[0] as RegionId;
+    // El vecino no puede ser agua: Línea y Fuego no la cruzan sin Puente, y el
+    // movimiento se rechazaría antes de poder comprobar el cruce.
+    const neighbour = (adjacency[a.regionId] as RegionId[]).find(
+      (r) => base.map.regions[r]?.kind !== 'water',
+    ) as RegionId;
 
     const state: GameState = {
       ...base,
       forces: [
         { ...a, id: 'A', regionId: a.regionId },
-        { id: 'B', seat: 1, regionId: neighbour, line: 10, fire: 0, sky: 0, posture: 'hold' },
+        { id: 'B', seat: 1, regionId: neighbour, line: 10, fire: 0, sky: 0, posture: 'hold', unsupplied: 0 },
       ],
     };
 
@@ -373,7 +377,7 @@ describe('control territorial', () => {
     const state: GameState = {
       ...base,
       forces: [
-        { id: 'X', seat: 0, regionId: enemyBastion, line: 100, fire: 0, sky: 0, posture: 'assault' },
+        { id: 'X', seat: 0, regionId: enemyBastion, line: 100, fire: 0, sky: 0, posture: 'assault', unsupplied: 0 },
       ],
     };
 
@@ -388,13 +392,16 @@ describe('control territorial', () => {
 
     const state: GameState = {
       ...base,
-      forces: [{ id: 'S', seat: 0, regionId: neutral, line: 0, fire: 10, sky: 10, posture: 'hold' }],
+      forces: [{ id: 'S', seat: 0, regionId: neutral, line: 0, fire: 10, sky: 10, posture: 'hold', unsupplied: 0 }],
     };
 
     expect(reduce(state, {}, CTX).state.control[neutral]).toBeNull();
   });
 
-  it('dos asientos con Línea dejan la región disputada y sin cambio de control', () => {
+  it('un empate exacto destruye a ambos y no cambia el control', () => {
+    // Desde v0.2 dos asientos en la misma región combaten. Con potencias idénticas y
+    // ningún defensor, nadie gana: los dos se destruyen y la región sigue como estaba.
+    // Nunca se desempata al azar.
     const base = toWar(game(2, 8).state);
     const neutral = base.control.findIndex(
       (c, i) => c === null && base.map.regions[i]?.kind !== 'core',
@@ -403,14 +410,17 @@ describe('control territorial', () => {
     const state: GameState = {
       ...base,
       forces: [
-        { id: 'A', seat: 0, regionId: neutral, line: 10, fire: 0, sky: 0, posture: 'hold' },
-        { id: 'B', seat: 1, regionId: neutral, line: 10, fire: 0, sky: 0, posture: 'hold' },
+        { id: 'A', seat: 0, regionId: neutral, line: 10, fire: 0, sky: 0, posture: 'hold', unsupplied: 0 },
+        { id: 'B', seat: 1, regionId: neutral, line: 10, fire: 0, sky: 0, posture: 'hold', unsupplied: 0 },
       ],
     };
 
     const result = reduce(state, {}, CTX);
+    const combat = result.events.find((e) => e.type === 'COMBAT');
+
+    expect(combat?.data['winner']).toBeNull();
+    expect(result.state.forces).toHaveLength(0);
     expect(result.state.control[neutral]).toBeNull();
-    expect(result.events.some((e) => e.type === 'REGION_CONTESTED')).toBe(true);
   });
 
   it('perder las fuerzas no devuelve la región a neutral', () => {
@@ -447,8 +457,8 @@ describe('niebla de guerra — no hay fugas en PlayerView', () => {
     const state: GameState = {
       ...base,
       forces: [
-        { id: 'W', seat: 0, regionId: watcher, line: 10, fire: 0, sky: 0, posture: 'hold' },
-        { id: 'H', seat: 1, regionId: forest, line: 33, fire: 7, sky: 0, posture: 'hold' },
+        { id: 'W', seat: 0, regionId: watcher, line: 10, fire: 0, sky: 0, posture: 'hold', unsupplied: 0 },
+        { id: 'H', seat: 1, regionId: forest, line: 33, fire: 7, sky: 0, posture: 'hold', unsupplied: 0 },
       ],
     };
 
@@ -464,37 +474,44 @@ describe('niebla de guerra — no hay fugas en PlayerView', () => {
     // Cada asiento recibe una cifra única e irrepetible: si la de otro apareciera en mi
     // vista, sería inequívocamente una fuga. Con los recursos iniciales (idénticos para
     // todos) esta comprobación no distinguiría nada.
+    //
+    // Solo se usa Ceniza: Suministro, Industria e Intel tienen tope, así que tras la
+    // economía convergen al mismo número en todos los asientos y dejarían de ser
+    // discriminantes. La Ceniza no tiene tope a propósito.
     const base = toWar(game(5).state);
     const war: GameState = {
       ...base,
       seats: base.seats.map((s) => ({
         ...s,
-        resources: {
-          supply: 1000 + s.seat * 7,
-          industry: 2000 + s.seat * 7,
-          intel: 3000 + s.seat * 7,
-          ash: 4000 + s.seat * 7,
-        },
+        resources: { ...s.resources, ash: 500_000 + s.seat * 1000 },
       })),
     };
 
-    const { views } = reduce(war, {}, CTX);
+    const { views, state } = reduce(war, {}, CTX);
 
     for (const seat of [0, 1, 2, 3, 4] as Seat[]) {
       const serialized = JSON.stringify(views[seat]);
-      for (const other of war.seats) {
+
+      for (const other of state.seats) {
         if (other.seat === seat) continue;
-        for (const value of Object.values(other.resources)) {
-          expect(serialized).not.toContain(String(value));
-        }
+        // Se compara contra el valor POSTERIOR a la economía: es el que existe en el
+        // estado en el momento de proyectar la vista.
+        expect(serialized).not.toContain(String(other.resources.ash));
       }
+
       expect(views[seat].self.seat).toBe(seat);
-      expect(views[seat].self.resources.supply).toBe(1000 + seat * 7);
+      expect(views[seat].self.resources.ash).toBeGreaterThanOrEqual(500_000 + seat * 1000);
       expect(views[seat].opponents.every((o) => o.seat !== seat)).toBe(true);
+
       // Un rival nunca expone su bolsa de anomalías ni sus recursos, ni siquiera vacíos.
       for (const opponent of views[seat].opponents) {
         expect(opponent).not.toHaveProperty('resources');
         expect(opponent).not.toHaveProperty('anomalies');
+      }
+
+      // Tampoco su estado de suministro: eso es inteligencia, y se paga con Sombra.
+      for (const force of views[seat].forces) {
+        if (!force.own) expect(force.unsupplied).toBeNull();
       }
     }
   });

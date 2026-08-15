@@ -119,9 +119,21 @@ te dirá si acabas de filtrar información.
 
 ## Estado actual
 
-**v0.1.** Implementado: tipos, RNG, balance, facciones, mapgen (esqueleto + decoración +
-disposición), `reduce()` con validación, movimiento, control, visibilidad, eventos y
-cierre.
+**v0.2.** Implementado: tipos, RNG, balance, facciones, mapgen (esqueleto + decoración +
+disposición), y `reduce()` con validación, movimiento, **combate determinista**,
+control, **economía**, **producción**, visibilidad, eventos y cierre.
 
-**Todavía no** (ver [ROADMAP](../../docs/ROADMAP.md)): combate, economía, producción,
-diplomacia, Núcleo, anomalías, Sombra, perturbación y evaluación de mapas.
+**Todavía no** (ver [ROADMAP](../../docs/ROADMAP.md)): diplomacia, Núcleo y consagración,
+anomalías, Sombra, doctrinas activas, investigación, perturbación y evaluación de mapas.
+
+### Dónde va cada cosa
+
+| Módulo | Responsabilidad |
+|---|---|
+| `rules/combat.ts` | La **fórmula**: pura, sin estado. La comparten resolución y previsualización — por eso no pueden diferir. |
+| `rules/battle.ts` | La **integración con el turno**: quién lucha con quién, apoyo de Fuego, retiradas. |
+| `rules/economy.ts` | Renta, suministro y producción. |
+| `rules/movement.ts` | Validación de todas las órdenes + movimiento simultáneo. |
+
+Si una regla nueva necesita estado del turno, va en `battle.ts` o en su etapa propia,
+**nunca** dentro de `combat.ts`: ahí se rompería la previsualización.

@@ -60,6 +60,7 @@ export function createGame(options: CreateGameOptions): CreatedGame {
       regionId: bastion,
       ...BALANCE.start.bastionForce,
       posture: 'hold',
+      unsupplied: 0,
     });
 
     // La segunda fuerza se despliega hacia el Núcleo. Es la misma elección para todos
@@ -73,6 +74,7 @@ export function createGame(options: CreateGameOptions): CreatedGame {
       regionId: forward,
       ...BALANCE.start.forwardForce,
       posture: 'hold',
+      unsupplied: 0,
     });
   });
 
@@ -97,6 +99,8 @@ export function createGame(options: CreateGameOptions): CreatedGame {
     })),
     forces: forces.sort((a, b) => a.seat - b.seat || (a.id < b.id ? -1 : 1)),
     control,
+    fortification: map.regions.map(() => 0),
+    bridges: map.regions.map(() => false),
     rngCursor: generated.rngCursor,
   };
 

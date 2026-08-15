@@ -136,6 +136,7 @@ export function projectView(
         sky: force.sky,
         approxTotal: total(force),
         posture: force.posture,
+        unsupplied: force.unsupplied,
       });
       continue;
     }
@@ -153,6 +154,9 @@ export function projectView(
       sky: concealed ? null : force.sky,
       approxTotal: concealed ? Math.round(total(force) / 10) * 10 : total(force),
       posture: concealed ? null : force.posture,
+      // El estado de suministro ajeno es información de inteligencia: llega con Sombra
+      // en v0.7, no gratis por mirar el mapa.
+      unsupplied: null,
     });
   }
 
@@ -163,6 +167,8 @@ export function projectView(
     map: state.map,
     visible: [...observed].sort((a, b) => a - b),
     control: control.slice(),
+    fortification: state.fortification.slice(),
+    bridges: state.bridges.slice(),
     forces: visible.sort((a, b) => a.regionId - b.regionId || cmp(a.id, b.id)),
     self,
     opponents: state.seats

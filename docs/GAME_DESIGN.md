@@ -242,12 +242,18 @@ Cada región controlada produce por turno según su tipo. La renta total tiene
 
 ```
 renta_bruta(p)  = Σ  yield(region)  para cada región controlada por p
-factor_escala(p) = 1 / (1 + 0.045 × max(0, regiones(p) − regiones_iniciales_justas))   ⚖️
+parte_justa     = regiones de un sector           (lo que te toca por construcción)
+factor_escala(p) = 1 / (1 + 0.015 × max(0, regiones(p) − parte_justa))   ⚖️
 renta(p)        = renta_bruta(p) × factor_escala(p)
 ```
 
-Con `⚖️ 0.045`, un jugador con el doble de regiones que la media obtiene ≈ **1,55×** de
-renta, no 2×. Se sigue premiando expandirse, pero la ventaja no es lineal.
+Con `⚖️ 0.015`, un jugador con el **doble** de regiones que su parte justa obtiene
+≈ **1,55×** de renta, no 2×. Se sigue premiando expandirse, pero la ventaja no es lineal.
+
+> **Corrección de v0.2.** Este documento decía `0.045`, que con esta misma fórmula da
+> solo **1,08×** — es decir, expandirse dejaba de compensar, que es exactamente el error
+> contrario al que la regla pretende evitar. Lo detectó el test que fija la *intención*
+> («doblar da ~1,55×») en vez de la constante. La constante estaba mal; la intención, no.
 
 ### 5.3 Ceniza: la economía que importa
 
@@ -429,7 +435,7 @@ La UI muestra exactamente esto **antes** de confirmar: *«Vencerás. Perderás ~
 |---|:-:|:-:|---|
 | **Asalto** | ×1.15 | ×0.85 | Puede capturar |
 | **Firme** | — | ×1.20 | No puede moverse |
-| **Pantalla** | ×0.75 | ×0.75 | **Si va a perder, se retira** a una región amiga adyacente en vez de morir |
+| **Pantalla** | ×0.75 | ×0.75 | **Si va a perder, se retira** a una región amiga adyacente dejando el **50 %** ⚖️, en vez de morir entera. Sin destino amigo adyacente, muere. |
 
 **Pantalla** es la postura que hace posible la diplomacia arriesgada: permite exponerte
 a un aliado dudoso sin perderlo todo si te traiciona.
@@ -728,6 +734,9 @@ Ver [MULTIPLAYER §5](MULTIPLAYER.md#5-ausencias-abandonos-y-mando-automático).
 
 Determinista y documentado. El motor ejecuta exactamente esta secuencia.
 Empates y prioridades se resuelven por **número de asiento ascendente** — nunca por azar.
+
+Implementadas en v0.2: 1, 5, 6, 7, 8, 9, 12, 13 y 14. Las demás se **insertan en su
+posición** sin tocar las existentes; los huecos están anotados en el código.
 
 ```
  1. VALIDACIÓN     Rechazar órdenes ilegales contra el estado autoritativo.

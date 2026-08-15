@@ -5,7 +5,7 @@
 **War of Ashes** — 4X multijugador por turnos, mobile-first, donde la guerra es el
 idioma en el que se negocia.
 
-`v0.1.0 · Prototipo jugable · 114 tests en verde`
+`v0.2.0 · Campaña jugable de 12 turnos · 163 tests en verde`
 
 [Concepto](#concepto) · [Core loop](#core-loop) · [Arquitectura](#arquitectura) ·
 [Instalación](#instalación) · [Documentación](#documentación) · [Roadmap](#roadmap) ·
@@ -298,7 +298,7 @@ Tablas principales: `profiles`, `cities`, `account_unlocks`, `games`, `game_play
 |---|---|
 | `npm run dev` | Next.js en modo desarrollo |
 | `npm run build` | Build de producción |
-| `npm test` | Vitest — motor, mapgen, facciones, reglas (114 tests) |
+| `npm test` | Vitest — motor, mapgen, facciones, combate, economía (163 tests) |
 | `npm run verify` | Todo lo anterior + typecheck + estructura + enlaces de docs |
 | `npm run check:deps` | Reglas estructurales del monorepo |
 | `npm run test:e2e` | Playwright — incluye viewports móviles |
@@ -421,8 +421,8 @@ repositorio (markdown-it + el Chromium de Playwright). Pipeline documentado en
 
 | Versión | Nombre | Entrega |
 |---|---|---|
-| **v0.1** | Prototipo | Mapa, jugadores, movimiento, turnos. Local, sin cuentas. |
-| **v0.2** | Núcleo jugable | Recursos, producción, combate, captura, log de eventos |
+| **v0.1** ✅ | Prototipo | Mapa, jugadores, movimiento, turnos. Local, sin cuentas. |
+| **v0.2** ✅ | Núcleo jugable | Recursos, producción, combate, captura, log de eventos |
 | **v0.3** | Multijugador real | Auth, Supabase, persistencia, RLS, reconexión, cadencias |
 | **v0.4** | Diplomacia | Sellos, transferencias con depósito, visión compartida, reputación |
 | **v0.5** | El Núcleo | Objetivo especial, consagración, coaliciones, condiciones de victoria |
@@ -449,7 +449,7 @@ Criterios de aceptación por versión: **[docs/ROADMAP.md](docs/ROADMAP.md)**.
 
 ## Estado actual
 
-**v0.1 — Prototipo completado y verificado.**
+**v0.2 — Núcleo jugable completado y verificado.**
 
 - ✅ Fase 0 (Discovery): 7 contradicciones resueltas, 21 riesgos catalogados.
 - ✅ Documentación de diseño completa (13 documentos + PDF de 130 páginas).
@@ -458,17 +458,21 @@ Criterios de aceptación por versión: **[docs/ROADMAP.md](docs/ROADMAP.md)**.
 - ✅ **Generador de mapas**: esqueleto C<sub>n</sub>, decoración y replicación por
   rotación, para 2, 3 y 5 jugadores.
 - ✅ **Sistema de facciones** ligado a la cuenta, con el invariante del techo verificado.
-- ✅ **Prototipo web**: mapa SVG accesible, hot seat, resolución simultánea de 5 asientos.
-- ✅ **114 tests** en verde · typecheck limpio · reglas estructurales verificadas.
+- ✅ **Combate determinista**: rueda de armas, terreno, posturas, fortificación, apoyo de
+  Fuego y previsualización que **coincide exactamente** con el resultado.
+- ✅ **Economía**: renta con rendimiento decreciente, suministro por distancia, producción.
+- ✅ **Prototipo web**: mapa SVG accesible, hot seat, previsualización de combate,
+  producción y registro del turno filtrado por asiento.
+- ✅ **163 tests** en verde · typecheck limpio · reglas estructurales verificadas.
 - ⏳ **Pendiente:** confirmar las 3 decisiones bloqueantes de
   [DISCOVERY §5](docs/DISCOVERY.md#5-preguntas-que-sí-son-bloqueantes).
-- ⏭️ **Siguiente:** v0.2 — recursos, producción, combate determinista y captura.
+- ⏭️ **Siguiente:** v0.3 — multijugador real (auth, Supabase, RLS, autoridad de servidor).
 
 ### Cómo verlo funcionando
 
 ```bash
 npm install && npm run dev     # http://localhost:3000
-npm test                       # 114 tests
+npm test                       # 163 tests
 npm run verify                 # typecheck + estructura + tests + enlaces
 ```
 

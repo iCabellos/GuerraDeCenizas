@@ -14,6 +14,16 @@ interface Props {
   onSelect: (regionId: RegionId) => void;
 }
 
+/** Encuadra el centroide de un conjunto de regiones. */
+function centroid(view: PlayerView, ids: readonly RegionId[]): { x: number; y: number } | null {
+  const points = ids.map((id) => view.map.regions[id]).filter(Boolean);
+  if (points.length === 0) return null;
+  return {
+    x: points.reduce((s, r) => s + r!.x, 0) / points.length,
+    y: points.reduce((s, r) => s + r!.y, 0) / points.length,
+  };
+}
+
 /**
  * Mapa en SVG. Ver ADR-012: no es Canvas ni WebGL a propósito.
  *
@@ -76,6 +86,23 @@ export function MapView({ view, selected, reachable, ordered, onSelect }: Props)
     if (bastion !== undefined) centerOn(bastion, 0.42);
     else apply();
   }, [apply, centerOn, view.map.bastions, view.map.extent, view.seat]);
+
+  /**
+   * Al seleccionar una fuerza, se encuadra su vecindario.
+   *
+   * Sin esto, algunos destinos alcanzables quedaban **fuera de la pantalla** al zoom por
+   * defecto y el jugador tenía que desplazar el mapa a ciegas para poder ordenar un
+   * movimiento que el juego ya le estaba ofreciendo. Resaltar una opción que no se puede
+   * tocar es peor que no ofrecerla.
+   */
+  useEffect(() => {
+    if (selected === null || reachable.length === 0) return;
+    const focus = centroid(view, [selected, ...reachable]);
+    if (!focus) return;
+    const { scale } = camera.current;
+    camera.current = { x: -focus.x * scale, y: -focus.y * scale, scale };
+    apply();
+  }, [apply, reachable, selected, view]);
 
   const onPointerDown = (event: ReactPointerEvent<SVGSVGElement>) => {
     gesture.current.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
@@ -191,6 +218,7 @@ export function MapView({ view, selected, reachable, ordered, onSelect }: Props)
               tabIndex={0}
               data-region={region.id}
               data-reachable={isReachable ? 'true' : undefined}
+              data-enemy={enemies.length > 0 ? 'true' : undefined}
               aria-label={describe(region.kind, owner, view.seat, observed, forces.length)}
               opacity={observed ? 1 : 0.55}
               onClick={() => onSelect(region.id)}

@@ -81,6 +81,12 @@ export interface Force {
   fire: number;
   sky: number;
   posture: Posture;
+  /**
+   * Turnos consecutivos sin suministro. Cada uno resta un 15 % de potencia.
+   * Una fuerza sin suministro no se destruye: se vuelve irrelevante, que es peor y
+   * más interesante — sigue ocupando la región y sigue siendo negociable.
+   */
+  unsupplied: number;
 }
 
 export type Arms = Pick<Force, 'line' | 'fire' | 'sky'>;
@@ -128,6 +134,10 @@ export interface GameState {
    * composición militar, no quién tiene qué.
    */
   control: (Seat | null)[];
+  /** Índice = `regionId`. Nivel de fortificación, 0–2. Se hereda al capturar. */
+  fortification: number[];
+  /** Índice = `regionId`. Un puente permite a Línea y Fuego cruzar una región de agua. */
+  bridges: boolean[];
   /** Posición del PRNG. Forma parte del estado o la partida no sería reproducible. */
   rngCursor: number;
 }
@@ -141,11 +151,27 @@ export interface MoveOrder {
   /** Ausente = se mueve la fuerza entera. */
   detach?: Arms;
   posture: Posture;
+  /**
+   * Región adyacente a la que esta fuerza presta su Fuego (GDD §7.5). Solo con
+   * postura Firme y sin moverse. El apoyo no recibe bajas: es la ayuda militar más
+   * barata del juego, y por eso prometerla y no darla es una jugada.
+   */
+  fireSupport?: RegionId;
+}
+
+export type Buildable = 'line' | 'fire' | 'sky' | 'fort' | 'bridge';
+
+export interface ProductionOrder {
+  regionId: RegionId;
+  item: Buildable;
+  qty: number;
 }
 
 export interface Orders {
   turn: number;
   moves: MoveOrder[];
+  /** Ausente = no se produce nada este turno. */
+  production?: ProductionOrder[];
 }
 
 export type OrdersBySeat = Partial<Record<Seat, Orders>>;
@@ -157,8 +183,16 @@ export type EventType =
   | 'FORCE_MOVED'
   | 'FORCE_BLOCKED'
   | 'FORCE_MERGED'
+  | 'FORCE_DESTROYED'
+  | 'FORCE_RETREATED'
+  | 'COMBAT'
   | 'REGION_CAPTURED'
   | 'REGION_CONTESTED'
+  | 'REGION_FORTIFIED'
+  | 'BRIDGE_BUILT'
+  | 'PRODUCED'
+  | 'INCOME'
+  | 'SUPPLY_FAILED'
   | 'CONCORDANCE'
   | 'TURN_CLOSED';
 
@@ -188,6 +222,8 @@ export interface VisibleForce {
   /** Tamaño total aproximado cuando no se conoce el desglose. */
   approxTotal: number | null;
   posture: Posture | null;
+  /** Turnos sin suministro. Solo se conoce de las fuerzas propias. */
+  unsupplied: number | null;
 }
 
 export interface OpponentView {
@@ -207,6 +243,8 @@ export interface PlayerView {
   /** Regiones observadas este turno. Ordenadas. */
   visible: RegionId[];
   control: (Seat | null)[];
+  fortification: number[];
+  bridges: boolean[];
   forces: VisibleForce[];
   self: SeatState;
   opponents: OpponentView[];

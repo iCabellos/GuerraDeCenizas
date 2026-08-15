@@ -12,7 +12,86 @@ Este proyecto sigue [SemVer](https://semver.org/lang/es/).
 
 ## [Sin publicar]
 
-Nada pendiente. Siguiente: v0.2 — recursos, producción, combate y captura.
+Nada pendiente. Siguiente: v0.3 — multijugador real (auth, Supabase, RLS, autoridad).
+
+---
+
+## [0.2.0] — 2026-08-15 — Núcleo jugable
+
+Una campaña de 12 turnos ya se juega entera con sustancia: economía, producción, combate
+determinista y captura. **163 tests en verde.**
+
+### Añadido
+
+**Combate determinista** — `rules/combat.ts` (la fórmula) y `rules/battle.ts` (el turno)
+- Rueda Fuego > Línea > Cielo > Fuego, con bonificación **continua**: cada arma rinde en
+  proporción a cuánto de lo que tiene enfrente contrarresta, sin escalones.
+- Terreno, posturas (Asalto / Firme / Pantalla), fortificación y penalización por falta
+  de suministro.
+- Resolución generalizada a **2 o más bandos**: gana quien más potencia tenga contra la
+  suma de los demás; un empate exacto destruye a todos y deja la región disputada.
+  Nunca se desempata al azar.
+- **Pantalla** se retira a una región amiga adyacente dejando el 50 % en vez de morir.
+- **Apoyo de Fuego**: una fuerza en Firme presta su Fuego a una región adyacente; suma
+  potencia y no recibe bajas.
+- **`previewAttack()`**: la previsualización se calcula con la MISMA función que resuelve
+  el turno, así que no puede diferir. Verificado sobre 6 terrenos × 3 posturas × 3
+  niveles de fortificación.
+
+**Economía** — `rules/economy.ts`
+- Renta por tipo de región con **rendimiento decreciente** a partir de la parte justa
+  (el tamaño de un sector).
+- **Suministro proporcional a la distancia** al Bastión. Cuando no alcanza, se abastece
+  primero lo más cercano: las expediciones lejanas son las primeras en quedarse sin
+  abastecer, y una fuerza sin suministro pierde un 15 % de potencia acumulativo.
+- Topes de acumulación para los tres recursos ordinarios; la Ceniza no tiene tope.
+
+**Producción**
+- Línea, Fuego, Cielo, fortificación (máx. 2 niveles) y puentes, en Bastión o Urbana
+  propia. Sin colas ni temporizadores: una decisión, un resultado, el mismo turno.
+- Lo producido se fusiona con la fuerza que ya esté allí, así que el límite de fuerzas
+  no se puede burlar acumulando unidades de tamaño 1.
+
+**Agua y puentes**
+- Solo Cielo cruza el agua sin Puente. El agua divide el mapa de verdad.
+
+**Interfaz**
+- Panel de previsualización de combate con potencias, resultado y bajas previstas.
+- Panel de producción y registro del turno anterior, **ya filtrado por el motor**.
+- Aviso explícito de incertidumbre cuando hay fuerzas enemigas ocultas: el resultado es
+  exacto *dada tu información*, y eso es una enseñanza del juego, no letra pequeña.
+
+### Corregido
+
+- **La constante de rendimiento decreciente estaba mal.** El GDD pedía que doblar el
+  territorio diera ~1,55× de renta; con el `0.045` documentado daba **1,08×**, es decir,
+  expandirse dejaba de compensar — el error contrario al que la regla pretendía evitar.
+  Corregida a `0.015`. Lo detectó el test que fija la **intención** de diseño en vez de
+  la constante.
+- **Un panel flotante no puede interceptar taps.** Reducir la hoja de región a una barra
+  de 76 px no bastó: seguía habiendo regiones alcanzables debajo que no se podían tocar.
+  La solución real es `pointer-events: none` en el panel y `auto` solo en sus controles.
+- **Destinos alcanzables fuera de pantalla.** Al seleccionar una fuerza, el mapa encuadra
+  ahora su vecindario: resaltar una opción que no se puede tocar es peor que no ofrecerla.
+- **Validación y aplicación discrepaban en la producción.** Pedir 9 niveles de
+  fortificación cobraba 9 y aplicaba 2. Ahora la cantidad se recorta antes de cobrar.
+
+### Cambiado
+
+- `previewAttack` vive en `@gdc/core`, no en el cliente: derivar bandos de combate desde
+  una `PlayerView` es lógica de reglas, y duplicarla en el cliente obligaría al servidor
+  y al simulador a reimplementarla.
+- `Orders.production` es opcional; su ausencia significa «no produzco este turno».
+- `ENGINE_VERSION` sube a `0.2.0`.
+
+### Notas
+
+- Sin alianzas todavía: dos asientos en la misma región siempre combaten. La condición
+  está aislada en `battle.ts` para que consultar tratados en v0.4 sea un cambio local.
+- **La mayoría de los combates son encuentros simultáneos**, donde la previsualización no
+  puede existir porque nadie está allí todavía. Solo aparece al atacar una región ocupada
+  y visible, lo que en una campaña normal ocurre hacia el turno 8. Conviene tenerlo
+  presente al escribir el tutorial.
 
 ---
 

@@ -11,10 +11,12 @@
  */
 
 import type {
-  Adjacency, Arms, Force, ForceId, GameState, OrdersBySeat, RegionId, Seat,
+  Adjacency, Arms, Force, ForceId, GameState, OrdersBySeat, ProductionOrder,
+  RegionId, Seat,
 } from '../types/index';
 import { BALANCE } from '../balance/constants';
 import { EventLog } from './events';
+import { canProduceAt } from './economy';
 
 export type RejectReason =
   | 'unknown_force'
@@ -25,7 +27,12 @@ export type RejectReason =
   | 'duplicate_order'
   | 'too_many_orders'
   | 'wrong_turn'
-  | 'no_movement_in_parley';
+  | 'no_movement_in_parley'
+  | 'water_needs_bridge'
+  | 'support_needs_hold'
+  | 'support_not_adjacent'
+  | 'cannot_produce_here'
+  | 'not_enough_industry';
 
 interface Intent {
   force: Force;
@@ -40,6 +47,14 @@ export interface MovementResult {
   forces: Force[];
 }
 
+export interface ValidatedOrders {
+  intents: Intent[];
+  postures: Map<ForceId, Force['posture']>;
+  /** `forceId` → región adyacente a la que presta su Fuego. */
+  fireSupport: Map<ForceId, RegionId>;
+  production: Map<Seat, ProductionOrder[]>;
+}
+
 /**
  * Valida las órdenes contra el estado autoritativo y devuelve las intenciones legales.
  * Todo lo que no se pueda justificar con el estado se rechaza: el cliente solo aporta
@@ -50,9 +65,11 @@ export function validateOrders(
   ordersBySeat: OrdersBySeat,
   adjacency: Adjacency,
   log: EventLog,
-): { intents: Intent[]; postures: Map<ForceId, Force['posture']> } {
+): ValidatedOrders {
   const intents: Intent[] = [];
   const postures = new Map<ForceId, Force['posture']>();
+  const fireSupport = new Map<ForceId, RegionId>();
+  const production = new Map<Seat, ProductionOrder[]>();
   const forcesById = new Map(state.forces.map((f) => [f.id, f]));
 
   // Orden de asiento ascendente: los desempates del motor jamás son aleatorios.
@@ -96,6 +113,17 @@ export function validateOrders(
       postures.set(force.id, move.posture);
       accepted++;
 
+      if (move.fireSupport !== undefined) {
+        // El apoyo exige quedarse quieto: es fuego indirecto, no una carga.
+        if (move.posture !== 'hold' || move.to !== undefined) {
+          reject(log, seat, move.forceId, 'support_needs_hold');
+        } else if (!(adjacency[force.regionId] as readonly RegionId[]).includes(move.fireSupport)) {
+          reject(log, seat, move.forceId, 'support_not_adjacent');
+        } else {
+          fireSupport.set(force.id, move.fireSupport);
+        }
+      }
+
       if (move.to === undefined) continue;
 
       if (state.meta.phase === 'parley') {
@@ -120,6 +148,15 @@ export function validateOrders(
         reject(log, seat, move.forceId, 'detach_empty');
         continue;
       }
+      // El agua divide el mapa: solo Cielo la cruza sin Puente (GDD §6.1).
+      if (
+        state.map.regions[move.to]?.kind === 'water' &&
+        !state.bridges[move.to] &&
+        arms.line + arms.fire > 0
+      ) {
+        reject(log, seat, move.forceId, 'water_needs_bridge');
+        continue;
+      }
 
       intents.push({
         force,
@@ -129,11 +166,36 @@ export function validateOrders(
         posture: move.posture,
       });
     }
+
+    // Producción. Se valida contra el estado autoritativo, nunca contra lo que
+    // afirma el cliente: él solo dice «línea, en la región 12».
+    const queued: ProductionOrder[] = [];
+    let budget = state.seats.find((x) => x.seat === seat)?.resources.industry ?? 0;
+    for (const order of orders.production ?? []) {
+      if (!canProduceAt(state, seat, order.regionId)) {
+        reject(log, seat, null, 'cannot_produce_here');
+        continue;
+      }
+
+      // La cantidad se recorta ANTES de cobrar. Validación y aplicación tienen que
+      // recortar igual: si discrepan, el jugador paga por algo que no recibe.
+      const qty = clampQuantity(state, order.item, order.regionId, Math.max(1, Math.floor(order.qty)));
+      if (qty === 0) continue;
+
+      const cost = BALANCE.production[order.item].industry * qty;
+      if (cost > budget) {
+        reject(log, seat, null, 'not_enough_industry');
+        continue;
+      }
+      budget -= cost;
+      queued.push({ regionId: order.regionId, item: order.item, qty });
+    }
+    if (queued.length > 0) production.set(seat, queued);
   }
 
   // Determinismo: el orden de aplicación no puede depender del orden de llegada.
   intents.sort((a, b) => a.force.seat - b.force.seat || cmp(a.force.id, b.force.id));
-  return { intents, postures };
+  return { intents, postures, fireSupport, production };
 }
 
 /**
@@ -184,6 +246,7 @@ export function applyMovement(
         fire: intent.arms.fire,
         sky: intent.arms.sky,
         posture: intent.posture,
+        unsupplied: force.unsupplied,
       };
       forces.push(detached);
       byId.set(detached.id, detached);
@@ -260,6 +323,8 @@ function mergeAndPrune(forces: readonly Force[], log: EventLog): Force[] {
       fire: group.reduce((s, f) => s + f.fire, 0),
       sky: group.reduce((s, f) => s + f.sky, 0),
       posture: dominant.posture,
+      // Al fusionarse, la peor situación de suministro manda: no se lava reagrupando.
+      unsupplied: Math.max(...group.map((f) => f.unsupplied)),
     };
     merged.push(result);
     log.emit({
@@ -280,6 +345,24 @@ function reject(log: EventLog, seat: Seat, forceId: ForceId | null, reason: Reje
     scope: { kind: 'seat', seat },
     data: { forceId, reason },
   });
+}
+
+/**
+ * Recorta la cantidad pedida a lo que la región puede recibir de verdad.
+ * Fortificación tiene tope; un Puente o está o no está.
+ */
+function clampQuantity(
+  state: GameState,
+  item: ProductionOrder['item'],
+  regionId: RegionId,
+  requested: number,
+): number {
+  if (item === 'fort') {
+    const current = state.fortification[regionId] ?? 0;
+    return Math.max(0, Math.min(requested, BALANCE.combat.maxFortLevel - current));
+  }
+  if (item === 'bridge') return state.bridges[regionId] ? 0 : 1;
+  return requested;
 }
 
 export function total(arms: Arms): number {

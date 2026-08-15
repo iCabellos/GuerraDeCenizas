@@ -26,10 +26,21 @@ export const BALANCE = {
   },
 
   economy: {
-    /** Rendimiento decreciente de la renta por región. Antídoto principal al snowball. */
-    diminishingK: 0.045,
+    /**
+     * Rendimiento decreciente de la renta por región. Antídoto principal al snowball.
+     *
+     * El diseño pedía que **doblar tu territorio diera ~1,55× de renta**: sublineal,
+     * pero premiando expandirse. Al implementar la fórmula, el 0,045 documentado daba
+     * solo 1,08× — expandirse dejaba de compensar, que es el error contrario. El valor
+     * correcto para la intención declarada es 0,015. Ver CHANGELOG v0.2.
+     */
+    diminishingK: 0.015,
+    /** Coste de suministro por salto hasta el Bastión propio más cercano. */
     supplyDistanceK: 0.2,
+    /** Pérdida de potencia acumulativa por turno sin suministro. */
     unsuppliedDecay: 0.15,
+    /** Topes de acumulación. La Ceniza no tiene tope a propósito. */
+    caps: { supply: 60, industry: 60, intel: 40 },
   },
 
   combat: {
@@ -40,7 +51,14 @@ export const BALANCE = {
     holdDef: 1.2,
     screenMod: 0.75,
     fireSupport: 0.6,
-    entrenchDef: 1.2,
+    /** Bonificación defensiva por nivel de fortificación. */
+    fortPerLevel: 0.15,
+    maxFortLevel: 2,
+    /**
+     * Una fuerza en Pantalla que pierde se retira en vez de morir, dejando la mitad.
+     * Es lo que permite exponerse a un aliado dudoso sin perderlo todo si traiciona.
+     */
+    screenRetreatLoss: 0.5,
     bastionDef: 1.4,
   },
 
@@ -65,6 +83,15 @@ export const BALANCE = {
     wAsh: 2,
     wRegion: 1,
     wCore: 3,
+  },
+
+  /** Producción. Ver GDD §8.1. */
+  production: {
+    line:   { industry: 6,  strength: 10, upkeep: 1 },
+    fire:   { industry: 8,  strength: 10, upkeep: 1.5 },
+    sky:    { industry: 10, strength: 10, upkeep: 2 },
+    fort:   { industry: 10 },
+    bridge: { industry: 8 },
   },
 
   start: {

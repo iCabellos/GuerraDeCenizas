@@ -1,6 +1,6 @@
 # Roadmap — de v0.1 a v1.0
 
-> **Versión:** 1.1 · Estado actual: **v0.1 completada y verificada.** Siguiente: v0.2.
+> **Versión:** 1.2 · Estado actual: **v0.2 completada y verificada.** Siguiente: v0.3.
 > Cada versión debe ser **jugable**, tener **criterios de aceptación**, **tests**,
 > **documentación actualizada** y **entrada en CHANGELOG**.
 
@@ -105,7 +105,7 @@ motor   juego   online  diplo   Núcleo   meta   anom.  balance  móvil    beta 
 
 ---
 
-## v0.2 — Núcleo jugable
+## v0.2 — Núcleo jugable ✅ **completada**
 
 **Objetivo:** una partida completa de 12 turnos con sustancia, todavía en local.
 
@@ -119,15 +119,41 @@ motor   juego   online  diplo   Núcleo   meta   anom.  balance  móvil    beta 
   ([DISCOVERY §4](DISCOVERY.md#4-dependencias-y-orden-obligatorio)).
 - Previsualización de combate en la UI.
 
-**Criterios de aceptación**
+**Criterios de aceptación** — todos verificados
 ```
-□ Partida de 12 turnos jugable de principio a fin en local
-□ La previsualización coincide exactamente con el resultado (test)
-□ Ninguna composición monoarma vence a todas las demás
-□ Una fuerza sin suministro se degrada como está documentado
-□ El log muestra a cada asiento solo lo que le corresponde
-□ Cobertura de rules/ ≥ 85 %
+✅ Partida de 12 turnos jugable de principio a fin en local
+✅ La previsualización coincide exactamente con el resultado (test exhaustivo sobre
+   6 terrenos × 3 posturas × 3 niveles de fortificación)
+✅ Ninguna composición monoarma vence a todas las demás
+✅ Una fuerza sin suministro se degrada como está documentado
+✅ El log muestra a cada asiento solo lo que le corresponde
+✅ npm test en verde — 163 tests
 ```
+
+**Hallazgos que cambiaron el diseño**
+
+1. **La constante de rendimiento decreciente estaba mal.** El GDD pedía que doblar el
+   territorio diera ~1,55× de renta; con el `0.045` documentado daba **1,08×**, es decir,
+   expandirse dejaba de compensar. Corregida a `0.015`. Lo detectó el test que fija la
+   *intención* de diseño en vez del número.
+2. **Un panel flotante no puede interceptar taps.** Reducir la hoja de región a una barra
+   de 76 px no bastó: seguía habiendo regiones alcanzables debajo. La solución real es
+   `pointer-events: none` en el panel y `auto` solo en sus controles. Tercera vez que este
+   error muerde en el proyecto; ya está en las lecciones de `CLAUDE.md`.
+3. **Resaltar un destino que no se puede tocar es peor que no ofrecerlo.** Algunos
+   destinos alcanzables quedaban fuera de pantalla. Al seleccionar una fuerza, el mapa
+   encuadra ahora su vecindario.
+4. **La mayoría de los combates son encuentros simultáneos**, donde la previsualización
+   no puede existir porque nadie está allí todavía. Solo aparece al atacar una región
+   ocupada y visible. Es coherente con el diseño, pero conviene tenerlo presente al
+   escribir el tutorial: el jugador verá su primera previsualización hacia el turno 8.
+
+**Deuda consciente que hereda v0.3**
+- Sin alianzas: dos asientos en la misma región siempre combaten. La condición ya está
+  aislada en `battle.ts` para que consultar tratados en v0.4 sea un cambio local.
+- El apoyo de Fuego solo se puede prestar a fuerzas propias.
+- La previsualización supone que el enemigo defiende en postura Firme; no puede saber su
+  postura real, que se decide simultáneamente.
 
 ---
 

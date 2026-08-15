@@ -34,6 +34,14 @@ export { generateMap, MAPGEN_VERSION, type GeneratedMap } from './mapgen/generat
 
 export { reduce, ENGINE_VERSION } from './rules/reduce';
 export {
+  combatPower, resolveCombat, previewCombat, previewAttack, totalOf,
+  type CombatSide, type CombatOutcome, type CombatPreview, type SideOutcome,
+} from './rules/combat';
+export { applyBattles } from './rules/battle';
+export {
+  grossIncome, diminishingFactor, supplyUpkeep, canProduceAt,
+} from './rules/economy';
+export {
   createGame, type CreateGameOptions, type CreatedGame, type SeatSetup,
 } from './rules/setup';
 export { total } from './rules/movement';

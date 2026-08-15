@@ -84,8 +84,17 @@ Sin Redux, sin Zustand. Tres piezas y ninguna más:
 
 ## Estado actual
 
-**v0.1.** Prototipo local (hot seat): genera mapa, renderiza SVG, mueve fuerzas, resuelve
-turnos simultáneos. Sin auth, sin base de datos, sin red — todo en memoria del navegador.
+**v0.2.** Prototipo local (hot seat): genera mapa, renderiza SVG, mueve fuerzas, produce,
+combate con previsualización exacta, y muestra el log del turno ya filtrado por asiento.
+Sin auth, sin base de datos, sin red — todo en memoria del navegador.
+
+**Regla aprendida a base de repetirla:** un panel flotante sobre el mapa lleva
+`pointer-events-none`, y solo sus botones `pointer-events-auto`. Hacerlo más pequeño no
+resuelve nada: siempre queda una región tocable debajo.
+
+**La lógica de reglas no vive aquí.** `previewAttack` está en `@gdc/core` porque derivar
+bandos de combate desde una `PlayerView` es lógica de reglas: si la duplicara el cliente,
+el servidor y el simulador tendrían que reimplementarla.
 
 La capa de autoridad (`app/api/`) llega en **v0.3**. No la anticipes: el prototipo debe
 poder tirarse sin arrastrar deuda.
