@@ -55,6 +55,34 @@ if (existsSync(componentsDir)) {
   if (failures === before) console.log('✓ ningún componente de cliente toca el servidor');
 }
 
+// 4 · la autoridad solo vive en dos sitios
+//
+// `lib/server/` y `app/api/` son la capa de autoridad. Cualquier otro archivo de
+// `apps/web` que importe de ahí es un Server Component o —peor— un componente de
+// cliente haciendo de servidor. Un `serviceClient()` en una página se renderiza en el
+// servidor y parece inofensivo, hasta que alguien la convierte en `'use client'`.
+const AUTHORITY = /from\s+['"](@\/lib\/server|\.\.?\/[^'"]*lib\/server)/;
+const webDir = path.join(ROOT, 'apps/web');
+if (existsSync(webDir)) {
+  const before = failures;
+  for (const entry of await readdir(webDir, { recursive: true })) {
+    const file = String(entry);
+    if (!/\.tsx?$/.test(file)) continue;
+    if (file.startsWith('node_modules') || file.startsWith('.next')) continue;
+    if (file.startsWith('lib/server/') || file.startsWith('app/api/')) continue;
+    if (file.startsWith('tests/')) continue;   // los tests ejercitan la autoridad a propósito
+
+    const source = await readFile(path.join(webDir, file), 'utf8');
+    if (AUTHORITY.test(source)) {
+      fail(`apps/web/${file} importa lib/server fuera de la capa de autoridad`);
+    }
+    if (/SUPABASE_SERVICE_ROLE_KEY/.test(source)) {
+      fail(`apps/web/${file} nombra la clave de servicio`);
+    }
+  }
+  if (failures === before) console.log('✓ la capa de autoridad no se filtra fuera de app/api y lib/server');
+}
+
 if (failures > 0) {
   console.error(`\n${failures} violación(es) estructural(es).`);
   process.exit(1);

@@ -104,8 +104,11 @@ npm run verify              # ⭐ typecheck + estructura + tests + enlaces. Ante
 
 npm test                    # Vitest — motor, mapgen, facciones, reglas
 npm run test:watch          # TDD
+npm run test:security       # ⛔ RLS y capa de autoridad contra un Postgres real. BLOQUEANTE.
 npm run typecheck           # tsc --noEmit en core y web
 npm run check:deps          # reglas estructurales del monorepo
+npm run db:reset            # recrea el Postgres efímero de los tests (tools/pg)
+npm run db:psql             # consola contra esa base
 npm run dev                 # prototipo web en http://localhost:3000
 npm run build               # build de producción
 npm run docs:pdf            # → docs/GuerraDeCenizas.pdf (regenéralo al tocar docs)
@@ -134,8 +137,8 @@ versión estamos, qué entra y qué deuda consciente arrastra.
 | | |
 |---|---|
 | Última versión cerrada | **v0.2** — economía, producción, combate determinista y captura |
-| En curso | v0.3 — multijugador real (Supabase, RLS, autoridad de servidor) |
-| Tests | `npm test` debe seguir en verde: es la definición de que nada se ha roto |
+| En curso | v0.3 — esquema, RLS, autoridad y resolución hechos; faltan auth, interfaz y despliegue |
+| Tests | `npm test` (motor) **y** `npm run test:security` (RLS + autoridad) deben estar en verde |
 
 **Lo que todavía NO existe** (no lo des por hecho al leer los documentos, que describen
 la v1.0): diplomacia, Núcleo y consagración, anomalías, Sombra, doctrinas activas,
@@ -182,6 +185,16 @@ No las repitas. Cada una salió de un fallo real de este repositorio:
    decreciente documentado daba 1,08× donde el diseño pedía 1,55×; el test que
    comprobaba *«doblar el territorio compensa pero no el doble»* lo cazó, uno que
    comprobara `k === 0.045` lo habría bendecido.
+7. **`revoke ... from public` no revoca los GRANT explícitos.** Supabase concede
+   `all on functions` a `anon` y `authenticated` por defecto, así que hay que nombrarlos.
+   `begin_resolution`, que devuelve el estado autoritativo entero, era invocable por
+   cualquier jugador con sesión.
+8. **Un entorno de pruebas infiel prueba lo que no es.** El shim de Supabase reproduce sus
+   permisos por defecto justamente para que los tests de RLS puedan fallar; sin eso
+   pasarían por falta de permisos y el agujero saldría en producción.
+9. **Nada que decida el servidor puede venir en la petición.** `startGame` recibía la
+   lista de asientos del llamante: con eso, el anfitrión podía empezar una partida de tres
+   con un solo jugador dentro. Ahora la lee de la base de datos.
 
 ## Idioma
 

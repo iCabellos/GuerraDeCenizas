@@ -33,6 +33,27 @@ Este proyecto sigue [SemVer](https://semver.org/lang/es/).
 - Incluyen los **siete bloqueantes** del ROADMAP, y un test que enumera todas las
   funciones `security definer` invocables por `authenticated`.
 
+**Órdenes Permanentes y Mando Automático** — `packages/core/src/rules/standing.ts`
+- Un asiento ausente **nunca ataca, nunca perjudica a un tercero**. La postura de asalto
+  es inalcanzable desde la configuración, se pida como se pida.
+- El Mando Automático consolida, recupera lo que le quitaron el turno anterior y produce
+  Línea. Está diseñado para no decidir la partida.
+- Viven en el motor y no en el servidor: si el servidor inventara órdenes, una partida con
+  ausencias no se podría reproducir desde (semilla, órdenes).
+
+**Capa de autoridad** — `apps/web/lib/server/` y `apps/web/app/api/`
+- `resolveTurn()`: arrienda, resuelve con el motor y confirma con bloqueo optimista.
+  Diez peticiones simultáneas producen **una sola** resolución, verificado.
+- Ciclo de vida completo: crear, unirse por código, empezar, enviar órdenes, cron de
+  plazos vencidos.
+- `POST /api/games`, `/api/games/join`, `/api/games/:id/start`, `/api/games/:id/orders`,
+  `/api/cron/resolve-due`. Todos validan con Zod `strictObject`.
+- `projectViews()` en el motor: el turno 0 no pasa por `reduce()` y necesitaba las vistas
+  iniciales sin duplicar el filtrado de niebla.
+
+**26 tests de la capa de autoridad** contra el Postgres real, entre ellos los criterios de
+aceptación de concurrencia, reproducibilidad, ausencias y retención.
+
 ### Corregido
 
 - **`begin_resolution` era invocable por cualquier jugador con sesión**, y devuelve el
@@ -40,6 +61,11 @@ Este proyecto sigue [SemVer](https://semver.org/lang/es/).
   GRANT explícito que Supabase concede a `anon` y `authenticated` al crear la función:
   hay que nombrar los roles. Lo cazó el shim al reproducir los permisos por defecto de
   Supabase — sin esa fidelidad, el test habría pasado por falta de permisos.
+- **`startGame` recibía la lista de asientos del llamante**, así que el anfitrión podía
+  empezar una partida de tres con un solo jugador dentro, o asignarles la facción que le
+  conviniera. Ahora la lee del estado autoritativo con `lobby_state()`.
+- **`startGame` lanzaba una excepción** con los asientos incompletos, devolviendo un 500
+  donde el jugador merece «todavía falta gente».
 
 ### Decisiones
 

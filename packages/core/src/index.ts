@@ -33,6 +33,7 @@ export {
 export { generateMap, MAPGEN_VERSION, type GeneratedMap } from './mapgen/generate';
 
 export { reduce, ENGINE_VERSION } from './rules/reduce';
+export { projectViews } from './rules/views';
 export {
   combatPower, resolveCombat, previewCombat, previewAttack, totalOf,
   type CombatSide, type CombatOutcome, type CombatPreview, type SideOutcome,
@@ -44,4 +45,8 @@ export {
 export {
   createGame, type CreateGameOptions, type CreatedGame, type SeatSetup,
 } from './rules/setup';
+export {
+  standingOrders, autocommandOrders, parseStanding,
+  DEFAULT_STANDING, AUTOCOMMAND_AFTER, type StandingConfig,
+} from './rules/standing';
 export { total } from './rules/movement';

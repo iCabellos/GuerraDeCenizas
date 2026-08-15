@@ -119,9 +119,14 @@ te dirá si acabas de filtrar información.
 
 ## Estado actual
 
-**v0.2.** Implementado: tipos, RNG, balance, facciones, mapgen (esqueleto + decoración +
-disposición), y `reduce()` con validación, movimiento, **combate determinista**,
-control, **economía**, **producción**, visibilidad, eventos y cierre.
+**v0.2 cerrada, v0.3 en curso.** Implementado: tipos, RNG, balance, facciones, mapgen
+(esqueleto + decoración + disposición), `reduce()` con validación, movimiento, **combate
+determinista**, control, **economía**, **producción**, visibilidad, eventos y cierre, y
+—desde v0.3— **Órdenes Permanentes y Mando Automático**.
+
+Las órdenes de un asiento ausente se generan **aquí y no en el servidor**: si el servidor
+las inventara, una partida con ausencias no se podría reproducir desde (semilla, órdenes)
+y el criterio de auditabilidad de v0.3 se caería.
 
 **Todavía no** (ver [ROADMAP](../../docs/ROADMAP.md)): diplomacia, Núcleo y consagración,
 anomalías, Sombra, doctrinas activas, investigación, perturbación y evaluación de mapas.
@@ -134,6 +139,8 @@ anomalías, Sombra, doctrinas activas, investigación, perturbación y evaluaci�
 | `rules/battle.ts` | La **integración con el turno**: quién lucha con quién, apoyo de Fuego, retiradas. |
 | `rules/economy.ts` | Renta, suministro y producción. |
 | `rules/movement.ts` | Validación de todas las órdenes + movimiento simultáneo. |
+| `rules/standing.ts` | Órdenes Permanentes y Mando Automático. **La ausencia nunca daña a un tercero.** |
+| `rules/views.ts` | Proyección de vistas sin resolver: la necesita el turno 0, que no pasa por `reduce()`. |
 
 Si una regla nueva necesita estado del turno, va en `battle.ts` o en su etapa propia,
 **nunca** dentro de `combat.ts`: ahí se rompería la previsualización.
