@@ -1,6 +1,6 @@
 # Roadmap — de v0.1 a v1.0
 
-> **Versión:** 1.0 · Estado actual: **Fase 1 (diseño) completada. v0.1 sin empezar.**
+> **Versión:** 1.1 · Estado actual: **v0.1 completada y verificada.** Siguiente: v0.2.
 > Cada versión debe ser **jugable**, tener **criterios de aceptación**, **tests**,
 > **documentación actualizada** y **entrada en CHANGELOG**.
 
@@ -46,7 +46,7 @@ motor   juego   online  diplo   Núcleo   meta   anom.  balance  móvil    beta 
 
 ---
 
-## v0.1 — Prototipo
+## v0.1 — Prototipo ✅ **completada**
 
 **Objetivo:** demostrar que el modelo de mapa y de turno funciona. Sin cuentas, sin red.
 
@@ -61,19 +61,47 @@ motor   juego   online  diplo   Núcleo   meta   anom.  balance  móvil    beta 
 
 **Fuera**: auth, base de datos, combate, recursos, diplomacia, assets finales.
 
-**Criterios de aceptación**
+**Criterios de aceptación** — todos verificados
 ```
-□ Generar un mapa para 2, 3 y 5 jugadores desde una semilla
-□ La misma semilla produce siempre el mismo mapa (checksum)
-□ Los 5 invariantes del esqueleto se verifican con test
-□ Mover una fuerza entre regiones adyacentes
-□ 5 asientos dan órdenes y se resuelven simultáneamente
-□ El mapa es legible y tocable en 360×640
-□ reduce() es puro (test de inmutabilidad)
-□ npm test en verde
+✅ Generar un mapa para 2, 3 y 5 jugadores desde una semilla
+✅ La misma semilla produce siempre el mismo mapa (checksum)
+✅ Los 5 invariantes del esqueleto se verifican con test
+✅ Mover una fuerza entre regiones adyacentes
+✅ 5 asientos dan órdenes y se resuelven simultáneamente
+✅ El mapa es legible y tocable en 360×640
+✅ reduce() es puro (test de inmutabilidad)
+✅ npm test en verde — 114 tests
 ```
 
-**Tests**: `rng`, `mapgen/skeleton`, `mapgen/determinism`, `rules/movement`, `reduce/purity`.
+**Entregado además de lo previsto**
+- Sistema de **facciones ligado a la cuenta** ([FACTIONS](FACTIONS.md), ADR-021), con el
+  invariante del techo verificado por test. Se adelantó porque define el modelo de datos
+  de la cuenta, del que dependen v0.3 y v0.6.
+- `CLAUDE.md` por directorio con las reglas locales de cada paquete.
+- `npm run check:deps`: reglas estructurales del monorepo verificadas en CI.
+
+**Dos hallazgos que cambiaron el diseño**
+
+1. **Fallo del PRNG con impacto en la equidad.** `xoshiro128**` cerraba con
+   `& 0xffffffff`, y en JavaScript los operadores de bits son de 32 bits **con signo**:
+   devolvía negativos por encima de 2³¹, `shuffle` indexaba en negativo y dejaba huecos,
+   y los mapas salían con **2 yacimientos por sector en vez de 3**. Un fallo de una línea
+   que rompía la promesa central del proyecto. Lo detectó el test «todos los sectores
+   tienen el mismo inventario», no una revisión visual.
+2. **Un mapa de 5 jugadores no cabe entero en 360 px con regiones tocables.** Medido: a
+   escala 1 cada región mide 21 px. Registrado en
+   [UX_MOBILE §1.4](UX_MOBILE.md#14-objetivos-táctiles); el mapa entra con el zoom
+   calculado del ancho real del viewport y centrado entre Bastión y Núcleo.
+
+**Deuda consciente que hereda v0.2**
+- Sin combate: dos asientos con Línea en la misma región dejan la región **disputada**;
+  el combate se resolverá en la etapa 6 del pipeline sin tocar las demás etapas.
+- La segunda fuerza se despliega automáticamente; en v0.2 la elige el jugador en el
+  Parlamento, que es donde debe estar esa decisión.
+- Textos en español dentro de `apps/web/lib/theme.ts`. Centralizados a propósito en un
+  único módulo para que el paso a next-intl en v0.9 sea mecánico.
+
+**Tests**: `rng` (10), `mapgen` (41), `factions` (27), `reduce` (36).
 
 ---
 
@@ -213,7 +241,7 @@ Ese último criterio es la primera validación del pilar P1 del juego.
 - Los 3 agentes de Sombra y sus 6 operaciones.
 - Contrainteligencia, eventos falsos de *Sembrar*.
 - Las 6 doctrinas con pasivo y activo.
-- Investigación (3 tiers) y Yunque.
+- Investigación (3 tiers) y Yermo.
 
 **Criterios de aceptación**
 ```

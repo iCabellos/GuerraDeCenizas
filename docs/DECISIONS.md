@@ -28,6 +28,8 @@
 | [018](#adr-018) | Cadencia por defecto | **propuesta** |
 | [019](#adr-019) | Visibilidad de la reputación | **propuesta** |
 | [020](#adr-020) | Sin sistema de armamento nuclear | aceptada |
+| [021](#adr-021) | Las facciones se ligan a la cuenta y solo cambian el camino | aceptada |
+| [022](#adr-022) | `packages/core` se consume como fuente TypeScript, sin compilar | aceptada |
 
 ---
 
@@ -452,7 +454,7 @@ solo-dentro-de-partida. Métrica de decisión: **> 40 % de campañas con ≥ 1 r
 un botón de «ganar».
 
 **Decisión.** No hay arsenal nuclear. Existe **una** capacidad estratégica extrema
-(*Yunque*, investigación de tier III): destruye todas las fuerzas de una región y la deja
+(*Yermo*, investigación de tier III): destruye todas las fuerzas de una región y la deja
 inutilizable **para todos, incluido quien la lanza**, cuesta 8 ✦ y es públicamente
 atribuida.
 
@@ -463,6 +465,77 @@ atribuida.
   saben.
 - ✅ Evita representar armamento real con detalle, que no aporta nada al juego.
 - ⚠️ Menos espectáculo del que sugiere la ambientación. Compensado por las anomalías.
+
+---
+
+<a id="adr-021"></a>
+
+## ADR-021 — Las facciones se ligan a la cuenta y solo cambian el camino
+**Estado:** aceptada · 2026-08-15
+
+**Contexto.** El proyecto necesita una identidad persistente por cuenta —algo a lo que
+pertenecer entre campañas— pero ADR-009 prohíbe que cualquier desbloqueo permanente
+modifique una constante de balance. Un sistema de facciones mal diseñado es la vía más
+rápida de saltarse esa regla: basta con «mi facción tiene +10 % de industria» para haber
+roto el PvP.
+
+**Decisión.** La cuenta **jura** a una de las 6 ciudades signatarias. La facción fija la
+doctrina de origen y **abarata** (×0,6) los desbloqueos afines. **Nunca encarece nada, y
+el conjunto de opciones alcanzable es idéntico para las seis.** Dentro de la partida, dos
+jugadores de la misma facción quedan marcados con **Concordia**, que es información
+pública y **no tiene ningún efecto mecánico**.
+
+**Consecuencias.**
+- ✅ Identidad y sentido de pertenencia sin tocar el balance.
+- ✅ El invariante «mismo techo» es verificable: `factions/no-ceiling-difference` compara
+  dos cuentas al máximo de facciones distintas y exige conjuntos idénticos.
+- ✅ La Concordia aporta al pilar diplomático **gratis**: reconfigura las expectativas de
+  toda la mesa sin mover una constante. Los otros tres tienen que decidir si asumen que
+  los concordes se aliarán, y los concordes si aprovechan esa suposición.
+- ✅ `factions/` no importa `balance/`, y hay un test que lee el fuente para comprobarlo:
+  la regla de oro deja de depender de la disciplina de quien programa.
+- ⚠️ La afinidad crea una diferencia de **ritmo** entre facciones durante las primeras
+  ~13 campañas. Aceptado: es la misma clase de diferencia que ya existe entre una cuenta
+  nueva y una veterana, y converge.
+- ⚠️ El Cisma podría usarse para «reoptimizar» descuentos. Mitigado: cuesta 60 ✦ y exige
+  3 campañas de espera; y como los desbloqueos se conservan, no hay nada que reoptimizar
+  salvo compras futuras.
+
+**Descartado.** Facciones con bonificaciones estadísticas (rompe ADR-009); doctrinas
+exclusivas por facción (rompe el invariante del techo); Concordia con ventaja mecánica
+—visión compartida inicial o Sellos más baratos— porque convertiría toda partida de 5 en
+un 2v3 desde el turno 0 **y** mataría la duda que la hace interesante; guerra de
+facciones con territorio global persistente (sistema enorme, ajeno al core loop, y
+castiga a la facción con menos jugadores).
+
+---
+
+<a id="adr-022"></a>
+
+## ADR-022 — `packages/core` se consume como fuente TypeScript, sin compilar
+**Estado:** aceptada · 2026-08-15
+
+**Contexto.** El motor lo ejecutan tres consumidores (servidor, cliente, simulador).
+Publicarlo como JavaScript compilado añadiría un artefacto intermedio que puede quedar
+desincronizado con el fuente, justo en el paquete donde una divergencia es más cara.
+
+**Decisión.** `@gdc/core` exporta `./src/index.ts` directamente. Next lo transpila con
+`transpilePackages`, y Vitest lo carga tal cual. **No hay paso de build.** Los imports
+relativos van sin extensión (`from './rng'`), que es lo que entienden tanto `bundler` de
+TypeScript como el bundler de Next.
+
+**Consecuencias.**
+- ✅ Imposible que el motor compilado y el fuente diverjan: solo hay uno.
+- ✅ Un solo `npm test` cubre exactamente el código que corre en producción.
+- ✅ Sin paso de build, sin caché que invalidar, sin sourcemaps que cuadrar.
+- ⚠️ Cualquier consumidor futuro debe poder transpilar TypeScript. Aceptado: los tres que
+  hay lo hacen, y un cuarto que no pudiera sería señal de un problema mayor.
+- ⚠️ Los imports con extensión `.js` (estilo NodeNext) **no** funcionan aquí. Está
+  documentado en `packages/core/CLAUDE.md`.
+
+**Descartado.** Compilar a `dist/` con `tsc` (artefacto que puede diverger, y obliga a
+recordar reconstruir antes de cada test); publicar dual ESM/CJS (complejidad sin ninguna
+ganancia para un paquete privado de monorepo).
 
 ---
 

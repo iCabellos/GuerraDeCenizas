@@ -135,8 +135,9 @@ ciclo se repite (metaprogresión).
 
 ### 2.4 Las ciudades signatarias
 
-Seis ciudades resonantes. En v1.0 la ciudad determina **estética, nombre y afinidad
-inicial de doctrina**; no da bonificaciones numéricas.
+Seis ciudades resonantes. Son también las **facciones** a las que jura una cuenta: la
+ciudad determina estética, doctrina de origen y qué desbloqueos salen más baratos, pero
+**nunca una bonificación numérica**. Sistema completo en [FACTIONS](FACTIONS.md).
 
 | Ciudad | Identidad | Estética | Afinidad |
 |---|---|---|---|
@@ -144,10 +145,15 @@ inicial de doctrina**; no da bonificaciones numéricas.
 | **Koldvik** | Complejo industrial subártico. Sobrevivió porque nunca dejó de fabricar. | Acero oxidado, hormigón, naranja de seguridad | Yunque |
 | **Saranth** | Enclave de investigación en meseta desértica. Sabe demasiado sobre la Ceniza. | Arena, cobre, cian de instrumentación | Coro |
 | **Meridia** | Metrópolis logística. Corredores, puentes, todo en movimiento. | Verde tráfico, asfalto, señalética | Cuña |
-| **Oshara** | Ciudad-delta. Barrios que se reordenan; nadie tiene su mapa completo. | Verde agua, teca, sombras largas | Velo |
+| **Oshara** | Ciudad-delta. Barrios que se reordenan; nadie tiene su mapa completo. | Verde agua, teca, sombras largas | Mortaja |
 | **Tarn** | Ciudad minera de montaña. La primera que encontró Ceniza en veta. | Pizarra, ámbar, luz de casco | Enjambre |
 
 `POST-1.0`: más ciudades y variantes cosméticas.
+
+La facción es una propiedad de la **cuenta**, no de la partida: se jura al crearla y se
+cambia mediante un **Cisma** ([FACTIONS §6](FACTIONS.md#6-cisma-cambiar-de-facción)).
+Cuando dos jugadores de la misma facción coinciden en una mesa se declara **Concordia**,
+que es información pública y **no tiene ningún efecto mecánico**.
 
 ### 2.5 Tono
 
@@ -553,14 +559,14 @@ Tres decisiones en toda la partida — pero cada una define tu guerra.
 |:-:|---|:-:|---|
 | **I** | T2 | 8 | **Logística** (−25 % coste de suministro por distancia) · **Cantera** (+1 ✦/turno del Bastión) · **Óptica** (visión +1 salto) · **Talleres** (−20 % coste ⬢ de producción) |
 | **II** | T5 | 14 | **Doctrina de Ruptura** (Asalto ×1.25 en vez de ×1.15) · **Red Profunda** (−40 % coste de operaciones de Sombra) · **Bastiones Móviles** (regiones Urbanas cuentan como Bastión para suministro) · **Armonía** (−1 ✦ a todas las anomalías) |
-| **III** | T8 | 22 | **Yunque** (capacidad estratégica, §11.1) · **Concordato** (romper un Sello cuesta la mitad) · **Resonancia** (+1 uso de cada anomalía) · **Cerco** (Fuego apoya a 2 saltos, al 40 %) |
+| **III** | T8 | 22 | **Yermo** (capacidad estratégica, §11.1) · **Concordato** (romper un Sello cuesta la mitad) · **Resonancia** (+1 uso de cada anomalía) · **Cerco** (Fuego apoya a 2 saltos, al 40 %) |
 
 **Concordato** es intencionadamente perverso: existe una investigación cuyo único
 propósito es **abaratar la traición**. Y todo el mundo puede ver que la has investigado
 (las investigaciones son públicas). Investigar Concordato es *anunciar* que piensas
 traicionar a alguien — y a veces eso solo es un farol.
 
-### 11.1 Yunque — la capacidad estratégica extrema
+### 11.1 Yermo — la capacidad estratégica extrema
 
 Sustituye al armamento nuclear del brief. Una sola vez por campaña:
 
@@ -586,7 +592,7 @@ capacidad activa. Son **laterales, no numéricas** — cambian *qué puedes hace
 |---|---|---|
 | **Cuña** *(Wedge)* | Las fuerzas que ganan un combate pueden avanzar 1 región más | **Irrupción**: una fuerza mueve 2 este turno |
 | **Yunque** *(Anvil)* | Fortificaciones cuestan −40 % y dan +20 % en vez de +15 % | **Atrincherar**: una región tuya duplica su bono de terreno 2 turnos |
-| **Velo** *(Veil)* | Tus fuerzas muestran tamaño «aproximado» a los enemigos, no exacto | **Espejismo**: muestra una fuerza fantasma en una región vacía |
+| **Mortaja** *(Shroud)* | Tus fuerzas muestran tamaño «aproximado» a los enemigos, no exacto | **Espejismo**: muestra una fuerza fantasma en una región vacía |
 | **Coro** *(Chorus)* | Anomalías cuestan −1 ✦ | **Reverberación**: repite la última anomalía que usaste, gratis |
 | **El Libro** *(Ledger)* | Las transferencias diplomáticas que recibes dan +20 % | **Arbitraje**: fuerza la revelación pública de todos los Sellos vigentes |
 | **Enjambre** *(Swarm)* | Cielo cuesta −30 % ⬢ y puede permanecer sin Línea | **Saturación**: tu Cielo ignora la ventaja de Línea 1 turno |
@@ -870,6 +876,8 @@ Términos canónicos. Las claves de i18n usan la forma en inglés en `SCREAMING_
 | Fulgor | Flare | `ANOM_FLARE` |
 | Eco | Echo | `ANOM_ECHO` |
 | Éxodo | Exodus | `ANOM_EXODUS` |
+| Mortaja | Shroud | `DOC_SHROUD` |
+| Yermo | Scouring | `RESEARCH_SCOURING` |
 | Mando Automático | Autocommand | `BOT_AUTOCOMMAND` |
 | Órdenes Permanentes | Standing Orders | `STANDING_ORDERS` |
 | Reclamación Menor | Lesser Claim | `VICTORY_LESSER` |
@@ -916,4 +924,4 @@ export const BALANCE = {
 | Veteranía de unidades | *(ninguna clara)* | ❌ cortado |
 | Cola de producción | *(ninguna clara)* | ❌ cortado |
 | Árbol tecnológico grande | *(es un menú, no una decisión)* | ❌ reducido a 3 |
-| Arsenal nuclear | *(«pulsa para ganar»)* | ❌ reducido a Yunque |
+| Arsenal nuclear | *(«pulsa para ganar»)* | ❌ reducido a Yermo |

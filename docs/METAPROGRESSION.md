@@ -94,12 +94,17 @@ en que un 4X asíncrono se muere.
 
 | Hito | ✦ acumulado | Campañas aprox. |
 |---|:-:|:-:|
-| 2ª doctrina | 40 | 3 |
-| 4ª anomalía | 70 | 5 |
-| 2ª ciudad | 110 | 8 |
-| Todas las doctrinas | 380 | ~25 |
-| Todas las anomalías | 520 | ~35 |
-| Completo (con cosméticos) | ~1 400 | ~90 |
+| 2ª doctrina (afín, 54 ✦) | 54 | 4 |
+| 4ª anomalía (afín, 42 ✦) | 96 | 7 |
+| 2ª ciudad (55 ✦) | 151 | 11 |
+| Toda tu vía de facción | 180 | 13 |
+| Todas las doctrinas | ~414 | ~30 |
+| Todas las anomalías | ~350 más | ~55 |
+| Catálogo completo | ~1 040 | ~75 |
+
+Costes unitarios en [FACTIONS §3](FACTIONS.md#3-economía-de-desbloqueo). Lo afín cuesta
+un 40 % menos, así que **la vía de tu facción se completa en la tercera parte del tiempo
+que el catálogo entero** — sin que eso cambie el techo.
 
 ⚖️ Calibrada para que **a las 5 campañas** el jugador tenga suficientes opciones para que
 la elección de equipo sea interesante, y para que el catálogo completo sea un objetivo a
@@ -111,8 +116,9 @@ largo plazo sin ser un muro.
 
 ### 4.1 Doctrinas (6)
 
-Ver [GDD §12](GAME_DESIGN.md#12-doctrinas). De inicio: **Cuña**. Las otras 5 se
-desbloquean.
+Ver [GDD §12](GAME_DESIGN.md#12-doctrinas). De inicio: **la doctrina de origen de tu
+facción** ([FACTIONS §2](FACTIONS.md#2-las-seis-facciones)) — distinta según a quién
+juraste. Las otras 5 se desbloquean, y **todas** son alcanzables desde cualquier facción.
 
 Cada doctrina es un pasivo + un activo de un uso. Ninguna es más fuerte: el test de
 balance exige 18–22 % de winrate para todas en partidas de 5.
@@ -125,22 +131,31 @@ Ancla, Eco**. Se llevan 3 a cada campaña.
 Se desbloquean en un orden que introduce las mecánicas de forma escalonada:
 
 ```
-inicio      → Velo, Ancla, Eco            (información y defensa: fáciles de entender)
-40 ✦        → Fulgor                      (información ofensiva)
-70 ✦        → Pliegue                     (topología: el primer «¿cómo ha llegado ahí?»)
-120 ✦       → Éxodo
-190 ✦       → Sello                       (empieza a existir la diplomacia vinculante avanzada)
-280 ✦       → Fisura                      (la más disruptiva, la última)
+inicio   → Velo, Ancla, Eco    idénticas para TODAS las facciones: el onboarding no
+                               puede depender de a quién juraste
+después  → el orden lo marca el bolsillo, no el sistema: cada anomalía cuesta 70 ✦,
+           o 42 ✦ si es afín a tu facción
 ```
 
-**Fisura se desbloquea la última a propósito:** cortar aristas del grafo invalida planes
-ajenos y exige entender bien el mapa. Un novato con Fisura solo se hace daño a sí mismo.
+No hay un orden impuesto de desbloqueo. La afinidad de facción hace que unas salgan
+antes que otras de forma natural, y eso basta para escalonar el aprendizaje sin encerrar
+a nadie en un carril.
 
-### 4.3 Ciudades (6)
+**Fisura es la más difícil de usar bien:** cortar aristas del grafo invalida planes
+ajenos y exige entender bien el mapa. Un novato con Fisura suele hacerse daño a sí mismo.
+Por eso solo es afín a dos facciones (Saranth y Oshara), las dos cuya identidad es
+precisamente conocer el terreno mejor que nadie.
 
-Estética, nombre y afinidad de doctrina ([GDD §2.4](GAME_DESIGN.md#24-las-ciudades-signatarias)).
-**Cero efecto mecánico.** Cambia la paleta, los emblemas, los nombres de las regiones de
-tu Bastión y la voz de los textos de evento.
+### 4.3 Ciudades y facciones (6)
+
+La ciudad a la que juras es tu **facción**, y es el marco de toda esta progresión: fija
+tu doctrina de origen y **abarata** (nunca encarece) tu vía de desbloqueos. El techo es
+idéntico para las seis, verificado por test.
+
+Sistema completo, incluidos Renombre, Cisma y Concordia: [FACTIONS](FACTIONS.md).
+
+Como estética, cambia la paleta, los emblemas, los nombres de las regiones de tu Bastión
+y la voz de los textos de evento. **Cero efecto mecánico.**
 
 ### 4.4 Distritos de la Ciudad (6 × 3 niveles)
 

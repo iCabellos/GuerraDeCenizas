@@ -5,7 +5,7 @@
 **War of Ashes** — 4X multijugador por turnos, mobile-first, donde la guerra es el
 idioma en el que se negocia.
 
-`v0.0.0 · Fase 1: diseño · Sin código de juego todavía`
+`v0.1.0 · Prototipo jugable · 114 tests en verde`
 
 [Concepto](#concepto) · [Core loop](#core-loop) · [Arquitectura](#arquitectura) ·
 [Instalación](#instalación) · [Documentación](#documentación) · [Roadmap](#roadmap) ·
@@ -111,6 +111,10 @@ Detalle completo: **[docs/GAME_DESIGN.md](docs/GAME_DESIGN.md)**.
   traición *antes* de que ocurra.
 - 🏙️ **La Ciudad** — hub de metaprogresión entre guerras. Desbloquea **opciones**,
   nunca números.
+- ⟡ **Facciones ligadas a la cuenta** — seis ciudades signatarias. Cambian tu doctrina de
+  origen y **abaratan** tu vía de desbloqueos, pero el techo es idéntico para todas
+  (verificado por test). Dos jugadores de la misma facción quedan marcados con
+  **Concordia**: público, y sin ningún efecto mecánico.
 - 📱 **Mobile-first real** — diseñado a 360 px primero; objetivos táctiles ≥ 44 px;
   jugable con una mano.
 - 🌐 **Español e inglés completos**, incluido el sistema diplomático.
@@ -204,12 +208,15 @@ guerra-de-cenizas/
 │
 ├── packages/
 │   ├── core/                    ← ⭐ motor puro. 0 deps. La fuente de la verdad.
+│   │   ├── CLAUDE.md            ← reglas locales del paquete
 │   │   ├── src/
 │   │   │   ├── types/           ← estado, órdenes, eventos
-│   │   │   ├── rules/           ← reduce(), combate, economía, captura
-│   │   │   ├── mapgen/          ← generador + validadores + métricas
+│   │   │   ├── rules/           ← reduce(), movimiento, control, visibilidad
+│   │   │   ├── mapgen/          ← esqueleto C_n, decoración, generación
+│   │   │   ├── factions/        ← catálogo de facciones y desbloqueos de cuenta
 │   │   │   ├── balance/         ← tablas de constantes (datos, no código)
-│   │   │   └── rng/             ← xoshiro128** determinista
+│   │   │   ├── rng/             ← xoshiro128** determinista
+│   │   │   └── util/            ← JSON canónico y checksum
 │   │   └── tests/
 │   └── sim/                     ← simulador headless + perfiles de bot + estadísticas
 │
@@ -291,7 +298,9 @@ Tablas principales: `profiles`, `cities`, `account_unlocks`, `games`, `game_play
 |---|---|
 | `npm run dev` | Next.js en modo desarrollo |
 | `npm run build` | Build de producción |
-| `npm test` | Vitest — motor, mapgen, reglas |
+| `npm test` | Vitest — motor, mapgen, facciones, reglas (114 tests) |
+| `npm run verify` | Todo lo anterior + typecheck + estructura + enlaces de docs |
+| `npm run check:deps` | Reglas estructurales del monorepo |
 | `npm run test:e2e` | Playwright — incluye viewports móviles |
 | `npm run sim -- --games 5000 --players 5` | Simulador de balance |
 | `npm run mapgen -- --seed 1234 --players 5 --report` | Genera un mapa y su informe de equidad |
@@ -393,6 +402,7 @@ reconstruir entera reproduciéndola. Ese es el truco que mantiene el coste plano
 | [MAP_GENERATION.md](docs/MAP_GENERATION.md) | Generador procedural, métricas, scoring, pseudocódigo |
 | [DIPLOMACY.md](docs/DIPLOMACY.md) | Las 3 primitivas vinculantes, reputación, traición |
 | [METAPROGRESSION.md](docs/METAPROGRESSION.md) | Progresión permanente vs. de partida, la Ciudad |
+| [FACTIONS.md](docs/FACTIONS.md) | Facciones ligadas a la cuenta, desbloqueos, Cisma, Concordia |
 | [MULTIPLAYER.md](docs/MULTIPLAYER.md) | Turnos, cadencias, abandonos, reconexión, bots |
 | [UX_MOBILE.md](docs/UX_MOBILE.md) | Wireframes, gestos, accesibilidad, rendimiento |
 | [ASSET_PIPELINE.md](docs/ASSET_PIPELINE.md) | Dirección artística, naming, QA visual |
@@ -439,14 +449,28 @@ Criterios de aceptación por versión: **[docs/ROADMAP.md](docs/ROADMAP.md)**.
 
 ## Estado actual
 
-**Fase 1 — Diseño. Sin código de juego.**
+**v0.1 — Prototipo completado y verificado.**
 
-- ✅ Fase 0 (Discovery) completada: 7 contradicciones resueltas, 21 riesgos catalogados.
-- ✅ Documentación de diseño completa (12 documentos).
-- ✅ Pipeline de PDF operativo.
+- ✅ Fase 0 (Discovery): 7 contradicciones resueltas, 21 riesgos catalogados.
+- ✅ Documentación de diseño completa (13 documentos + PDF de 130 páginas).
+- ✅ **Motor** (`@gdc/core`): estado, PRNG determinista, `reduce()` con validación,
+  movimiento simultáneo, control territorial, visibilidad y eventos filtrados por asiento.
+- ✅ **Generador de mapas**: esqueleto C<sub>n</sub>, decoración y replicación por
+  rotación, para 2, 3 y 5 jugadores.
+- ✅ **Sistema de facciones** ligado a la cuenta, con el invariante del techo verificado.
+- ✅ **Prototipo web**: mapa SVG accesible, hot seat, resolución simultánea de 5 asientos.
+- ✅ **114 tests** en verde · typecheck limpio · reglas estructurales verificadas.
 - ⏳ **Pendiente:** confirmar las 3 decisiones bloqueantes de
   [DISCOVERY §5](docs/DISCOVERY.md#5-preguntas-que-sí-son-bloqueantes).
-- ⏭️ **Siguiente:** v0.1 — prototipo del motor y del mapa.
+- ⏭️ **Siguiente:** v0.2 — recursos, producción, combate determinista y captura.
+
+### Cómo verlo funcionando
+
+```bash
+npm install && npm run dev     # http://localhost:3000
+npm test                       # 114 tests
+npm run verify                 # typecheck + estructura + tests + enlaces
+```
 
 ---
 
@@ -464,7 +488,8 @@ Las cinco que definen el proyecto (el resto, en [DECISIONS.md](docs/DECISIONS.md
 4. **La niebla de guerra es real:** `game_states` niega todo `SELECT`; los jugadores solo
    leen `player_views`, proyecciones ya filtradas por asiento.
 5. **La metaprogresión solo añade opciones**, jamás números. Un test de CI falla si un
-   desbloqueo toca la tabla de balance.
+   desbloqueo toca la tabla de balance, y la propia estructura lo impide: el módulo de
+   facciones **no puede importar** el de balance.
 
 ---
 

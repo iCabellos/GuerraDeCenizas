@@ -1,6 +1,6 @@
 {
   "name": "guerra-de-cenizas",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "4X multijugador por turnos, mobile-first, centrado en la diplomacia.",
   "license": "UNLICENSED",
@@ -13,12 +13,20 @@
     "apps/*"
   ],
   "scripts": {
+    "dev": "npm run dev -w @gdc/web",
+    "build": "npm run build -w @gdc/web",
+    "test": "vitest run --root packages/core",
+    "test:watch": "vitest --root packages/core",
+    "typecheck": "tsc --noEmit -p packages/core/tsconfig.json && npm run typecheck -w @gdc/web",
+    "check:deps": "node tools/check-deps.mjs",
     "docs:pdf": "node tools/docs-pdf/build.mjs",
-    "docs:check": "node tools/docs-pdf/check-links.mjs"
+    "docs:check": "node tools/docs-pdf/check-links.mjs",
+    "verify": "npm run typecheck && npm run check:deps && npm test && npm run docs:check"
   },
   "devDependencies": {
     "markdown-it": "^14.1.0",
     "markdown-it-anchor": "^9.2.0",
-    "playwright-core": "^1.56.1"
+    "playwright-core": "^1.56.1",
+    "vitest": "^3.2.4"
   }
 }

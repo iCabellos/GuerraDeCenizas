@@ -31,6 +31,7 @@ const CHAPTERS = [
   { file: 'docs/GAME_DESIGN.md',             title: 'Game Design Document',        part: 'II · Diseño de juego' },
   { file: 'docs/DIPLOMACY.md',               title: 'Diplomacia',                  part: 'II · Diseño de juego' },
   { file: 'docs/METAPROGRESSION.md',         title: 'Metaprogresión',              part: 'II · Diseño de juego' },
+  { file: 'docs/FACTIONS.md',                title: 'Sistema de facciones',        part: 'II · Diseño de juego' },
   { file: 'docs/MAP_GENERATION.md',          title: 'Generación procedural',       part: 'III · Sistemas' },
   { file: 'docs/MULTIPLAYER.md',             title: 'Multijugador',                part: 'III · Sistemas' },
   { file: 'docs/TECHNICAL_DESIGN.md',        title: 'Technical Design Document',   part: 'III · Sistemas' },

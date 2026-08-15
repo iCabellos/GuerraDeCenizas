@@ -47,9 +47,17 @@ necesita tres niveles de navegación, está mal diseñada.
 | Elemento de lista | 44 px | 56 px |
 | Separación entre táctiles | 8 px | 12 px |
 
-Que el mapa sea un **grafo de 45–95 regiones** y no una rejilla es lo que hace esto
+Que el mapa sea un **grafo de 45–96 regiones** y no una rejilla es lo que hace esto
 posible ([MAP_GENERATION §1](MAP_GENERATION.md#1-el-problema-y-por-qué-la-solución-habitual-no-sirve)):
 la restricción de UX móvil determinó la topología del juego, no al revés.
+
+> **Un mapa de 5 jugadores no cabe entero en 360 px con regiones tocables.** Medido en el
+> prototipo v0.1: a escala 1 cada región mide **21 px**, menos de la mitad del mínimo.
+> La respuesta no es encoger el mapa (lo volvería trivial) ni fingir que cumple: el mapa
+> **entra con el zoom necesario** para que una región mida ~52 px, centrado entre tu
+> Bastión y el Núcleo. Ves tu sector y el objetivo; el resto se navega. El zoom inicial
+> se calcula del ancho real del viewport, no de una constante, así que en escritorio el
+> mapa entra entero y las regiones siguen midiendo ~52 px.
 
 ---
 

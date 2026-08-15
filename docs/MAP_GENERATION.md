@@ -61,13 +61,18 @@ Un 4X típico usa 1 000–10 000 casillas. En 360 px de ancho, eso son objetivos
 
 ### 2.1 Dimensiones
 
-| Jugadores | Regiones/sector | Total | Anillos | Bastión a Núcleo |
-|:-:|:-:|:-:|:-:|:-:|
-| 2 | 22 | **45** | 3 | 4 saltos |
-| 3 | 18 | **55** | 3 | 4 saltos |
-| 5 | 19 | **96** | 4 | 5 saltos |
+| Jugadores | Anillos (nodos/sector) | Regiones/sector | Total | Aristas | Bastión a Núcleo | Grado |
+|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| 2 | 4 · 5 · 6 · 7 | 22 | **45** | 88 | 4 saltos | 3–5 |
+| 3 | 3 · 4 · 5 · 6 | 18 | **55** | 108 | 4 saltos | 3–5 |
+| 5 | 3 · 4 · 6 · 6 | 19 | **96** | 190 | 4 saltos | 3–5 |
 
 `total = n × regiones_por_sector + 1`
+
+Los anillos **crecen hacia fuera** por construcción: un anillo exterior con menos nodos
+que uno interior desperdiciaría el radio y produciría una disposición confusa.
+Valores verificados en `tests/mapgen.test.ts`; cualquier cambio en `SECTOR_SPEC` que los
+altere hará fallar los invariantes del esqueleto.
 
 Los tamaños salen de dos restricciones: legibilidad en 360 px (≤ ~100 regiones) y
 suficiente espacio de maniobra para 12 turnos con 6 fuerzas (≥ ~40 regiones).

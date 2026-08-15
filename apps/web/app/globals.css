@@ -1,0 +1,87 @@
+@import 'tailwindcss';
+
+/*
+ * Tokens de diseño. Fuente única, compartida por la UI y por los assets SVG.
+ * Los valores salen de docs/ASSET_PIPELINE.md §2.3 y docs/UX_MOBILE.md §10.
+ */
+@theme {
+  --color-void: #0e0f12;
+  --color-panel: #191b20;
+  --color-raised: #22252c;
+  --color-line: #2a2d35;
+
+  --color-ink: #e8e6e1;
+  --color-muted: #9a968e;
+  --color-faint: #5c5952;
+
+  --color-rust: #c9683a;
+  --color-danger: #b33a3a;
+  --color-success: #4a8b6f;
+  --color-warn: #c4a53c;
+
+  --color-ash: #d6cfc4;
+  --color-ash-glow: #f2ede4;
+
+  --color-terrain-plain: #3a4038;
+  --color-terrain-urban: #41434a;
+  --color-terrain-high: #4a4640;
+  --color-terrain-forest: #2f3a31;
+  --color-terrain-water: #28353d;
+  --color-terrain-seam: #4a4238;
+  --color-terrain-bastion: #4d4038;
+  --color-terrain-core: #3d3a44;
+
+  --color-p0: #4a7fb5;
+  --color-p1: #c9683a;
+  --color-p2: #6e9b54;
+  --color-p3: #9b5fa8;
+  --color-p4: #c4a53c;
+
+  --radius-sharp: 4px;
+}
+
+html,
+body {
+  height: 100%;
+  background: var(--color-void);
+  color: var(--color-ink);
+  overscroll-behavior: none;
+}
+
+body {
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-variant-numeric: tabular-nums;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* El mapa se manipula por transform sobre el <g> raíz: nunca re-render de React
+   durante un gesto (docs/UX_MOBILE.md §9). */
+.map-surface {
+  touch-action: none;
+  user-select: none;
+}
+
+.region {
+  cursor: pointer;
+  transition: opacity 120ms ease-out;
+}
+
+.region:focus-visible {
+  outline: none;
+}
+
+.region:focus-visible .region-shape {
+  stroke: var(--color-ash-glow);
+  stroke-width: 4;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

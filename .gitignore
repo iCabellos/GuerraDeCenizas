@@ -50,3 +50,6 @@ assets/src/**/*.gif
 
 # Artefactos generados desde los assets fuente
 apps/web/components/art/generated/
+
+# Next.js
+apps/web/next-env.d.ts
