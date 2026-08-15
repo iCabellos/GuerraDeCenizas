@@ -1,0 +1,52 @@
+# Dependencias
+node_modules/
+.pnp
+.pnp.js
+
+# Build
+.next/
+out/
+dist/
+build/
+*.tsbuildinfo
+
+# Entorno — NUNCA se commitea
+.env
+.env.local
+.env*.local
+!.env.example
+
+# Testing
+coverage/
+playwright-report/
+test-results/
+.nyc_output/
+
+# Informes generados (simulador, mapgen)
+reports/
+!reports/.gitkeep
+
+# Supabase local
+supabase/.branches/
+supabase/.temp/
+
+# Editor / SO
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# Vercel
+.vercel
+
+# Assets: solo se permite SVG escrito a mano en assets/src (ver docs/ASSET_PIPELINE.md).
+# Cualquier binario aquí es un error, no algo a ignorar: el lint lo rechaza.
+assets/src/**/*.png
+assets/src/**/*.jpg
+assets/src/**/*.jpeg
+assets/src/**/*.webp
+assets/src/**/*.gif
+
+# Artefactos generados desde los assets fuente
+apps/web/components/art/generated/

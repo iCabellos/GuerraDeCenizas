@@ -1,0 +1,484 @@
+# Registro de decisiones (ADR)
+
+> Toda decisión que condicione el proyecto se registra aquí. **Si una decisión cambia, se
+> añade una entrada nueva que sustituya a la anterior — nunca se edita la histórica.**
+> Formato: contexto → decisión → consecuencias → alternativas descartadas.
+
+**Estados:** `aceptada` · `propuesta` (pendiente de confirmar) · `sustituida` · `revertida`
+
+| # | Decisión | Estado |
+|---|---|---|
+| [001](#adr-001) | Un solo motor determinista compartido | aceptada |
+| [002](#adr-002) | El mapa es un grafo con simetría C<sub>n</sub>, no una rejilla | aceptada |
+| [003](#adr-003) | Combate determinista, sin dados | aceptada |
+| [004](#adr-004) | Turnos simultáneos | aceptada |
+| [005](#adr-005) | Autoridad en Route Handlers, no en funciones de Postgres | aceptada |
+| [006](#adr-006) | Niebla de guerra por `player_views` prefiltradas | aceptada |
+| [007](#adr-007) | Estado de partida en `jsonb`, no normalizado | aceptada |
+| [008](#adr-008) | Traición tarifada, no prohibida | aceptada |
+| [009](#adr-009) | La metaprogresión solo añade opciones | aceptada |
+| [010](#adr-010) | La Ciudad es un hub, no un gestor | aceptada |
+| [011](#adr-011) | Assets como SVG escritos a mano en el repositorio | aceptada |
+| [012](#adr-012) | Mapa en SVG, no Canvas ni WebGL | aceptada |
+| [013](#adr-013) | Sin eliminación de jugadores | aceptada |
+| [014](#adr-014) | Tres disparadores de resolución de turno | aceptada |
+| [015](#adr-015) | Diplomacia por plantillas antes que texto libre | aceptada |
+| [016](#adr-016) | Licencia del proyecto | **pendiente** |
+| [017](#adr-017) | Tipografía | **pendiente** |
+| [018](#adr-018) | Cadencia por defecto | **propuesta** |
+| [019](#adr-019) | Visibilidad de la reputación | **propuesta** |
+| [020](#adr-020) | Sin sistema de armamento nuclear | aceptada |
+
+---
+
+<a id="adr-001"></a>
+
+## ADR-001 — Un solo motor determinista compartido
+**Estado:** aceptada · 2026-08-15
+
+**Contexto.** El juego necesita reglas en tres sitios: el servidor (autoridad), el cliente
+(previsualizar) y el simulador (balance). La opción habitual —reimplementar en cada uno—
+produce divergencias sutiles que aparecen como bugs de sincronización imposibles de
+depurar.
+
+**Decisión.** Un único paquete `packages/core`, TypeScript puro, **cero dependencias de
+runtime**, sin I/O, sin `Date.now()`, sin `Math.random()`. Lo consumen los tres.
+
+**Consecuencias.**
+- ✅ Imposible que las reglas diverjan.
+- ✅ El simulador prueba el juego real, no una aproximación.
+- ✅ Los tests unitarios del motor son tests del juego.
+- ⚠️ Disciplina permanente: hay una regla de lint que impide dependencias e I/O en `core`.
+- ⚠️ El cliente carga la lógica del juego (es visible). Aceptable: no contiene secretos —
+  los secretos son los *datos* del estado, que nunca salen del servidor.
+
+**Descartado.** Motor en el servidor + heurística en el cliente (diverge); motor en SQL
+(intestable, no reutilizable por el simulador).
+
+---
+
+<a id="adr-002"></a>
+
+## ADR-002 — El mapa es un grafo con simetría C<sub>n</sub>, no una rejilla
+**Estado:** aceptada · 2026-08-15
+
+**Contexto.** El brief exige partidas de **2, 3 y 5** jugadores con mapas
+«matemáticamente equilibrados», y móvil como plataforma de referencia. Ninguna teselación
+regular del plano admite simetría rotacional de orden 5 (resultado cristalográfico). Y una
+rejilla con suficientes casillas para ser interesante da objetivos táctiles de 4 px en
+360 px de ancho.
+
+**Decisión.** El mapa es un **grafo de 45–95 regiones**, construido como **un sector
+generado y replicado n veces por rotación**.
+
+**Consecuencias.**
+- ✅ Equidad **exacta por construcción** para cualquier número de jugadores.
+- ✅ El evaluador no busca equidad: solo acota el daño de la perturbación. Problema
+  tratable.
+- ✅ Regiones de 48–90 px: móvil resuelto.
+- ✅ Métricas como chokepoints o accesibilidad son propiedades de grafo **computables
+  exactamente**, no estimaciones.
+- ✅ Sin tilesets ni atlas: menos assets.
+- ⚠️ Menos «sensación de mapa continuo» que un 4X clásico. Se compensa con arte de
+  cartografía militar, que encaja con la ambientación.
+- ⚠️ Riesgo de sensación de espejo, sobre todo con 2 jugadores. Mitigado con perturbación
+  acotada y rotación de perfiles económicos.
+
+**Descartado.** Hexágonos (imposible C₅); cuadrados (ídem, y peor); ruido Perlin con
+reequilibrado a posteriori (no ofrece ninguna garantía demostrable).
+
+---
+
+<a id="adr-003"></a>
+
+## ADR-003 — Combate determinista, sin dados
+**Estado:** aceptada · 2026-08-15
+
+**Contexto.** El producto del juego es la negociación. Una promesa como *«si mantienes la
+posición, tu guarnición sobrevive»* solo tiene sentido si es comprobable. Con dados, toda
+promesa lleva un asterisco.
+
+**Decisión.** El combate es una función determinista de las fuerzas, el terreno, las
+posturas y las bonificaciones. **Sin varianza.**
+
+**Consecuencias.**
+- ✅ Se pueden hacer promesas verificables ⇒ la confianza pasa a ser un historial.
+- ✅ La UI puede previsualizar el resultado exacto: enorme ganancia de UX en móvil.
+- ✅ El simulador converge con muchas menos partidas.
+- ✅ Ninguna derrota se atribuye a la mala suerte.
+- ⚠️ Menos momentos de «épica improbable». Se sustituyen por sorpresas de **información**
+  (fuerzas ocultas, órdenes simultáneas, engaños de Sombra), que son sorpresas que el
+  jugador puede aprender a anticipar.
+- ⚠️ Riesgo de que la partida se vuelva calculable. Mitigado por la niebla de guerra y la
+  simultaneidad: sabes la fórmula, pero no todas las variables.
+
+**Descartado.** Dados con varianza baja (mantiene el asterisco sin aportar nada);
+aleatoriedad determinada por semilla y revelada tras ordenar (confuso de explicar).
+
+---
+
+<a id="adr-004"></a>
+
+## ADR-004 — Turnos simultáneos
+**Estado:** aceptada · 2026-08-15
+
+**Contexto.** Con turnos secuenciales, 5 jugadores × 12 turnos en cadencia diaria = 30
+días de campaña, y cada jugador esperando 4 turnos ajenos por cada uno propio.
+
+**Decisión.** Todos los jugadores dan órdenes a la vez; el servidor resuelve juntas.
+
+**Consecuencias.**
+- ✅ Campaña de 6 días en vez de 30. Viable en móvil.
+- ✅ **Habilita la mecánica central**: si vieras moverse a los demás antes de decidir, las
+  promesas no harían falta.
+- ⚠️ Hay que definir empates, cruces y prioridades. Resuelto con orden documentado y
+  desempate por número de asiento — nunca al azar
+  ([GDD §15](GAME_DESIGN.md#15-orden-de-resolución-del-turno)).
+
+---
+
+<a id="adr-005"></a>
+
+## ADR-005 — Autoridad en Route Handlers, no en funciones de Postgres
+**Estado:** aceptada · 2026-08-15
+
+**Contexto.** La resolución de turnos debe ser autoritativa y atómica. Dos opciones:
+plpgsql en Supabase, o TypeScript en Vercel con `service_role`.
+
+**Decisión.** La resolución corre en **Route Handlers de Next.js**, ejecutando
+`packages/core`. La atomicidad la aporta Postgres (advisory locks + bloqueo optimista),
+no la lógica.
+
+**Consecuencias.**
+- ✅ El mismo motor sirve a servidor, cliente y simulador (ADR-001). En SQL, esto sería
+  imposible.
+- ✅ Reglas testeables con Vitest, sin base de datos.
+- ⚠️ La atomicidad hay que construirla explícitamente (§8 del TDD). Aceptado: son ~20
+  líneas bien testeadas.
+- ⚠️ Arranque en frío de la función serverless. Irrelevante con turnos de 3 min o 12 h.
+
+**Descartado.** plpgsql (motor intestable y no compartible); Edge Functions de Supabase
+(mismo resultado que Vercel, pero parte el despliegue en dos sitios).
+
+---
+
+<a id="adr-006"></a>
+
+## ADR-006 — Niebla de guerra por `player_views` prefiltradas
+**Estado:** aceptada · 2026-08-15
+
+**Contexto.** Supabase expone PostgREST. Si la tabla del estado fuera legible, cualquiera
+haría una petición HTTP y vería el estado completo: la niebla de guerra sería cosmética.
+Es el riesgo técnico nº 1 del proyecto.
+
+**Decisión.** `game_states` **niega todo `SELECT`**. El resolutor escribe además
+`player_views`, una proyección **por asiento y ya filtrada**, con RLS `seat = mi asiento`.
+Los datos ocultos no salen nunca del servidor.
+
+**Consecuencias.**
+- ✅ La niebla es real, no confiada al cliente.
+- ✅ Realtime funciona directamente sobre `player_views` respetando RLS.
+- ✅ El cliente descarga menos datos.
+- ⚠️ Escribir 5 filas por turno en vez de 1. Coste irrelevante.
+- ⚠️ Hay que mantener la proyección correcta ⇒ test de fuga de información
+  ([TESTING §3.1](TESTING_AND_SIMULATION.md#31-el-test-de-fuga-de-información)), que
+  recorre la vista entera buscando secretos.
+
+---
+
+<a id="adr-007"></a>
+
+## ADR-007 — Estado de partida en `jsonb`, no normalizado
+**Estado:** aceptada · 2026-08-15
+
+**Contexto.** ¿Guardar el estado como un documento o como tablas relacionales?
+
+**Decisión.** `jsonb`. Las tablas normalizadas (`match_results`, `treaties`, `messages`)
+existen solo para lo que **sí** se consulta relacionalmente.
+
+**Consecuencias.**
+- ✅ Escribir un turno es una fila, no 200 en 8 tablas.
+- ✅ Atomicidad trivial.
+- ✅ El motor ya trabaja con ese objeto: cero traducción entre representaciones.
+- ⚠️ Consultas analíticas pobres sobre el estado. Resuelto: la analítica sale de
+  `match_results` y de la telemetría.
+- ⚠️ Sin validación de esquema en la BD. Resuelto: Zod en el servidor, y el estado solo
+  lo escribe el motor.
+
+---
+
+<a id="adr-008"></a>
+
+## ADR-008 — Traición tarifada, no prohibida
+**Estado:** aceptada · 2026-08-15
+
+**Contexto.** El brief pide acuerdos vinculantes validados en servidor **y** que la
+traición sea posible. Son incompatibles si «vinculante» significa «imposible de romper».
+
+**Decisión.** Romper un Sello es **siempre posible, inmediato y público**, y **cuesta
+Ceniza** — el recurso con el que se gana. Lore: el Umbral registra los juramentos.
+
+**Consecuencias.**
+- ✅ La traición existe, luego la confianza significa algo.
+- ✅ Traicionar te aleja de ganar ⇒ la decisión es un cálculo, no un impulso.
+- ✅ Coherente con el mundo: la Ceniza es la ley de conservación del juego.
+- ✅ Un solo número (`coste_ruptura`) ajusta cuánta traición hay en el metajuego.
+- ⚠️ Si el coste está mal calibrado, o nadie traiciona o traiciona todo el mundo.
+  Vigilado por el simulador (`betrayal-is-priced`).
+
+---
+
+<a id="adr-009"></a>
+
+## ADR-009 — La metaprogresión solo añade opciones
+**Estado:** aceptada · 2026-08-15
+
+**Contexto.** Cualquier desbloqueo numérico rompe un PvP competitivo. Ninguno no motiva.
+
+**Decisión.** Los desbloqueos permanentes **solo pueden añadir doctrinas, anomalías,
+ciudades y cosméticos**. **Jamás** modifican una constante de `BALANCE`. Verificado por
+CI (`no-power-creep`), que además simula cuenta completa vs. cuenta vacía y exige winrate
+48–52 %.
+
+**Consecuencias.**
+- ✅ El competitivo se mantiene íntegro.
+- ✅ La progresión es de conocimiento y adaptación, no de números.
+- ⚠️ Motiva menos que subir de nivel. Se compensa con desbloqueos que abren **formas de
+  jugar** visiblemente distintas.
+- ⚠️ Limita para siempre la monetización a cosméticos. **Aceptado explícitamente.**
+
+---
+
+<a id="adr-010"></a>
+
+## ADR-010 — La Ciudad es un hub, no un gestor
+**Estado:** aceptada · 2026-08-15
+
+**Contexto.** El brief describe una vista Ciudad con economía, producción, investigación,
+diplomacia, infraestructura, inteligencia, ejército, tecnología y desarrollo
+sobrenatural. Es un segundo juego completo que duplica todos los sistemas de la guerra.
+
+**Decisión.** En v1.0 la Ciudad es un **hub de progresión y preparación**: tu ciudad
+crece visiblemente, eliges equipo, ves resultados y entras en campaña. Sin colas, sin
+temporizadores, sin economía paralela.
+
+**Consecuencias.**
+- ✅ El alcance de v1.0 se vuelve alcanzable.
+- ✅ Se elimina la duplicación de sistemas y de curva de aprendizaje.
+- ✅ Se conserva **entero** el bucle emocional que pedía el brief (volver, ver
+  consecuencias, prepararse).
+- ⚠️ Menos «gestión» de la pedida. Registrado como post-1.0 nº 3, condicionado a que el
+  playtesting demuestre que se echa en falta.
+
+---
+
+<a id="adr-011"></a>
+
+## ADR-011 — Assets como SVG escritos a mano en el repositorio
+**Estado:** aceptada · 2026-08-15
+
+**Contexto.** El brief exige assets 100 % originales y trazables hasta su origen dentro
+del proyecto, y prohíbe expresamente marketplaces y material de terceros.
+
+**Decisión.** Todo asset se autora como **SVG escrito a mano** en `assets/src/`, con
+cabecera de autoría obligatoria. Ningún binario. Un generador produce componentes React.
+
+**Consecuencias.**
+- ✅ Procedencia trivial: git es el registro.
+- ✅ Imposible incorporar assets ajenos por accidente: un binario falla el lint.
+- ✅ Coherencia impuesta por herramienta (paleta, cuadrícula, trazo).
+- ✅ Sin peticiones de red, sin CLS, escala perfecta, theming gratis.
+- ⚠️ Limita el estilo visual a lo plano y geométrico. **Convertido en decisión artística
+  deliberada** («cartografía militar contaminada»), no en una carencia.
+- ⚠️ Ilustración compleja (portada, arte de ciudad) queda fuera. Aceptado en v1.0.
+
+---
+
+<a id="adr-012"></a>
+
+## ADR-012 — Mapa en SVG, no Canvas ni WebGL
+**Estado:** aceptada · 2026-08-15
+
+**Contexto.** ~95 regiones que hay que dibujar, tocar, enfocar y anunciar.
+
+**Decisión.** SVG en el DOM.
+
+**Consecuencias.**
+- ✅ **Accesibilidad nativa**: cada región es enfocable y anunciable. Con Canvas o WebGL,
+  cada punto de la tabla de accesibilidad costaría una implementación paralela.
+- ✅ 0 KB de librería; nítido en pantallas 3×.
+- ✅ Zoom y desplazamiento por `transform` (compuesto por GPU).
+- ⚠️ No escalaría a miles de elementos. Irrelevante: el mapa tiene ≤ 96 regiones por
+  diseño (ADR-002).
+- ⚠️ Efectos visuales limitados a CSS/SVG. Coherente con la dirección artística.
+
+---
+
+<a id="adr-013"></a>
+
+## ADR-013 — Sin eliminación de jugadores
+**Estado:** aceptada · 2026-08-15
+
+**Contexto.** En un juego asíncrono de 6 días, un jugador eliminado en el turno 5 tiene
+que esperar una semana sin jugar. Además, eliminar rivales acelera el snowball del líder.
+
+**Decisión.** El Bastión **no se puede capturar**, solo sitiar. Un jugador arrasado
+conserva renta reducida, voz diplomática, capacidad de transferir y de puntuar.
+
+**Consecuencias.**
+- ✅ Nadie queda fuera de la partida.
+- ✅ El líder nunca reduce el número de rivales: antídoto estructural contra el snowball.
+- ✅ Un jugador arrasado sigue siendo **decisivo como árbitro y valioso como socio**.
+- ⚠️ Riesgo de kingmaking por rencor. Mitigado: los supervivientes siguen puntuando para
+  la metaprogresión, así que siempre tienen un objetivo propio además de la venganza.
+- ⚠️ Se pierde la satisfacción de eliminar a alguien. Se sustituye por la **rendición
+  dirigida**, que es más interesante: eliges a quién armar al perder.
+
+---
+
+<a id="adr-014"></a>
+
+## ADR-014 — Tres disparadores de resolución de turno
+**Estado:** aceptada · 2026-08-15
+
+**Contexto.** Vercel Hobby permite **un cron diario**. Los turnos vencen cada 3 min (Blitz)
+o cada 12 h.
+
+**Decisión.** Tres caminos independientes hacia la misma función idempotente:
+(1) inmediato cuando todos envían; (2) `pg_cron` en Supabase cada minuto vía `pg_net`;
+(3) oportunista, cuando cualquier petición de cliente detecta un plazo vencido.
+
+**Consecuencias.**
+- ✅ No dependemos de Vercel Cron ⇒ el free tier sigue siendo suficiente.
+- ✅ Tolerante a fallos: tres caminos, y basta con uno.
+- ✅ El caso normal (~85 %) se resuelve al instante, sin esperar a ningún cron.
+- ⚠️ Exige idempotencia estricta. Ya es necesaria por concurrencia, así que no añade
+  complejidad nueva.
+- ⚠️ `pg_cron` y `pg_net` son extensiones que hay que activar en Supabase. Documentado en
+  el README.
+
+---
+
+<a id="adr-015"></a>
+
+## ADR-015 — Diplomacia por plantillas antes que texto libre
+**Estado:** aceptada · 2026-08-15
+
+**Contexto.** El sistema principal del juego es negociar, y la plataforma de referencia
+es un teléfono, donde escribir duele. Además el juego es bilingüe: dos jugadores pueden
+no compartir idioma.
+
+**Decisión.** La unidad de interacción diplomática es una **Oferta estructurada**, no un
+mensaje. Se compone con 3–4 taps. El texto libre existe, pero es opcional y secundario.
+
+**Consecuencias.**
+- ✅ Negociar en móvil es viable ⇒ el sistema principal se usa de verdad.
+- ✅ **Dos jugadores sin idioma común pueden cerrar un trato**: la oferta es un dato que
+  se renderiza traducido.
+- ✅ Las ofertas son analizables ⇒ telemetría real sobre la diplomacia.
+- ⚠️ Menos expresividad que el texto libre. Mitigado: el texto libre sigue ahí, y el
+  Distrito Cámara nivel 3 añade traducción automática del chat.
+- ⚠️ Hay que diseñar el catálogo de plantillas con cuidado: si falta una, ese trato no
+  existe.
+
+---
+
+<a id="adr-016"></a>
+
+## ADR-016 — Licencia del proyecto
+**Estado:** ⏳ **pendiente** — decisión del propietario del repositorio
+
+Opciones: código propietario (todos los derechos reservados) · MIT/Apache-2.0 para el
+código con assets y lore reservados · dual.
+
+Recomendación: **código propietario durante la beta**, decidir en v1.0. No bloquea el
+desarrollo, pero debe resolverse antes de que el repositorio sea público.
+
+---
+
+<a id="adr-017"></a>
+
+## ADR-017 — Tipografía
+**Estado:** ⏳ **pendiente**
+
+Requisitos: familia variable, geométrica, condensada, **números tabulares**, latín
+extendido completo (ES + EN), licencia **SIL OFL** o equivalente, subseteable.
+No bloquea el desarrollo hasta v0.9.
+
+---
+
+<a id="adr-018"></a>
+
+## ADR-018 — Cadencia por defecto
+**Estado:** 🔵 **propuesta** — decisión bloqueante nº 1
+
+**Propuesta:** **Diaria (12 h/turno, ~6 días)** por defecto, con **Blitz disponible desde
+v0.3** para poder testear.
+
+**Razones.** No exige coincidencia horaria, que es el mayor problema de un juego nuevo
+con pocos jugadores; cumple literalmente la «semana de guerra» del brief; y es el patrón
+nativo del móvil. Blitz debe existir desde v0.3 aunque no sea el modo principal: sin él,
+probar un ciclo completo tarda 6 días y el desarrollo se vuelve insoportable.
+
+**Si se elige Blitz por defecto**, cambian: el diseño de notificaciones (menos push, más
+presencia), el peso de la reconexión, la pausa de desconexión, y el foco del playtesting.
+
+---
+
+<a id="adr-019"></a>
+
+## ADR-019 — Visibilidad de la reputación
+**Estado:** 🔵 **propuesta** — decisión bloqueante nº 3
+
+**Propuesta:** dentro de la partida, **recuento factual público** («Sellos: 4 honrados ·
+1 roto»), sin etiquetas ni puntuación. Entre partidas, agregado en el perfil, **sin
+ranking**, con decaimiento a 50 campañas.
+
+**Razones.** Una reputación con etiquetas morales («Traidor») empujaría el metajuego
+hacia «nunca traiciones», y la traición es el producto. Un recuento factual informa sin
+juzgar: el juicio lo hacen los jugadores.
+
+**Riesgo.** Si el playtesting muestra que aun así mata la traición, se reduce a
+solo-dentro-de-partida. Métrica de decisión: **> 40 % de campañas con ≥ 1 ruptura**.
+
+---
+
+<a id="adr-020"></a>
+
+## ADR-020 — Sin sistema de armamento nuclear
+**Estado:** aceptada · 2026-08-15
+
+**Contexto.** El brief menciona armamento nuclear y advierte a la vez de que no debe ser
+un botón de «ganar».
+
+**Decisión.** No hay arsenal nuclear. Existe **una** capacidad estratégica extrema
+(*Yunque*, investigación de tier III): destruye todas las fuerzas de una región y la deja
+inutilizable **para todos, incluido quien la lanza**, cuesta 8 ✦ y es públicamente
+atribuida.
+
+**Consecuencias.**
+- ✅ Existe la escalada estratégica sin existir un botón de ganar.
+- ✅ Su valor real es **la amenaza**, no el uso: es un arma de negociación.
+- ✅ Destruye valor que no recupera nadie ⇒ usarla es casi siempre un error, y todos lo
+  saben.
+- ✅ Evita representar armamento real con detalle, que no aporta nada al juego.
+- ⚠️ Menos espectáculo del que sugiere la ambientación. Compensado por las anomalías.
+
+---
+
+## Plantilla para nuevas decisiones
+
+```markdown
+## ADR-0XX — Título
+**Estado:** aceptada | propuesta | sustituida por ADR-0YY · AAAA-MM-DD
+
+**Contexto.** Qué problema obliga a decidir.
+
+**Decisión.** Qué se decide, en una frase.
+
+**Consecuencias.**
+- ✅ lo que ganamos
+- ⚠️ lo que cuesta, y cómo se mitiga
+
+**Descartado.** Qué alternativas se consideraron y por qué no.
+```

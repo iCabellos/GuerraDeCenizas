@@ -1,0 +1,24 @@
+{
+  "name": "guerra-de-cenizas",
+  "version": "0.0.0",
+  "private": true,
+  "description": "4X multijugador por turnos, mobile-first, centrado en la diplomacia.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "docs:pdf": "node tools/docs-pdf/build.mjs",
+    "docs:check": "node tools/docs-pdf/check-links.mjs"
+  },
+  "devDependencies": {
+    "markdown-it": "^14.1.0",
+    "markdown-it-anchor": "^9.2.0",
+    "playwright-core": "^1.56.1"
+  }
+}

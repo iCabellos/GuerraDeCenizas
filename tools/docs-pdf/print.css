@@ -1,0 +1,278 @@
+/* Hoja de estilo de impresión — Guerra de Cenizas
+   Dirección visual coherente con docs/ASSET_PIPELINE.md §2.3 */
+
+@page { size: A4; }
+
+:root {
+  --void:    #0E0F12;
+  --panel:   #F4F2EE;
+  --line:    #D8D4CC;
+  --ink:     #1A1B1F;
+  --muted:   #6C6860;
+  --faint:   #9A968E;
+  --rust:    #A84F28;
+  --ash:     #8C857A;
+  --success: #2F6B52;
+  --danger:  #97302F;
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-size: 9.4pt;
+  line-height: 1.55;
+  color: var(--ink);
+  background: #fff;
+}
+
+/* ─────────────────────────── Portada ─────────────────────────── */
+
+.cover {
+  background: var(--void);
+  color: #E8E6E1;
+  height: 257mm;                 /* A4 menos márgenes */
+  margin: -18mm -17mm 0;
+  padding: 34mm 22mm 20mm;
+  page-break-after: always;
+  display: flex;
+  flex-direction: column;
+}
+
+.cover-mark { margin-bottom: 18mm; }
+
+.cover-title {
+  font-size: 42pt;
+  line-height: 1.02;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.cover-sub {
+  font-size: 15pt;
+  color: var(--ash);
+  margin: 2mm 0 0;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.cover-tag {
+  font-size: 11pt;
+  color: #B8B3AA;
+  margin: 12mm 0 0;
+  max-width: 105mm;
+  line-height: 1.45;
+  border-left: 2px solid var(--rust);
+  padding-left: 5mm;
+}
+
+.cover-meta {
+  margin-top: auto;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6mm;
+  border-top: 1px solid #2A2D35;
+  padding-top: 6mm;
+}
+.cover-meta span {
+  display: block;
+  font-size: 7pt;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #6E6A62;
+  margin-bottom: 1.5mm;
+}
+.cover-meta strong { font-size: 9.5pt; font-weight: 600; color: #E8E6E1; }
+
+.cover-foot { font-size: 7.5pt; color: #5C5952; margin: 6mm 0 0; line-height: 1.5; }
+
+/* ─────────────────────────── Índice ─────────────────────────── */
+
+.toc { page-break-after: always; }
+
+.toc-h {
+  font-size: 24pt;
+  margin: 0 0 8mm;
+  padding-bottom: 3mm;
+  border-bottom: 2px solid var(--ink);
+  letter-spacing: -0.01em;
+}
+
+.toc-part { margin-bottom: 7mm; break-inside: avoid; }
+.toc-part h3 {
+  font-size: 7.5pt;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--rust);
+  margin: 0 0 3mm;
+  padding-bottom: 1.5mm;
+  border-bottom: 1px solid var(--line);
+}
+
+.toc-chapter { margin-bottom: 4mm; break-inside: avoid; }
+
+.toc-title {
+  display: flex;
+  gap: 4mm;
+  align-items: baseline;
+  font-size: 11pt;
+  font-weight: 650;
+  color: var(--ink);
+  text-decoration: none;
+}
+.toc-num {
+  font-variant-numeric: tabular-nums;
+  color: var(--faint);
+  font-weight: 500;
+  font-size: 9pt;
+}
+
+.toc-sub {
+  list-style: none;
+  margin: 1.5mm 0 0 12mm;
+  padding: 0;
+  columns: 2;
+  column-gap: 8mm;
+  font-size: 7.6pt;
+  color: var(--muted);
+}
+.toc-sub li { break-inside: avoid; padding: 0.3mm 0; }
+
+/* ─────────────────────── Portadilla de capítulo ─────────────────────── */
+
+.chapter { page-break-before: always; }
+
+.chapter-head {
+  border-bottom: 2px solid var(--ink);
+  padding-bottom: 4mm;
+  margin-bottom: 7mm;
+}
+.chapter-part {
+  font-size: 7.5pt;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--rust);
+  margin: 0;
+}
+.chapter-num {
+  font-size: 30pt;
+  font-weight: 700;
+  color: var(--line);
+  margin: 1mm 0 -4mm;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.chapter-title {
+  font-size: 22pt;
+  font-weight: 700;
+  margin: 0;
+  letter-spacing: -0.015em;
+}
+.chapter-src {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 7.5pt;
+  color: var(--faint);
+  margin: 1.5mm 0 0;
+}
+
+/* ─────────────────────────── Prosa ─────────────────────────── */
+
+.prose h1, .prose h2, .prose h3, .prose h4 {
+  break-after: avoid;
+  page-break-after: avoid;
+  letter-spacing: -0.01em;
+}
+
+.prose h1 { font-size: 15pt; margin: 9mm 0 3mm; }
+.prose h2 {
+  font-size: 13pt;
+  margin: 8mm 0 3mm;
+  padding-bottom: 1.5mm;
+  border-bottom: 1px solid var(--line);
+}
+.prose h3 { font-size: 10.5pt; margin: 6mm 0 2mm; color: #2E3038; }
+.prose h4 { font-size: 9.4pt; margin: 4mm 0 1.5mm; color: var(--muted); }
+
+.prose p { margin: 0 0 3mm; orphans: 3; widows: 3; }
+
+.prose a { color: var(--rust); text-decoration: none; }
+
+.prose ul, .prose ol { margin: 0 0 3mm; padding-left: 5mm; }
+.prose li { margin-bottom: 1mm; }
+
+.prose hr { border: 0; border-top: 1px solid var(--line); margin: 6mm 0; }
+
+.prose strong { font-weight: 650; }
+
+/* Código */
+.prose code {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 8pt;
+  background: #F0EEE9;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  padding: 0.2mm 1mm;
+}
+.prose pre {
+  background: #F7F5F1;
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--ash);
+  border-radius: 2px;
+  padding: 3mm 4mm;
+  margin: 0 0 4mm;
+  overflow: hidden;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+.prose pre code {
+  background: none;
+  border: 0;
+  padding: 0;
+  font-size: 7.4pt;
+  line-height: 1.42;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Citas — se usan para las notas de decisión */
+.prose blockquote {
+  margin: 4mm 0;
+  padding: 2.5mm 0 2.5mm 5mm;
+  border-left: 2px solid var(--rust);
+  background: #FAF8F5;
+  color: #33353C;
+  break-inside: avoid;
+}
+.prose blockquote p:last-child { margin-bottom: 0; }
+
+/* Tablas */
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0 0 5mm;
+  font-size: 8pt;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+.prose thead th {
+  background: #EFEDE8;
+  border-bottom: 1.5px solid var(--ink);
+  text-align: left;
+  padding: 1.6mm 2mm;
+  font-weight: 650;
+  font-size: 7.8pt;
+}
+.prose tbody td {
+  border-bottom: 1px solid var(--line);
+  padding: 1.5mm 2mm;
+  vertical-align: top;
+}
+.prose tbody tr:nth-child(even) { background: #FAF9F6; }
+.prose table code { font-size: 7.2pt; }
+
+/* Los diagramas ASCII no deben partirse ni encogerse */
+.prose pre:has(code:not([class])) { break-inside: avoid; }
