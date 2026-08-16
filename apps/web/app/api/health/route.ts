@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { ENGINE_VERSION, MAPGEN_VERSION } from '@gdc/core';
+import { ENV_ALIASES } from '@/lib/server/env';
 
 /**
  * `GET /api/health` — ¿está este despliegue configurado?
@@ -13,17 +14,17 @@ import { ENGINE_VERSION, MAPGEN_VERSION } from '@gdc/core';
  * valores** — y los nombres ya están publicados en `.env.example`, así que no revela nada
  * que no esté en el repositorio. Un valor filtrado aquí sería la clave de servicio, y con
  * ella la niebla de guerra deja de existir.
+ *
+ * La lista de nombres sale de `env.ts` y no se repite aquí: dos listas que hay que
+ * mantener a la vez acaban discrepando, y la que miente es siempre la del diagnóstico.
  */
 
-const REQUIRED = [
-  'NEXT_PUBLIC_SUPABASE_URL',
-  'NEXT_PUBLIC_SUPABASE_ANON_KEY',
-  'SUPABASE_SERVICE_ROLE_KEY',
-  'CRON_SECRET',
-] as const;
-
 export async function GET() {
-  const missing = REQUIRED.filter((name) => !process.env[name]);
+  // Cada entrada es un grupo de nombres equivalentes; falta solo si **ninguno** está.
+  // Se informa del primero, que es el que sugiere el panel de Supabase hoy.
+  const missing = ENV_ALIASES
+    .filter((names) => !names.some((name) => process.env[name]))
+    .map((names) => names[0]);
 
   return NextResponse.json(
     {

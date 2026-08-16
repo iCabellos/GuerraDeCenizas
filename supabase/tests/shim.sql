@@ -16,9 +16,13 @@
 
 create schema if not exists auth;
 
+-- `is_anonymous` está aquí porque el trigger de alta (0009) la lee. Si el shim no la
+-- tuviera, los tests probarían un camino de alta distinto del de producción, que es la
+-- forma más cara de tener tests en verde.
 create table if not exists auth.users (
   id                uuid primary key default gen_random_uuid(),
   email             text unique,
+  is_anonymous      boolean not null default false,
   raw_user_meta_data jsonb not null default '{}'::jsonb,
   created_at        timestamptz not null default now()
 );

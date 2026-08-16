@@ -1,0 +1,174 @@
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║ Despliegue — la mitad del sistema que Vercel no toca                         ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+#
+# Vercel despliega la aplicación solo, por su integración con GitHub. Lo que nadie
+# desplegaba era **la base de datos**: migraciones, ajustes de Auth y los secretos del
+# reloj eran pasos manuales documentados en DEPLOYMENT.md, y un paso manual documentado es
+# un paso que se hace una vez y se olvida en el proyecto siguiente.
+#
+# Lo caro de olvidarlos es que **no fallan ruidosamente**:
+#
+# · Sin migraciones, la aplicación compila y arranca; se cae al primer `select`.
+# · Sin `site_url`, el enlace del correo lleva a `http://localhost:3000` — el fallo que
+#   originó este workflow. Nada da error: Supabase sustituye el destino en silencio.
+# · Sin los secretos del vault, `pg_cron` late, llama con un `Authorization` vacío, recibe
+#   401 y las partidas con ausencias se quedan quietas para siempre.
+#
+# Los tres son ahora pasos de este archivo, y los tres se comprueban al final.
+
+name: deploy
+
+on:
+  push:
+    branches: [main]
+    # La aplicación la despliega Vercel; aquí solo importa lo que toca la base de datos.
+    paths:
+      - 'supabase/**'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+
+# Dos despliegues a la vez aplicarían migraciones sobre la misma base. Sin
+# `cancel-in-progress`: cancelar a mitad de una migración es peor que esperar.
+concurrency:
+  group: deploy-supabase
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  supabase:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    # Entorno de GitHub: es donde viven los secretos, y donde se puede exigir una
+    # aprobación manual antes de tocar producción si algún día hace falta.
+    environment: production
+
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+
+      # Auth. `GDC_SITE_URL` es el dominio de producción; el patrón de preview permite los
+      # despliegues por rama de Vercel, que cambian de nombre en cada uno.
+      GDC_SITE_URL: ${{ vars.GDC_SITE_URL }}
+      GDC_CALLBACK_URL: ${{ vars.GDC_SITE_URL }}/auth/callback
+      GDC_PREVIEW_URL_PATTERN: ${{ vars.GDC_PREVIEW_URL_PATTERN }}
+
+      # Reloj. `GDC_CRON_SECRET` tiene que valer exactamente lo mismo que `CRON_SECRET`
+      # en Vercel: son los dos extremos del mismo secreto compartido.
+      GDC_RESOLVE_URL: ${{ vars.GDC_SITE_URL }}/api/cron/resolve-due
+      GDC_CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Versión fija y no `latest`: un despliegue que cambia de herramienta sin que nadie
+      # lo decida no es reproducible, y esto aplica migraciones a producción.
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.114.0
+
+      # ── Comprobación previa ──────────────────────────────────────────────────
+      # Falla antes de tocar nada si falta configuración, y dice qué falta por su nombre.
+      # Es lo mismo que hace `/api/health` para la aplicación, y por el mismo motivo.
+      - name: Comprobar la configuración del despliegue
+        run: |
+          missing=""
+          for name in SUPABASE_ACCESS_TOKEN SUPABASE_DB_PASSWORD PROJECT_REF \
+                      GDC_SITE_URL GDC_PREVIEW_URL_PATTERN GDC_CRON_SECRET; do
+            [ -n "${!name}" ] || missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Falta configuración del despliegue:$missing"
+            echo "Los secretos van en Settings → Environments → production → Secrets."
+            echo "Las variables (vars.*) en la pestaña Variables del mismo entorno."
+            exit 1
+          fi
+          echo "✓ configuración completa"
+
+      # ── Migraciones ──────────────────────────────────────────────────────────
+      # `--dry-run` primero: deja en el log exactamente qué se va a aplicar, que es la
+      # única forma de reconstruir después qué cambió y cuándo.
+      - name: Migraciones pendientes
+        run: supabase db push --project-ref "$PROJECT_REF" --dry-run
+
+      - name: Aplicar migraciones y secretos del vault
+        run: supabase db push --project-ref "$PROJECT_REF"
+
+      # ── Ajustes de Auth ──────────────────────────────────────────────────────
+      # `site_url`, la lista blanca de redirecciones y las sesiones anónimas. Es la mitad
+      # del arreglo del enlace a localhost que no vive en el código.
+      - name: Empujar la configuración de Auth
+        run: supabase config push --project-ref "$PROJECT_REF"
+
+      # ── Comprobaciones ───────────────────────────────────────────────────────
+      # Un despliegue que termina sin comprobar nada solo demuestra que los comandos no
+      # dieron error. Estas tres preguntan por el resultado.
+
+      - name: El reloj está programado
+        run: |
+          supabase db query --project-ref "$PROJECT_REF" "
+            select jobname, schedule, active from cron.job
+             where jobname = 'gdc-resolve-due';
+          " | tee /tmp/cron.txt
+          grep -q 'gdc-resolve-due' /tmp/cron.txt || {
+            echo "::error::pg_cron no tiene programado gdc-resolve-due"; exit 1; }
+
+      - name: El reloj tiene sus dos secretos
+        run: |
+          supabase db query --project-ref "$PROJECT_REF" "
+            select name from vault.decrypted_secrets
+             where name in ('gdc_resolve_url','gdc_cron_secret') order by name;
+          " | tee /tmp/vault.txt
+          for name in gdc_cron_secret gdc_resolve_url; do
+            grep -q "$name" /tmp/vault.txt || {
+              echo "::error::falta el secreto $name en el vault"; exit 1; }
+          done
+
+      # La comprobación que de verdad manda. `game_states` lleva RLS activa y **cero
+      # políticas** a propósito (ADR-006): es ilegible por construcción, y ahí es donde
+      # vive la niebla de guerra del juego entero. Una política añadida por descuido no
+      # rompe ningún test de la aplicación — simplemente enseña a todo el mundo el estado
+      # completo de la partida. Si esto falla, el despliegue se para.
+      - name: game_states sigue siendo ilegible
+        run: |
+          # El veredicto lo decide SQL y sale como una cadena, en vez de devolver las
+          # cifras y decidir aquí. Así la comprobación no depende de cómo formatee el CLI
+          # su salida: si el formato cambiara, no aparece GDC_OK y el paso falla — que es
+          # el lado correcto por el que equivocarse cuando lo que se comprueba es esto.
+          supabase db query --project-ref "$PROJECT_REF" "
+            select case
+                     when c.relrowsecurity
+                      and (select count(*) from pg_policy p where p.polrelid = c.oid) = 0
+                     then 'GDC_OK_ilegible'
+                     else 'GDC_FALLO_legible'
+                   end as veredicto
+              from pg_class c join pg_namespace n on n.oid = c.relnamespace
+             where n.nspname = 'public' and c.relname = 'game_states';
+          " | tee /tmp/gs.txt
+          if grep -q 'GDC_FALLO_legible' /tmp/gs.txt; then
+            echo "::error::game_states tiene políticas RLS o la RLS desactivada."
+            echo "::error::Es ilegible por construcción a propósito (ADR-006). Despliegue detenido."
+            exit 1
+          fi
+          grep -q 'GDC_OK_ilegible' /tmp/gs.txt || {
+            echo "::error::no se pudo comprobar game_states (¿existe la tabla?)"; exit 1; }
+          echo "✓ game_states: RLS activa, cero políticas"
+
+      - name: Resumen
+        run: |
+          {
+            echo "### Supabase desplegado"
+            echo
+            echo "| Paso | Estado |"
+            echo "|---|---|"
+            echo "| Migraciones | aplicadas |"
+            echo "| Auth (site_url, redirecciones, invitados) | empujado |"
+            echo "| Secretos del reloj | en el vault |"
+            echo "| \`game_states\` ilegible | verificado |"
+            echo
+            echo "Site URL: \`$GDC_SITE_URL\`"
+          } >> "$GITHUB_STEP_SUMMARY"

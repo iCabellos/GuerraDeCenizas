@@ -116,5 +116,10 @@
   "gallery.intro": "Visual QA: silhouette, scale and coherence. Development only.",
   "a11y.city": "Your city",
   "a11y.searching": "Searching for a campaign",
-  "a11y.cancel": "Cancel search"
+  "a11y.cancel": "Cancel search",
+  "auth.guest": "Play without an account",
+  "auth.guestEntering": "Entering…",
+  "auth.guestWarning": "Your progress stays on this device. With no email there is no way to get it back on another one.",
+  "error.guest_unavailable": "Playing without an account is unavailable right now.",
+  "error.link_expired": "That link is no longer valid. Ask for a new one."
 }

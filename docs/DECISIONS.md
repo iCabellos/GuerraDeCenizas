@@ -36,6 +36,10 @@
 | [026](#adr-026) | Una sola vista: la ciudad, y un botón | aceptada |
 | [027](#adr-027) | La interfaz no explica: enseña | aceptada |
 | [028](#adr-028) | Se evalúa Turso y se descarta | aceptada |
+| [029](#adr-029) | Las claves de Supabase se aceptan por sus dos nombres | aceptada |
+| [030](#adr-030) | El perfil lo crea la base de datos, no la API | aceptada |
+| [031](#adr-031) | Invitado = sesión anónima de Supabase, no una cuenta aparte | aceptada |
+| [032](#adr-032) | La configuración del proyecto Supabase se versiona y se despliega | aceptada |
 
 ---
 
@@ -813,6 +817,200 @@ dejar dicho que aquello **no fue culpa de Supabase**: fueron tres problemas enca
 de configuración de Vercel —el `prebuild`, el Root Directory y el Framework Preset—,
 todos documentados en [DEPLOYMENT §6](DEPLOYMENT.md#6-lo-que-puede-salir-mal). Cambiar de
 base de datos por eso habría sido arreglar el tejado porque gotea la puerta.
+
+---
+
+<a id="adr-029"></a>
+
+## ADR-029 — Las claves de Supabase se aceptan por sus dos nombres
+**Estado:** aceptada · 2026-08-16
+
+**Contexto.** Supabase ha cambiado su sistema de claves de API. Donde antes había dos JWT
+(`eyJ…`) llamados `anon` y `service_role`, ahora hay `sb_publishable_…` y `sb_secret_…`, y
+el panel del proyecto sugiere copiarlas en variables llamadas
+`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` y `SUPABASE_SECRET_KEY`. El código leía únicamente
+los nombres antiguos, así que **seguir la sugerencia del panel dejaba el despliegue con un
+«Internal Server Error» sin más pista**. Es un fallo de configuración silencioso, que es
+justo la clase que ya costó una tarde.
+
+**Decisión.** Cada clave admite **los dos nombres**, con el nuevo primero.
+`apps/web/lib/server/env.ts` resuelve el primero que esté definido; `.env.example`, el
+README y `DEPLOYMENT.md` documentan el nuevo; los antiguos siguen valiendo sin aviso de
+obsolescencia.
+
+**Por qué no basta con renombrar y ya.** Cambiar los nombres a secas rompería cualquier
+despliegue existente en el instante del `git pull` — incluido el de producción, y sin
+error de compilación que lo cace. Aceptar los dos hace que actualizar sea inocuo y que
+empezar de cero funcione copiando lo que dice el panel.
+
+**Lo que no cambia: el rol de Postgres.** La clave publicable sigue autenticando como
+`anon` y la secreta como `service_role`. Ni una política de RLS, ni el shim de Supabase de
+`tools/pg/`, ni uno solo de los 43 tests de seguridad se ven afectados. Es un cambio de
+nombre, no de modelo de permisos — y conviene dejarlo escrito, porque «Supabase cambió las
+claves» suena a algo que debería obligar a revisar la seguridad, y no lo es.
+
+**Consecuencias.**
+- ✅ Copiar lo que sugiere el panel de Supabase funciona.
+- ✅ Un despliegue con los nombres antiguos sigue arrancando tras actualizar.
+- ✅ La regla estructural de `check-deps.mjs` vigila los **dos** nombres de la clave
+  secreta: si solo mirara el antiguo, bastaría con usar el nuevo para colarla al cliente.
+- ✅ Un test comprueba que ningún alias de la clave secreta lleva prefijo `NEXT_PUBLIC_`.
+  Es la invariante que de verdad importa: ese prefijo la publicaría en el navegador.
+- ⚠️ Dos nombres por clave es más superficie que uno. Se acota a una tabla de cuatro
+  entradas en un único archivo, y `/api/health` informa siempre del nombre nuevo, así que
+  el antiguo no se propaga a documentación ni a mensajes de error.
+
+**Descartado.**
+- **Renombrar sin compatibilidad.** Rompe los despliegues existentes en silencio.
+- **Quedarse solo con los nombres antiguos.** Condena a cada persona que cree un proyecto
+  nuevo a repetir el mismo diagnóstico de diez minutos.
+- **Deducir el nombre por el prefijo del valor** (`sb_` frente a `eyJ`). Adivinar la
+  variable a partir de su contenido es exactamente el tipo de magia que falla el día que
+  Supabase estrene un tercer formato.
+
+---
+
+<a id="adr-030"></a>
+
+## ADR-030 — El perfil lo crea la base de datos, no la API
+**Estado:** aceptada · 2026-08-16
+
+**Contexto.** Entrar por enlace mágico creaba la fila en `auth.users`, pero nadie creaba
+la de `profiles`. Y `currentViewer()` devuelve `null` sin perfil, así que `/` redirigía a
+`/sign-in`, que mostraba el formulario otra vez: una cuenta recién confirmada quedaba en
+un bucle. Sin error en ningún log — desde fuera, todo «funcionaba».
+
+Al mismo tiempo hacía falta que el modo invitado ([ADR-031](#adr-031)) llegase a la base
+**por el mismo camino** que una cuenta con correo.
+
+**Decisión.** Un trigger sobre `auth.users` crea el perfil, con un nombre generado
+determinista. No hay ruta de alta en la API que se pueda olvidar de crearlo porque no hay
+ruta de alta: hay un `insert` en `auth.users`, y de eso se encarga Supabase.
+
+Es la misma forma que ya tenía `on_profile_created` para la Ciudad, con el motivo que ya
+estaba escrito en la migración 0001: «el trigger evita que la API tenga que acordarse de
+crearla, que es justo la clase de olvido que se descubre en producción».
+
+**Por qué un nombre generado y no un formulario.** Una pantalla de «¿cómo te llamamos?»
+es exactamente la pantalla intermedia que [ADR-026](#adr-026) prohíbe, y para un invitado
+—que entra precisamente para no rellenar nada— sería absurda. El nombre se puede cambiar
+después; existe para no pedir uno al entrar, no para imponerlo.
+
+**Consecuencias.**
+- ✅ Desaparece el bucle, y desaparece la clase entera: no hay estado «usuario sin perfil».
+- ✅ Las cuentas creadas antes del trigger salen del bucle con el backfill de la migración.
+- ✅ Invitado y cuenta con correo comparten camino de alta, así que no hay dos rutas que
+  mantener sincronizadas.
+- ⚠️ La facción sigue siendo la de por defecto (`vantera`) para todo el mundo, porque
+  [ADR-021](#adr-021) la trata como una elección con consecuencias y no hay dónde
+  elegirla sin añadir la pantalla que ADR-026 prohíbe. **Queda abierto**: asignarla al
+  azar sería quitar una decisión, y ponerla en un formulario sería añadir un peaje.
+- ⚠️ El nombre generado sale de 16 palabras × 1000 números. Dos jugadores de la misma mesa
+  compartiéndolo es improbable (~0,06 % en una partida de cinco) y no rompe nada: la
+  interfaz nunca distingue solo por nombre, siempre hay barra de asiento y emblema.
+
+**Descartado.**
+- **Crearlo en el callback de `/auth/callback`.** Solo cubre el camino del correo; el
+  invitado necesitaría el suyo, y volvemos a dos rutas.
+- **Crearlo perezosamente en `currentViewer()`.** Una lectura que escribe. Además obliga a
+  usar `service_role` en la capa de lectura, que es justo lo que la regla de las dos capas
+  de identidad prohíbe.
+- **Una pantalla de alta.** Contradice ADR-026, y en cadencia Blitz cada pantalla previa
+  cuesta plazo de verdad.
+
+---
+
+<a id="adr-031"></a>
+
+## ADR-031 — Invitado = sesión anónima de Supabase, no una cuenta aparte
+**Estado:** aceptada · 2026-08-16
+
+**Contexto.** Pedir un correo antes de dejar probar el juego es un peaje en el peor sitio
+posible: antes de que nadie sepa si le interesa. Hace falta una forma de entrar sin
+registrarse que **llegue a la base de datos igual** que una cuenta normal, y que no sirva
+para iniciar sesión desde otro dispositivo.
+
+**Decisión.** El invitado es una **sesión anónima de Supabase**
+(`auth.signInAnonymously()`). No es una cuenta de mentira ni un modo aparte: crea una fila
+real en `auth.users`, el trigger de alta ([ADR-030](#adr-030)) le hace perfil y Ciudad
+como a cualquiera, y su rol de Postgres es `authenticated`, así que **RLS lo trata
+exactamente igual**.
+
+**La propiedad que se pedía sale sola.** Sin correo no hay enlace mágico, así que no hay
+forma de identificarse: la sesión vive en la cookie de ese navegador y en ninguno más. No
+hay que implementar la limitación — es lo que queda cuando no hay credencial.
+
+**Consecuencias.**
+- ✅ Cero código de autorización nuevo. Ni una política de RLS cambia, y por tanto ninguno
+  de los tests bloqueantes cubre menos que antes.
+- ✅ `profiles.is_guest` deja saber a la interfaz a quién ofrecerle vincular un correo
+  antes de que pierda el dispositivo. No es escribible desde el cliente: si lo fuera, la
+  marca no significaría nada.
+- ⚠️ Un alta anónima no cuesta nada de hacer, así que sin límite es una forma cómoda de
+  llenar `auth.users` desde una sola IP. Mitigado con `anonymous_users = 30` por hora en
+  `config.toml`. Si hiciera falta más, la respuesta es un captcha, no subir el número.
+- ⚠️ Quien pierda el dispositivo pierde la cuenta. Es inherente y no se puede esconder:
+  se avisa **antes** de entrar, debajo del botón, no después.
+
+**Descartado.**
+- **Un usuario «invitado» en `profiles` sin fila en `auth.users`.** Deja a `auth.uid()`
+  sin valor, y con eso las 17 políticas de RLS dejan de aplicar. Sería reimplementar la
+  autorización para un caso.
+- **Una cuenta con correo falso generado.** Ocupa el espacio de direcciones reales y
+  hace que «vincular tu correo de verdad» sea un cambio de correo con confirmación doble.
+- **`localStorage` sin sesión de servidor.** El cliente no decide nada (regla 2): una
+  identidad que solo existe en el navegador no puede sostener una partida.
+
+---
+
+<a id="adr-032"></a>
+
+## ADR-032 — La configuración del proyecto Supabase se versiona y se despliega
+**Estado:** aceptada · 2026-08-16
+
+**Contexto.** El enlace de confirmación llegaba con `redirect_to=http://localhost:3000`.
+La causa no estaba en el código: Supabase **solo acepta un `redirect_to` que esté en su
+lista blanca**, y cuando no lo está lo sustituye **en silencio** por su Site URL, que de
+fábrica es `http://localhost:3000`. Un ajuste del panel que nadie había tocado, invisible
+desde el repositorio, imposible de cazar con un test y sin rastro en ningún log.
+
+No era el único de su especie. Las migraciones y los dos secretos del reloj también eran
+pasos manuales documentados en DEPLOYMENT.md, y los tres comparten lo peor: **no fallan
+ruidosamente**. Sin migraciones la aplicación arranca y se cae al primer `select`; sin los
+secretos del vault `pg_cron` late, llama con un `Authorization` vacío, recibe 401 y las
+partidas con ausencias se quedan quietas.
+
+**Decisión.** `supabase/config.toml` entra en el repositorio y **es la fuente de la
+verdad**; el panel es el resultado. Un workflow lo empuja junto con las migraciones y los
+secretos del vault cuando llega a `main` un cambio bajo `supabase/`, y **comprueba después
+el resultado** — incluido que `game_states` sigue con RLS activa y cero políticas, que
+para el despliegue si falla.
+
+**Consecuencias.**
+- ✅ Los tres fallos silenciosos pasan a ser imposibles en lugar de invisibles.
+- ✅ Un proyecto de Supabase nuevo se configura solo. Antes había que releer DEPLOYMENT.md
+  y hacer siete cosas a mano en el orden correcto.
+- ✅ El despliegue comprueba la invariante de la niebla de guerra contra la base **real**,
+  no contra el arnés de pruebas. Es la única comprobación del proyecto que mira producción.
+- ⚠️ Un cambio hecho a mano en el panel se pierde en el siguiente despliegue. Es el precio
+  de tener una fuente de la verdad, y está escrito en la cabecera del archivo y en
+  DEPLOYMENT §2.2.
+- ⚠️ `config push` empuja el bloque entero: lo que no esté declarado se manda con el valor
+  por defecto del CLI, **no** se deja como está. Mitigado escribiendo los valores de forma
+  explícita aunque coincidan con el defecto.
+- ⚠️ El pipeline necesita un token de acceso y la contraseña de la base en los secretos
+  del repositorio. Acotado a un entorno de GitHub, que además permite exigir aprobación
+  manual antes de tocar producción.
+
+**Descartado.**
+- **Dejarlo documentado.** Es lo que había. Un paso manual documentado es un paso que se
+  hace una vez y se olvida en el proyecto siguiente.
+- **Arreglarlo solo desde el cliente**, calculando bien `emailRedirectTo`. No basta: si la
+  URL no está en la lista blanca de Supabase, se sustituye igual. Hacen falta las dos
+  mitades, y esa es justo la parte que hace el fallo tan desconcertante.
+- **`psql` contra la base para los secretos del vault.** La conexión directa obliga a
+  acertar con la región del pooler o a depender de IPv6. `supabase db query --linked` va
+  por la Management API y no tiene ese problema.
 
 ---
 

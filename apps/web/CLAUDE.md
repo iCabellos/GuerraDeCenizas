@@ -104,8 +104,17 @@ peaje entre el jugador y el turno que quiere jugar, y en Blitz cuesta plazo de v
 |---|---|
 | `/` | La ciudad + buscar campaña |
 | `/g/:id` | La campaña. La misma vista con la cámara sobre el campo de batalla |
-| `/sign-in` | Enlace mágico. Lo único anterior a la ciudad |
+| `/sign-in` | Enlace mágico **o entrar sin cuenta**. Lo único anterior a la ciudad |
 | `/dev/*` | QA visual. 404 en producción |
+
+**No hay estado «con sesión pero sin perfil».** El perfil lo crea un trigger sobre
+`auth.users` ([ADR-030](../../docs/DECISIONS.md#adr-030)), no la API. No añadas una ruta de
+alta: la que había —ninguna— dejaba la cuenta rebotando entre `/` y `/sign-in` para
+siempre, sin un error en ningún log.
+
+Y el invitado no es un caso especial ([ADR-031](../../docs/DECISIONS.md#adr-031)): es una
+sesión anónima de Supabase, con rol `authenticated` y su fila en `auth.users`. Si escribes
+un `if (isGuest)` en la capa de autorización, algo va mal — RLS ya lo trata igual.
 
 **La interfaz no explica, enseña** ([ADR-027](../../docs/DECISIONS.md#adr-027)). Antes de
 escribir una frase visible, pregúntate si se puede dibujar. Y si la dibujas, ponle

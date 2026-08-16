@@ -49,7 +49,9 @@ if (existsSync(componentsDir)) {
   for (const file of await readdir(componentsDir, { recursive: true })) {
     if (!/\.tsx?$/.test(String(file))) continue;
     const source = await readFile(path.join(componentsDir, String(file)), 'utf8');
-    if (source.includes('SERVICE_ROLE')) fail(`components/${file} referencia SERVICE_ROLE`);
+    if (/SERVICE_ROLE|SUPABASE_SECRET_KEY/.test(source)) {
+      fail(`components/${file} referencia la clave de servicio`);
+    }
     if (/from\s+['"]@?\/?lib\/server/.test(source)) fail(`components/${file} importa lib/server`);
   }
   if (failures === before) console.log('✓ ningún componente de cliente toca el servidor');
@@ -65,7 +67,9 @@ if (existsSync(componentsDir)) {
 // Y ningún componente de cliente puede importar `lib/server`, aunque solo fuera para
 // leer: un import así se bundlea hacia el navegador con todo lo que arrastre.
 const AUTHORITY = /from\s+['"](@\/lib\/server|\.\.?\/[^'"]*lib\/server)/;
-const SERVICE = /\b(serviceClient|serviceRpc|SUPABASE_SERVICE_ROLE_KEY)\b/;
+// `SUPABASE_SECRET_KEY` es el nombre nuevo de la misma clave (`sb_secret_…`). Si la regla
+// solo vigilara el nombre viejo, bastaría con usar el nuevo para colarla en el cliente.
+const SERVICE = /\b(serviceClient|serviceRpc|SUPABASE_SERVICE_ROLE_KEY|SUPABASE_SECRET_KEY)\b/;
 const webDir = path.join(ROOT, 'apps/web');
 if (existsSync(webDir)) {
   const before = failures;

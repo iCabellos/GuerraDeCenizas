@@ -11,8 +11,20 @@ import { createBrowserClient } from '@supabase/ssr';
  * uno.
  */
 export function browserClient() {
-  return createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  );
+  /**
+   * Los dos nombres, escritos literalmente y a propósito.
+   *
+   * Next sustituye `process.env.NEXT_PUBLIC_ALGO` en tiempo de build, pero solo si el
+   * acceso está escrito tal cual: una lectura dinámica —`process.env[nombre]`— no se
+   * sustituye y en el navegador vale `undefined`. Por eso aquí no se puede compartir el
+   * mecanismo de `lib/server/env.ts`.
+   *
+   * `||` y no `??`: si la variable no existe, la sustitución puede dejar una cadena vacía,
+   * y `??` la daría por buena.
+   */
+  const key =
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  return createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, key!);
 }
