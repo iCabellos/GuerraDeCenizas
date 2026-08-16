@@ -111,12 +111,23 @@ jobs:
           PREVIEW_PATTERN=$(trim "$RAW_PREVIEW_PATTERN")
 
           # Los secretos NO se recortan: reescribir un valor enmascarado lo desenmascara
-          # en los logs. Se detecta y se avisa, sin imprimirlo nunca.
+          # en los logs. Se detectan y se avisa, sin imprimirlos nunca.
           for name in SUPABASE_ACCESS_TOKEN SUPABASE_DB_PASSWORD GDC_CRON_SECRET; do
             raw="${!name}"
             if [ "$raw" != "$(trim "$raw")" ]; then
               echo "::error::$name lleva un espacio o un salto de línea en los extremos."
               echo "Vuelve a pegarlo sin el salto final: el CLI lo considera parte del valor."
+              exit 1
+            fi
+            # Y cualquier carácter fuera del ASCII imprimible. Un espacio duro (U+00A0) o
+            # un espacio de ancho cero (U+200B) sobreviven al recorte de arriba —no son
+            # `[[:space:]]`— y se cuelan al copiar de un panel web. Postgres los rechaza
+            # con `password authentication failed`, que suena a contraseña equivocada y
+            # manda a buscar donde no es. Nunca se imprime el valor, solo el veredicto.
+            if printf '%s' "$raw" | LC_ALL=C grep -q '[^[:print:]]'; then
+              echo "::error::$name contiene un carácter invisible o no ASCII."
+              echo "Casi siempre es un espacio duro colado al copiar. Vuelve a escribirlo a mano,"
+              echo "o regenéralo para que sea alfanumérico."
               exit 1
             fi
           done

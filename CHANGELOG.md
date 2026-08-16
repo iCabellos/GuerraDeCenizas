@@ -14,6 +14,13 @@ Este proyecto sigue [SemVer](https://semver.org/lang/es/).
 
 ### Corregido
 
+- **Un carácter invisible en un secreto se diagnosticaba como contraseña equivocada.** El
+  recorte de extremos no ve un espacio duro (`U+00A0`) ni uno de ancho cero (`U+200B`) —no
+  son `[[:space:]]`— y los dos se cuelan al copiar de un panel web. Postgres los rechaza
+  con `password authentication failed`, que suena a contraseña mal escrita y manda a
+  buscar donde no es. Ahora la comprobación previa los detecta y lo dice, sin imprimir
+  jamás el valor.
+
 - **Un salto de línea al final de una variable tumbaba el despliegue entero.** Al pegar
   los valores en el panel de GitHub se cuela un `\r\n` que no se ve en ninguna parte: ni
   en la caja de texto, ni en la lista de variables. El workflow lo daba por bueno —solo
