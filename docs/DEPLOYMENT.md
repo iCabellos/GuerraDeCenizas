@@ -104,12 +104,23 @@ in the Build Step» **activado**. Los dos ajustes, no uno.
 | Install command | por defecto — Vercel detecta los workspaces e instala en la raíz |
 | Build command | por defecto (`npm run build`) |
 
-**Por qué el Root Directory no puede quedarse sin fijar.** Vercel trata Next.js como un
-caso especial: espera la aplicación *en* el Root Directory y busca ahí su salida. Sin
-fijarlo, construye desde la raíz del repositorio, la compilación sale correcta y el
-despliegue se cae después al recoger el resultado, porque Next dejó todo en
-`apps/web/.next`. Un `outputDirectory` en `vercel.json` **no** lo arregla — ese ajuste
-existe para proyectos estáticos, no para Next.
+**Por qué el Root Directory no puede quedarse sin fijar.** Vercel detecta el framework
+mirando el Root Directory: busca ahí `next` entre las dependencias y un `next.config.*`.
+En la raíz de este repositorio no hay ninguna de las dos cosas —es solo el nodo de
+workspaces, sin una sola dependencia de runtime—, así que la detección falla y cae al
+preset **«Other»**, que espera una carpeta `public/`. De ahí este error, que no menciona
+Next por ninguna parte:
+
+```
+No Output Directory named "public" found after the Build completed.
+```
+
+Es engañoso: la compilación **ha ido bien**. Lo que falla es que Vercel nunca supo que
+esto era una aplicación de Next.
+
+Y no se arregla desde el repositorio. Un `vercel.json` con `framework` y `outputDirectory`
+**no** vale: para Next.js, Vercel usa la Build Output API y el ajuste de directorio de
+salida no se aplica. Se intentó y falló. Hay que fijar el Root Directory.
 
 **Por qué hace falta la casilla.** Dos cosas del build viven fuera de `apps/web`:
 `packages/core`, porque el motor se consume como fuente TypeScript sin compilar
@@ -210,7 +221,7 @@ curl -s "$SUPABASE_URL/rest/v1/game_states?select=*" \
 | Los turnos vencidos no resuelven | Secretos del *vault* mal puestos, o `CRON_SECRET` distinto entre Vercel y Supabase |
 | Build en Vercel: no encuentra `@gdc/core` | Falta `--include-workspace-root` en el *install* |
 | Build en Vercel: `Module not found: './art/generated'` | El *build command* no pasa por `npm run build`. Los componentes de arte son un artefacto generado y no están versionados; los crea el `prebuild` |
-| Build en Vercel correcto pero despliegue fallido | *Root Directory* sin fijar. Next deja la salida en `apps/web/.next` y Vercel la busca en la raíz. Ver §3.1 |
+| `No Output Directory named "public" found` | *Root Directory* sin fijar. Vercel no detecta Next —en la raíz no hay `next.config.*` ni dependencias— y cae al preset «Other», que espera `public/`. La compilación fue correcta. Ver §3.1 |
 | Se entra a la ciudad pero buscar campaña no hace nada | `matchmaking_queue` sin migrar, o `/api/match` devolviendo 500. Mirar los logs de la función |
 | Una partida se queda «resolviendo» | Un arrendamiento colgado. Vence solo en 30 s ([ADR-025](DECISIONS.md#adr-025)); si persiste, mirar los errores de `/api/cron/resolve-due` |
 
