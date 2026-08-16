@@ -48,6 +48,17 @@ de peligro. Los cuatro paneles y qué caza cada uno:
 | **Superficies** | Contrastes que solo funcionan sobre un fondo |
 | **Rejilla** | El asset que tiene otro peso de trazo que el resto |
 
+## Los generados NO se versionan
+
+`apps/web/components/art/generated/` está en `.gitignore`: es un artefacto, y un artefacto
+versionado puede diverger de su fuente — justo lo que [ADR-022](../../docs/DECISIONS.md#adr-022)
+evita en el motor.
+
+La consecuencia es que **cualquier comando que compile o tipe el proyecto tiene que
+generarlos antes**. Por eso `@gdc/web` lleva `predev`, `prebuild` y `pretypecheck`. No es
+higiene: sin ellos, un despliegue desde un clon limpio falla con
+`Module not found: './art/generated'`, y en local no se nota porque el directorio ya está.
+
 ## Al añadir un asset
 
 ```

@@ -100,6 +100,10 @@ estar publicada.
 | Install command | `npm install --workspaces --include-workspace-root` |
 | Build command | `npm run build` |
 
+`build` genera los assets antes de compilar (`prebuild`). Están en `.gitignore` a
+propósito —son un artefacto— así que un clon limpio no los trae y sin ese paso el
+despliegue falla con `Module not found: './art/generated'`.
+
 El monorepo usa workspaces de npm y `@gdc/core` se consume **como fuente TypeScript sin
 compilar** ([ADR-022](DECISIONS.md#adr-022)). Por eso el `install` tiene que incluir la
 raíz: sin `--include-workspace-root`, `apps/web` no encuentra el motor.
@@ -160,17 +164,19 @@ partidas con ausencias; no las bloquea.
 Antes de invitar a nadie:
 
 ```
-□ Un correo de acceso llega y el enlace entra a /games
-□ Crear partida devuelve un código de 6 caracteres
-□ Otra cuenta entra con ese código y aparece en la sala sin recargar   ← Realtime
-□ La partida empieza y cada asiento ve un mapa distinto                ← niebla
+□ Un correo de acceso llega y el enlace entra directo a la ciudad
+□ La ciudad se dibuja con el emblema de tu facción y es la MISMA al recargar
+□ Buscar campaña deja la cuenta en cola; se ven las ciudades pendientes parpadear
+□ Una segunda cuenta buscando lo mismo forma la partida y AMBAS entran solas ← Realtime
+□ Cada asiento ve un mapa distinto                                     ← niebla
 □ GET /rest/v1/game_states con la clave anónima devuelve 401 o vacío   ← RLS
-□ Enviar órdenes desde los tres asientos resuelve el turno al instante
+□ Enviar órdenes desde todos los asientos resuelve el turno al instante
 □ Dejar vencer un plazo sin enviar resuelve el turno igual             ← pg_cron
+□ Una cuenta sola en cola acaba emparejada con Mando Automático        ← pg_cron
 □ cron.job_run_details no acumula errores
 ```
 
-La cuarta y la quinta son las que de verdad importan. Si `game_states` responde algo con
+La quinta y la sexta son las que de verdad importan. Si `game_states` responde algo con
 la clave anónima, **hay que parar el despliegue**: el resto del juego funciona igual con
 la niebla rota, y por eso nadie lo notaría.
 
@@ -191,6 +197,8 @@ curl -s "$SUPABASE_URL/rest/v1/game_states?select=*" \
 | «Falta la variable de entorno …» al arrancar | Variable sin definir en Vercel. Falla al arrancar a propósito: un servidor a medias que responde 500 en mitad de una partida es mucho peor de depurar |
 | Los turnos vencidos no resuelven | Secretos del *vault* mal puestos, o `CRON_SECRET` distinto entre Vercel y Supabase |
 | Build en Vercel: no encuentra `@gdc/core` | Falta `--include-workspace-root` en el *install* |
+| Build en Vercel: `Module not found: './art/generated'` | El *build command* no pasa por `npm run build`. Los componentes de arte son un artefacto generado y no están versionados; los crea el `prebuild` |
+| Se entra a la ciudad pero buscar campaña no hace nada | `matchmaking_queue` sin migrar, o `/api/match` devolviendo 500. Mirar los logs de la función |
 | Una partida se queda «resolviendo» | Un arrendamiento colgado. Vence solo en 30 s ([ADR-025](DECISIONS.md#adr-025)); si persiste, mirar los errores de `/api/cron/resolve-due` |
 
 ---
