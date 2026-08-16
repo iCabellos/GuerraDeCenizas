@@ -40,6 +40,7 @@
 | [030](#adr-030) | El perfil lo crea la base de datos, no la API | aceptada |
 | [031](#adr-031) | Invitado = sesión anónima de Supabase, no una cuenta aparte | aceptada |
 | [032](#adr-032) | La configuración del proyecto Supabase se versiona y se despliega | aceptada |
+| [033](#adr-033) | La comprobación previa del despliegue valida forma, no presencia | aceptada |
 
 ---
 
@@ -1011,6 +1012,69 @@ para el despliegue si falla.
 - **`psql` contra la base para los secretos del vault.** La conexión directa obliga a
   acertar con la región del pooler o a depender de IPv6. `supabase db query --linked` va
   por la Management API y no tiene ese problema.
+
+---
+
+<a id="adr-033"></a>
+
+## ADR-033 — La comprobación previa del despliegue valida forma, no presencia
+**Estado:** aceptada · 2026-08-16
+
+**Contexto.** El primer despliegue con la configuración ya puesta falló así:
+
+```
+✓ configuración completa
+…
+Invalid project ref format. Must be like `abcdefghijklmnopqrst`.
+```
+
+La causa era un `\r\n` al final de dos variables, colado al pegarlas en el panel de
+GitHub. **No se ve en ningún sitio**: ni en la caja de texto al escribirlas, ni en la
+lista de variables después. Solo aparece en el log del runner, y ahí como una URL partida
+en dos líneas — que es justo el sitio donde nadie mira porque el paso anterior dijo que
+todo estaba bien.
+
+Dos errores propios se sumaron. La comprobación previa preguntaba `[ -n "$valor" ]`, es
+decir **presencia**, y con eso bendijo un valor inservible. Y las URL derivadas
+—`GDC_CALLBACK_URL`, `GDC_RESOLVE_URL`— se componían en el bloque `env` del job, o sea
+**antes de que hubiera ningún sitio donde limpiarlas**: `SITE_URL\n` + `/auth/callback`
+produce una dirección con un salto de línea dentro.
+
+**Decisión.** La comprobación previa **normaliza y valida forma**. Recorta espacios y
+saltos en los extremos, exige que la referencia del proyecto sean 20 letras minúsculas y
+que la URL empiece por `https://`, **compone las URL derivadas después de limpiar**, y
+deja los valores efectivos impresos en el log.
+
+**Los secretos se detectan, no se recortan.** Reescribir un valor enmascarado produce una
+cadena que GitHub ya no reconoce y deja de tapar en los logs. Si un secreto trae espacios
+en los extremos se corta el despliegue con un mensaje que lo nombra y **nunca lo imprime**.
+
+**Por qué es un ADR y no un parche.** Lo caro aquí no fue el `\r\n`, fue que la
+comprobación **mintió**. Un paso que anuncia «✓ configuración completa» y luego rompe dos
+pasos más adelante es peor que no tener comprobación: convence de que la causa está en
+otra parte. Es la misma lección que la nº 4 del `CLAUDE.md` raíz —un test que no puede
+fallar no prueba nada— aplicada a un guardarraíl en vez de a un test.
+
+**Consecuencias.**
+- ✅ El error se da en el paso que corresponde, con el nombre de la variable y qué forma
+  se esperaba.
+- ✅ Un valor pegado con espacios de sobra **funciona**, en vez de fallar en otro sitio.
+- ✅ El log deja escrito el valor efectivo del proyecto, el sitio y el callback, así que
+  comprobar qué se usó de verdad no exige adivinar.
+- ⚠️ La validación de forma puede rechazar un valor legítimo si Supabase cambia el
+  formato de las referencias de proyecto. Asumido: el mensaje dice exactamente qué se
+  esperaba, así que arreglarlo es leer una línea.
+- ⚠️ Más shell en el workflow. Acotado a un solo paso y probado contra los valores reales
+  que lo rompieron, incluidos los que llevaban `\r\n`.
+
+**Descartado.**
+- **Recortar también los secretos.** Rompe el enmascarado y arriesga imprimir un token en
+  un log público. Un aviso claro cuesta un reintento; una fuga cuesta rotar la clave.
+- **Confiar en que se peguen bien.** Es exactamente lo que ya se hacía. El valor lo teclea
+  una persona en una caja de texto de otra empresa: es una entrada externa y se trata
+  como tal.
+- **Componer las URL en el bloque `env`.** Es lo que había, y es la razón de que un salto
+  de línea acabara en mitad de una dirección.
 
 ---
 

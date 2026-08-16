@@ -14,6 +14,19 @@ Este proyecto sigue [SemVer](https://semver.org/lang/es/).
 
 ### Corregido
 
+- **Un salto de línea al final de una variable tumbaba el despliegue entero.** Al pegar
+  los valores en el panel de GitHub se cuela un `\r\n` que no se ve en ninguna parte: ni
+  en la caja de texto, ni en la lista de variables. El workflow lo daba por bueno —solo
+  comprobaba que no estuviera vacío—, imprimía «✓ configuración completa» y moría dos
+  pasos después con `Invalid project ref format`, un mensaje del CLI que no dice de qué
+  valor habla. Peor todavía: las URL derivadas se componían en el bloque `env` del job,
+  antes de poder limpiarlas, así que `SITE_URL\n` + `/auth/callback` producía una
+  dirección con un salto de línea en medio.
+  Ahora se recortan y **se validan por forma**: la referencia de proyecto tiene que ser 20
+  letras minúsculas y la URL empezar por `https://`. Los secretos no se reescriben —
+  hacerlo los desenmascararía en el log—: se detecta el espacio sobrante y se avisa sin
+  imprimir el valor ([ADR-033](docs/DECISIONS.md#adr-033)).
+
 - **El enlace del correo de alta llevaba a `http://localhost:3000`.** Supabase solo acepta
   un `redirect_to` que esté en su lista blanca y, cuando no lo está, lo sustituye **en
   silencio** por su Site URL — de fábrica, localhost. No había error en ningún log ni test

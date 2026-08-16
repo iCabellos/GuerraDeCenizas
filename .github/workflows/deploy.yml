@@ -46,21 +46,17 @@ jobs:
     # aprobación manual antes de tocar producción si algún día hace falta.
     environment: production
 
+    # Los valores llegan **en crudo**: se normalizan y se validan en el primer paso, y
+    # las URL derivadas se componen allí. Componerlas aquí fue un error que costó un
+    # despliegue entero — ver el comentario de ese paso.
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-      PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
-
-      # Auth. `GDC_SITE_URL` es el dominio de producción; el patrón de preview permite los
-      # despliegues por rama de Vercel, que cambian de nombre en cada uno.
-      GDC_SITE_URL: ${{ vars.GDC_SITE_URL }}
-      GDC_CALLBACK_URL: ${{ vars.GDC_SITE_URL }}/auth/callback
-      GDC_PREVIEW_URL_PATTERN: ${{ vars.GDC_PREVIEW_URL_PATTERN }}
-
-      # Reloj. `GDC_CRON_SECRET` tiene que valer exactamente lo mismo que `CRON_SECRET`
-      # en Vercel: son los dos extremos del mismo secreto compartido.
-      GDC_RESOLVE_URL: ${{ vars.GDC_SITE_URL }}/api/cron/resolve-due
       GDC_CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
+      RAW_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+      RAW_SITE_URL: ${{ vars.GDC_SITE_URL }}
+      RAW_PREVIEW_PATTERN: ${{ vars.GDC_PREVIEW_URL_PATTERN }}
 
     steps:
       - uses: actions/checkout@v4
@@ -72,14 +68,27 @@ jobs:
           version: 2.114.0
 
       # ── Comprobación previa ──────────────────────────────────────────────────
-      # Falla antes de tocar nada si falta configuración, y dice qué falta por su nombre.
-      # Es lo mismo que hace `/api/health` para la aplicación, y por el mismo motivo.
-      - name: Comprobar la configuración del despliegue
+      #
+      # Comprueba que la configuración está **y que sirve**. La primera versión solo
+      # miraba que no estuviera vacía, dijo «✓ configuración completa» y el despliegue
+      # murió dos pasos después con `Invalid project ref format`, un mensaje del CLI que
+      # no dice de dónde sale el valor malo.
+      #
+      # La causa era un salto de línea colado al pegar los valores en el panel de GitHub.
+      # Es invisible en la caja de texto, invisible en la pantalla de variables, y en el
+      # log aparece como una URL partida en dos. Un valor presente pero inservible es
+      # peor que uno ausente: la comprobación lo bendice y el fallo aflora más adelante,
+      # ya sin relación aparente con su causa.
+      #
+      # Por eso las URL derivadas se componen **aquí** y no en el bloque `env` del job:
+      # allí se concatenaban antes de poder limpiarlas, y `SITE_URL\n` + `/auth/callback`
+      # daba una dirección con un salto de línea en medio.
+      - name: Comprobar y normalizar la configuración
         run: |
           missing=""
-          for name in SUPABASE_ACCESS_TOKEN SUPABASE_DB_PASSWORD PROJECT_REF \
-                      GDC_SITE_URL GDC_PREVIEW_URL_PATTERN GDC_CRON_SECRET; do
-            [ -n "${!name}" ] || missing="$missing $name"
+          for name in SUPABASE_ACCESS_TOKEN SUPABASE_DB_PASSWORD GDC_CRON_SECRET \
+                      RAW_PROJECT_REF RAW_SITE_URL RAW_PREVIEW_PATTERN; do
+            [ -n "${!name}" ] || missing="$missing ${name#RAW_}"
           done
           if [ -n "$missing" ]; then
             echo "::error::Falta configuración del despliegue:$missing"
@@ -87,7 +96,61 @@ jobs:
             echo "Las variables (vars.*) en la pestaña Variables del mismo entorno."
             exit 1
           fi
-          echo "✓ configuración completa"
+
+          # Recorta espacios y saltos en los extremos, sin subshell y sin tocar el interior.
+          trim() {
+            local v="$1"
+            v="${v#"${v%%[![:space:]]*}"}"
+            v="${v%"${v##*[![:space:]]}"}"
+            printf '%s' "$v"
+          }
+
+          PROJECT_REF=$(trim "$RAW_PROJECT_REF")
+          SITE_URL=$(trim "$RAW_SITE_URL")
+          SITE_URL="${SITE_URL%/}"                 # una barra final duplicaría la siguiente
+          PREVIEW_PATTERN=$(trim "$RAW_PREVIEW_PATTERN")
+
+          # Los secretos NO se recortan: reescribir un valor enmascarado lo desenmascara
+          # en los logs. Se detecta y se avisa, sin imprimirlo nunca.
+          for name in SUPABASE_ACCESS_TOKEN SUPABASE_DB_PASSWORD GDC_CRON_SECRET; do
+            raw="${!name}"
+            if [ "$raw" != "$(trim "$raw")" ]; then
+              echo "::error::$name lleva un espacio o un salto de línea en los extremos."
+              echo "Vuelve a pegarlo sin el salto final: el CLI lo considera parte del valor."
+              exit 1
+            fi
+          done
+
+          # La referencia del proyecto son 20 letras minúsculas. Comprobarlo aquí convierte
+          # el `Invalid project ref format` del CLI en un error que dice dónde mirar.
+          case "$PROJECT_REF" in
+            *[!a-z]* | "" ) bad=1 ;;
+            * ) [ ${#PROJECT_REF} -eq 20 ] && bad=0 || bad=1 ;;
+          esac
+          if [ "$bad" -eq 1 ]; then
+            echo "::error::SUPABASE_PROJECT_REF no tiene forma de referencia de proyecto."
+            echo "Son 20 letras minúsculas, sin https:// y sin .supabase.co."
+            echo "Recibido: ${#PROJECT_REF} caracteres."
+            exit 1
+          fi
+
+          case "$SITE_URL" in
+            https://*) ;;
+            *) echo "::error::GDC_SITE_URL debe empezar por https://. Recibido: $SITE_URL"; exit 1 ;;
+          esac
+
+          {
+            echo "PROJECT_REF=$PROJECT_REF"
+            echo "GDC_SITE_URL=$SITE_URL"
+            echo "GDC_CALLBACK_URL=$SITE_URL/auth/callback"
+            echo "GDC_RESOLVE_URL=$SITE_URL/api/cron/resolve-due"
+            echo "GDC_PREVIEW_URL_PATTERN=$PREVIEW_PATTERN"
+          } >> "$GITHUB_ENV"
+
+          echo "✓ configuración completa y bien formada"
+          echo "  proyecto : $PROJECT_REF"
+          echo "  sitio    : $SITE_URL"
+          echo "  callback : $SITE_URL/auth/callback"
 
       # ── Migraciones ──────────────────────────────────────────────────────────
       # `--dry-run` primero: deja en el log exactamente qué se va a aplicar, que es la
