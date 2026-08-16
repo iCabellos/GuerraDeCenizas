@@ -1,0 +1,19 @@
+<!--
+  asset: brand/faction-vantera
+  role: Vantera — El Libro. Puerto mediador: dos platos en equilibrio sobre un eje
+  grid: 24
+  stroke: 2
+  colors: currentColor
+  author: Iván Cabellos
+  created: 2026-08-16
+  original: true
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+     stroke="currentColor" stroke-width="2" stroke-linecap="square"
+     stroke-linejoin="miter">
+  <path d="M12 4v16"/>
+  <path d="M4 8h16"/>
+  <path d="M4 8 6.5 13h-5Z"/>
+  <path d="M20 8 22.5 13h-5Z"/>
+  <path d="M8 20h8"/>
+</svg>

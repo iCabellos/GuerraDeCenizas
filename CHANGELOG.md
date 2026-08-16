@@ -83,6 +83,32 @@ aceptación de concurrencia, reproducibilidad, ausencias y retención.
 - **`startGame` lanzaba una excepción** con los asientos incompletos, devolviendo un 500
   donde el jugador merece «todavía falta gente».
 
+**Identidad visual** — la interfaz pasa de parecer un formulario a parecer un juego
+- **Tipografía real**: Archivo Variable (SIL OFL), alojada en el repositorio. Un solo eje
+  de anchura da los tres registros —rótulo condensado en versales, texto corrido, cifra
+  tabular— sin una segunda familia. [ADR-017](docs/DECISIONS.md#adr-017).
+- **24 assets originales** en `assets/src/`: emblema del juego, seis emblemas de facción,
+  cuatro recursos, cuatro armas, estados e interfaz. Cuadrícula 24, trazo 2, remates
+  cuadrados y uniones en inglete — dibujo técnico, no icon-pack.
+- **Pipeline de assets** (`npm run assets:build`): SVG → componentes React tipados +
+  manifiesto. **Falla el build** si falta la declaración `original: true`, si el color no
+  está en la paleta o si el icono no cabe en la cuadrícula.
+- **Galería de assets** en `/dev/gallery` — el requisito §15 del brief. Cuatro paneles:
+  escala, silueta, superficies y rejilla.
+- **Cromo cartográfico**: retícula de fondo, marcas de registro en las esquinas, reglas
+  graduadas y caída de Ceniza en los menús (nunca sobre el mapa).
+- **El mapa tiene jerarquía**: el Núcleo domina con su anillo de registro, el Bastión pesa,
+  los yacimientos brillan, y el terreno se dibuja con marcas geométricas en vez de glifos
+  Unicode que dependían de la fuente del sistema.
+- `GameChrome` lo comparten el prototipo local y el tablero en red: la pantalla que se
+  puede probar sin base de datos es **la misma** que juega la gente.
+
+### Corregido en el arte
+
+- El emblema de Koldvik parecía una copa de cóctel y la Mortaja de Oshara, una señal de
+  peligro. Los cazó la Galería en el panel de escala, que es exactamente para lo que está.
+- La caída de Ceniza iba por delante del texto y se leía como suciedad en la pantalla.
+
 ### Pendiente de verificar
 
 La interfaz compila y pasa el typecheck, pero **no se ha ejecutado contra un Supabase

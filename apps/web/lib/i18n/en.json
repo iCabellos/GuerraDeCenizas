@@ -1,11 +1,9 @@
 {
   "app.name": "War of Ashes",
   "app.tagline": "Diplomacy is arithmetic.",
-
   "nav.games": "My games",
   "nav.city": "City",
   "nav.signOut": "Sign out",
-
   "auth.title": "Sign in",
   "auth.intro": "We'll email you a link. No passwords.",
   "auth.email": "Email",
@@ -19,7 +17,6 @@
   "auth.namePlaceholder": "Between 3 and 20 characters",
   "auth.factionIntro": "Your faction decides which unlocks come cheap. It grants no in-game advantage.",
   "auth.continue": "Continue",
-
   "lobby.title": "Games",
   "lobby.empty": "You have no games yet.",
   "lobby.create": "Create game",
@@ -42,14 +39,12 @@
   "lobby.host": "Host",
   "lobby.creating": "Creating…",
   "lobby.joining": "Joining…",
-
   "cadence.blitz": "Blitz",
   "cadence.blitzDetail": "3 min per turn · one sitting",
   "cadence.daily": "Daily",
   "cadence.dailyDetail": "12 h per turn · about 6 days",
   "cadence.relaxed": "Relaxed",
   "cadence.relaxedDetail": "24 h per turn · about 12 days",
-
   "game.turn": "Turn {turn}",
   "game.parley": "Parley",
   "game.war": "War",
@@ -66,20 +61,16 @@
   "game.autocommand": "Autocommand",
   "game.reconnecting": "Reconnecting…",
   "game.offline": "Offline",
-
   "resource.supply": "Supply",
   "resource.industry": "Industry",
   "resource.intel": "Intel",
   "resource.ash": "Ash",
-
   "arm.line": "Line",
   "arm.fire": "Fire",
   "arm.sky": "Sky",
-
   "posture.assault": "Assault",
   "posture.hold": "Hold",
   "posture.screen": "Screen",
-
   "standing.title": "Standing Orders",
   "standing.intro": "If the deadline passes without you, this runs. It never attacks and never breaches a Seal.",
   "standing.posture": "Posture",
@@ -88,14 +79,12 @@
   "standing.productionLine": "Line",
   "standing.productionRepeat": "Repeat last",
   "standing.save": "Save",
-
   "faction.vantera": "Vantera",
   "faction.koldvik": "Koldvik",
   "faction.saranth": "Saranth",
   "faction.meridia": "Meridia",
   "faction.oshara": "Oshara",
   "faction.tarn": "Tarn",
-
   "error.unauthorized": "You need to sign in to do that.",
   "error.bad_request": "That request isn't valid.",
   "error.not_found": "It doesn't exist.",
@@ -113,5 +102,16 @@
   "error.bad_player_count": "A game is for 2, 3 or 5 players.",
   "error.seed_mismatch": "The map doesn't match this game.",
   "error.internal": "Something broke on our side.",
-  "error.network": "No connection to the server."
+  "error.network": "No connection to the server.",
+  "app.pitch": "Winning means attuning the Core by paying more Ash than a fair share produces. That is why you must negotiate. And since combat rolls no dice, a promise can be verified before it is believed.",
+  "auth.checkInbox": "Link sent",
+  "lobby.newCampaign": "New campaign",
+  "lobby.enterCode": "I have a code",
+  "lobby.yourGames": "In progress",
+  "lobby.turnOf": "Turn {turn} · {phase}",
+  "lobby.inLobby": "Waiting room",
+  "lobby.back": "Back",
+  "faction.yours": "Your faction",
+  "gallery.title": "Asset gallery",
+  "gallery.intro": "Visual QA: silhouette, scale and coherence. Development only."
 }

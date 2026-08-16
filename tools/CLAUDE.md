@@ -20,6 +20,7 @@ del juego ni al servidor.
 | `docs-pdf/slug.mjs` | Algoritmo de anclas idéntico al de GitHub. Lo comparten los dos. |
 | `check-deps.mjs` | Reglas estructurales del monorepo: core sin dependencias, `factions/` sin ver `balance/`, cliente sin tocar el servidor (bloqueante en CI) |
 | `pg/harness.mjs` | Postgres efímero para los tests de RLS: shim de Supabase + migraciones + seed (bloqueante en CI) |
+| `assets/build.mjs` | SVG originales → componentes React tipados + manifiesto. Falla si falta la declaración de autoría, si el color no está en la paleta o si el icono no cabe en la cuadrícula (bloqueante en CI) |
 
 ## Al añadir una herramienta
 

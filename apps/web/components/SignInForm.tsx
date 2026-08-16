@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import { browserClient } from '@/lib/supabase-browser';
-import { Button, Field, Notice } from '@/components/ui/Shell';
+import { Command, Field, Input, Notice } from '@/components/ui/Shell';
+import { Submitted } from '@/components/art/generated';
 
 type Messages = Record<string, string>;
 
@@ -35,12 +36,22 @@ export function SignInForm({ messages }: { messages: Messages }) {
     setStatus(error ? 'error' : 'sent');
   }
 
-  if (status === 'sent') return <Notice>{t('auth.sent')}</Notice>;
+  if (status === 'sent') {
+    return (
+      <div className="flex items-start gap-3 rounded-sharp border border-success/50 bg-success/10 p-4">
+        <Submitted size={20} className="mt-0.5 shrink-0 text-success" />
+        <div>
+          <p className="type-title text-sm text-ink">{t('auth.checkInbox')}</p>
+          <p className="mt-1 text-sm text-muted">{t('auth.sent')}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <form onSubmit={send} className="flex flex-col gap-4">
       <Field label={t('auth.email')}>
-        <input
+        <Input
           type="email"
           required
           autoComplete="email"
@@ -48,13 +59,12 @@ export function SignInForm({ messages }: { messages: Messages }) {
           value={email}
           onChange={(event) => setEmail(event.target.value)}
           placeholder={t('auth.emailPlaceholder')}
-          className="min-h-14 rounded-sharp border border-line bg-raised px-3 text-base text-ink placeholder:text-faint focus:border-rust focus:outline-none"
         />
       </Field>
 
-      <Button type="submit" disabled={status === 'sending' || email.trim().length < 5}>
+      <Command type="submit" disabled={status === 'sending' || email.trim().length < 5}>
         {status === 'sending' ? t('auth.sending') : t('auth.send')}
-      </Button>
+      </Command>
 
       {status === 'error' && <Notice tone="error">{t('error.network')}</Notice>}
     </form>

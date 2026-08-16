@@ -1,0 +1,21 @@
+<!--
+  asset: brand/mark
+  role: emblema del juego: el Núcleo con simetría rotacional de orden 3
+  grid: 24
+  stroke: 2
+  colors: currentColor
+  author: Iván Cabellos
+  created: 2026-08-16
+  original: true
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+     stroke="currentColor" stroke-width="2" stroke-linecap="square"
+     stroke-linejoin="miter">
+  <path d="M12 3A9 9 0 0 1 20.86 13.56"/>
+  <path d="M19.79 16.5A9 9 0 0 1 6.21 18.89"/>
+  <path d="M4.21 16.5A9 9 0 0 1 8.92 3.54"/>
+  <path d="M12 8 16 12 12 16 8 12Z" fill="currentColor" stroke="none"/>
+  <rect x="18.96" y="13.58" width="3" height="3" fill="currentColor" stroke="none"/>
+  <rect x="3.61" y="16.29" width="3" height="3" fill="currentColor" stroke="none"/>
+  <rect x="8.94" y="1.64" width="3" height="3" fill="currentColor" stroke="none"/>
+</svg>

@@ -1,0 +1,16 @@
+<!--
+  asset: ui/back
+  role: Volver — flecha a la izquierda
+  grid: 24
+  stroke: 2
+  colors: currentColor
+  author: Iván Cabellos
+  created: 2026-08-16
+  original: true
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+     stroke="currentColor" stroke-width="2" stroke-linecap="square"
+     stroke-linejoin="miter">
+  <path d="M20 12H4"/>
+  <path d="M10 6 4 12l6 6"/>
+</svg>

@@ -37,7 +37,10 @@
   --color-p3: #9b5fa8;
   --color-p4: #c4a53c;
 
+  /* «Esquinas: 4 px. Nada redondeado: es un juego militar.» UX_MOBILE §10. */
   --radius-sharp: 4px;
+
+  --font-sans: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
 }
 
 html,
@@ -49,14 +52,110 @@ body {
 }
 
 body {
-  font-family:
-    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--font-sans);
+  /* Hay muchas cifras que deben alinearse en columna: recursos, fuerzas, plazos. */
   font-variant-numeric: tabular-nums;
   -webkit-tap-highlight-color: transparent;
 }
 
-/* El mapa se manipula por transform sobre el <g> raíz: nunca re-render de React
-   durante un gesto (docs/UX_MOBILE.md §9). */
+/* ─────────────────────────── Escala tipográfica ────────────────────────────
+ *
+ * Una sola familia, tres registros. El contraste no lo da cambiar de fuente sino el
+ * eje de anchura: los rótulos van condensados y en versales, como en una carta de
+ * situación; el texto corrido va en anchura normal para poder leerse de verdad.
+ */
+
+.type-display {
+  font-stretch: 78%;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 0.95;
+}
+
+.type-title {
+  font-stretch: 82%;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* Rótulo de campo. Es la etiqueta de un formulario militar, no de un formulario web. */
+.type-label {
+  font-stretch: 80%;
+  font-weight: 600;
+  font-size: 0.6875rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+/* Cifras que se comparan entre sí: ancho fijo y sin ligaduras. */
+.type-figure {
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: 'tnum' 1;
+  font-stretch: 92%;
+  font-weight: 600;
+}
+
+/* ────────────────────────── Cromo cartográfico ─────────────────────────────
+ *
+ * El juego es «una carta de situación desplegada sobre una mesa de mando»
+ * (ASSET_PIPELINE §2.1). La retícula es lo que convierte un fondo negro en un plano.
+ * Muy tenue a propósito: si se ve, compite con el mapa.
+ */
+
+.chart-grid {
+  background-image:
+    linear-gradient(to right, color-mix(in srgb, var(--color-line) 55%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--color-line) 55%, transparent) 1px, transparent 1px);
+  background-size: 24px 24px;
+  background-position: center center;
+}
+
+/* Marcas de registro en las esquinas. El detalle que dice «esto es un instrumento». */
+.registered {
+  position: relative;
+}
+
+.registered::before,
+.registered::after {
+  content: '';
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  pointer-events: none;
+  border-color: var(--color-faint);
+}
+
+.registered::before {
+  top: -1px;
+  left: -1px;
+  border-top: 1px solid;
+  border-left: 1px solid;
+}
+
+.registered::after {
+  right: -1px;
+  bottom: -1px;
+  border-right: 1px solid;
+  border-bottom: 1px solid;
+}
+
+/* Regla horizontal con muescas, como el borde graduado de una carta. */
+.tick-rule {
+  height: 6px;
+  background-image: repeating-linear-gradient(
+    to right,
+    var(--color-line) 0 1px,
+    transparent 1px 8px
+  );
+}
+
+/* ───────────────────────────────── Mapa ────────────────────────────────────
+ * Se manipula por transform sobre el <g> raíz: nunca re-render de React durante un
+ * gesto (docs/UX_MOBILE.md §9).
+ */
 .map-surface {
   touch-action: none;
   user-select: none;
@@ -74,6 +173,55 @@ body {
 .region:focus-visible .region-shape {
   stroke: var(--color-ash-glow);
   stroke-width: 4;
+}
+
+/* ──────────────────────────── Caída de Ceniza ──────────────────────────────
+ *
+ * «Una capa de partículas muy sutil, solo en menús, nunca sobre el mapa» (UX_MOBILE §10).
+ * Sobre el mapa competiría con las fuerzas, que es justo lo que hay que mirar.
+ *
+ * Son dos capas de puntos desplazándose a velocidades distintas. Sin JavaScript, sin
+ * canvas y sin un solo re-render: es `background-position` animado y nada más.
+ */
+.ashfall {
+  position: absolute;
+  inset: 0;
+  /* Detrás del contenido y muy tenue. Por delante se lee como suciedad en la pantalla,
+     no como atmósfera — y encima del texto arruina el contraste. */
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.18;
+  background-image:
+    radial-gradient(1px 1px at 20% 30%, var(--color-ash) 50%, transparent 50%),
+    radial-gradient(1px 1px at 70% 60%, var(--color-ash) 50%, transparent 50%),
+    radial-gradient(1px 1px at 45% 85%, var(--color-ash) 50%, transparent 50%),
+    radial-gradient(1px 1px at 85% 15%, var(--color-ash) 50%, transparent 50%);
+  background-size: 180px 240px, 260px 320px, 220px 280px, 300px 360px;
+  animation: ashfall 42s linear infinite;
+}
+
+@keyframes ashfall {
+  from {
+    background-position: 0 0, 0 0, 0 0, 0 0;
+  }
+  to {
+    background-position: -40px 240px, 30px 320px, -20px 280px, 15px 360px;
+  }
+}
+
+/* Barrido lento sobre el emblema: la Ceniza no obedece a la cuadrícula. */
+@keyframes ember {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.ember {
+  animation: ember 6s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {

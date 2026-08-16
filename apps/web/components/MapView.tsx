@@ -1,10 +1,22 @@
 'use client';
 
 import { useCallback, useEffect, useRef, type PointerEvent as ReactPointerEvent } from 'react';
-import type { PlayerView, RegionId, Seat } from '@gdc/core';
-import { SEAT_PATTERN, TERRAIN_FILL, TERRAIN_GLYPH, TERRAIN_NAME, seatColor } from '@/lib/theme';
+import type { PlayerView, RegionId, Seat, TerrainKind } from '@gdc/core';
+import { SEAT_PATTERN, TERRAIN_FILL, TERRAIN_NAME, seatColor } from '@/lib/theme';
 
 const NODE_R = 32;
+
+/**
+ * Radio por tipo de región. No es decoración: el Núcleo es el objetivo de la partida
+ * entera y en un grafo de nodos idénticos se pierde entre los demás. La jerarquía visual
+ * tiene que contar la jerarquía del juego.
+ */
+const RADIUS: Partial<Record<TerrainKind, number>> = {
+  core: NODE_R * 1.35,
+  bastion: NODE_R * 1.12,
+};
+
+const radiusOf = (kind: TerrainKind) => RADIUS[kind] ?? NODE_R;
 
 interface Props {
   view: PlayerView;
@@ -231,52 +243,55 @@ export function MapView({ view, selected, reachable, ordered, onSelect }: Props)
             >
               <circle
                 className="region-shape"
-                cx={region.x} cy={region.y} r={NODE_R}
+                cx={region.x} cy={region.y} r={radiusOf(region.kind)}
                 fill={TERRAIN_FILL[region.kind]}
                 stroke={owner === null ? 'var(--color-line)' : seatColor(owner)}
                 strokeWidth={owner === null ? 2 : 5}
               />
               {owner !== null && (
                 <circle
-                  cx={region.x} cy={region.y} r={NODE_R}
+                  cx={region.x} cy={region.y} r={radiusOf(region.kind)}
                   fill={`url(#pat-${SEAT_PATTERN[owner]})`}
                   opacity={0.28}
                   pointerEvents="none"
                 />
               )}
+              {/* Anillo de registro del Núcleo. Es el objetivo de la campaña: se ve desde
+                  cualquier parte del mapa sin tener que buscarlo. */}
+              {region.kind === 'core' && (
+                <circle
+                  cx={region.x} cy={region.y} r={radiusOf(region.kind) + 7}
+                  fill="none" stroke="var(--color-ash)" strokeWidth={1.5}
+                  strokeDasharray="10 7" opacity={0.75} pointerEvents="none"
+                />
+              )}
 
               {isReachable && (
                 <circle
-                  cx={region.x} cy={region.y} r={NODE_R + 8}
+                  cx={region.x} cy={region.y} r={radiusOf(region.kind) + 8}
                   fill="none" stroke="var(--color-ash-glow)" strokeWidth={3}
                   strokeDasharray="8 6" opacity={0.9} pointerEvents="none"
                 />
               )}
               {isSelected && (
                 <circle
-                  cx={region.x} cy={region.y} r={NODE_R + 12}
+                  cx={region.x} cy={region.y} r={radiusOf(region.kind) + 12}
                   fill="none" stroke="var(--color-rust)" strokeWidth={5}
                   pointerEvents="none"
                 />
               )}
 
-              <text
-                x={region.x} y={region.y + 6}
-                textAnchor="middle" fontSize={24}
-                fill="var(--color-ink)" opacity={0.7} pointerEvents="none"
-              >
-                {TERRAIN_GLYPH[region.kind]}
-              </text>
+              <TerrainMark kind={region.kind} x={region.x} y={region.y} />
 
               {mine.length > 0 && (
-                <ForceBadge x={region.x} y={region.y - NODE_R - 4} seat={view.seat}
+                <ForceBadge x={region.x} y={region.y - radiusOf(region.kind) - 4} seat={view.seat}
                   label={String(mine.reduce((s, f) => s + (f.approxTotal ?? 0), 0))} />
               )}
               {enemies.map((force, index) => (
                 <ForceBadge
                   key={force.id}
                   x={region.x + (index - (enemies.length - 1) / 2) * 30}
-                  y={region.y + NODE_R + 20}
+                  y={region.y + radiusOf(region.kind) + 20}
                   seat={force.seat}
                   label={force.line === null ? `~${force.approxTotal}` : String(force.approxTotal)}
                 />
@@ -342,4 +357,93 @@ function describe(
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+/**
+ * Marca de terreno.
+ *
+ * El terreno **no lleva iconos**: lleva marcas geométricas dibujadas con el mismo
+ * lenguaje que el resto del arte —trazo constante, ángulos construidos, sin perspectiva—
+ * ([ASSET_PIPELINE §3.2](../../../docs/ASSET_PIPELINE.md#32-regiones-8)). Antes eran
+ * glifos Unicode, que dependían de la fuente del sistema y se veían distintos en cada
+ * dispositivo: en un juego donde leer el mapa es la mitad de la decisión, eso no vale.
+ */
+function TerrainMark({ kind, x, y }: { kind: TerrainKind; x: number; y: number }) {
+  const common = {
+    fill: 'none' as const,
+    stroke: 'var(--color-ink)',
+    strokeWidth: 2.5,
+    strokeLinecap: 'square' as const,
+    opacity: 0.55,
+    pointerEvents: 'none' as const,
+  };
+
+  switch (kind) {
+    case 'urban':
+      // Manzana de tres bloques.
+      return (
+        <g {...common}>
+          <rect x={x - 11} y={y - 5} width={7} height={10} />
+          <rect x={x - 2} y={y - 8} width={7} height={13} />
+          <rect x={x + 7} y={y - 3} width={5} height={8} />
+        </g>
+      );
+    case 'high':
+      // Curvas de nivel.
+      return (
+        <g {...common}>
+          <path d={`M${x - 12} ${y + 6} ${x} ${y - 8} ${x + 12} ${y + 6}`} />
+          <path d={`M${x - 6} ${y + 8} ${x} ${y + 1} ${x + 6} ${y + 8}`} />
+        </g>
+      );
+    case 'forest':
+      return (
+        <g {...common}>
+          <path d={`M${x - 9} ${y + 7} ${x - 9} ${y - 7}`} />
+          <path d={`M${x} ${y + 9} ${x} ${y - 9}`} />
+          <path d={`M${x + 9} ${y + 7} ${x + 9} ${y - 7}`} />
+        </g>
+      );
+    case 'water':
+      return (
+        <g {...common} strokeDasharray="7 5">
+          <path d={`M${x - 12} ${y - 4} H${x + 12}`} />
+          <path d={`M${x - 12} ${y + 4} H${x + 12}`} />
+        </g>
+      );
+    case 'seam':
+      // Yacimiento de Ceniza: la única marca con el color de la Ceniza.
+      return (
+        <path
+          d={`M${x} ${y - 12} ${x + 3.5} ${y - 3.5} ${x + 12} ${y} ${x + 3.5} ${y + 3.5} ${x} ${y + 12} ${x - 3.5} ${y + 3.5} ${x - 12} ${y} ${x - 3.5} ${y - 3.5}Z`}
+          fill="var(--color-ash)"
+          opacity={0.85}
+          pointerEvents="none"
+        />
+      );
+    case 'bastion':
+      // Almena.
+      return (
+        <g {...common} opacity={0.7}>
+          <path d={`M${x - 12} ${y + 8} V${y - 4} h4 v-4 h4 v4 h4 v-4 h4 v4 h4 V${y + 8}Z`} />
+        </g>
+      );
+    case 'core':
+      // El Núcleo, con la simetría de orden 3 del emblema.
+      return (
+        <g pointerEvents="none">
+          <path
+            d={`M${x} ${y - 11} ${x + 11} ${y} ${x} ${y + 11} ${x - 11} ${y}Z`}
+            fill="var(--color-ash)"
+            opacity={0.9}
+          />
+          <path
+            d={`M${x} ${y - 5} ${x + 5} ${y} ${x} ${y + 5} ${x - 5} ${y}Z`}
+            fill="var(--color-void)"
+          />
+        </g>
+      );
+    default:
+      return null;
+  }
 }

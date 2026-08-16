@@ -8,6 +8,11 @@ import {
   type ProductionOrder, type RegionId, type Seat,
 } from '@gdc/core';
 import { MapView } from './MapView';
+import {
+  CommandHeader, FactionEmblem, OrderBar, OrderCommit, OrderTool,
+} from './GameChrome';
+import { Command, Masthead, Screen } from './ui/Shell';
+import { Back, Industry, Intel } from './art/generated';
 import { CombatPreview } from './CombatPreview';
 import {
   BUILDABLE_NAME, DOCTRINE_NAME, EVENT_TEXT, FACTION_NAME, POSTURE_NAME, RESOURCE_LABEL,
@@ -135,16 +140,11 @@ function Setup({
   );
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-md flex-col gap-6 p-5">
-      <header className="pt-8">
-        <h1 className="text-3xl font-bold tracking-tight">Guerra de Cenizas</h1>
-        <p className="mt-1 text-sm text-muted">
-          Prototipo v0.1 · hot seat local · motor {ENGINE_VERSION}
-        </p>
-      </header>
+    <Screen>
+      <Masthead subtitle={`prototipo local · motor ${ENGINE_VERSION}`} />
 
-      <section className="flex flex-col gap-3">
-        <h2 className="text-xs font-semibold uppercase tracking-widest text-rust">Jugadores</h2>
+      <section className="mt-8 flex flex-col gap-3">
+        <p className="type-label">Jugadores</p>
         <div className="grid grid-cols-3 gap-2">
           {([2, 3, 5] as PlayerCount[]).map((n) => (
             <button
@@ -152,11 +152,12 @@ function Setup({
               type="button"
               onClick={() => setPlayers(n)}
               aria-pressed={players === n}
-              className={`min-h-14 rounded-sharp border-2 text-lg font-semibold transition-colors ${
-                players === n
-                  ? 'border-rust bg-raised text-ink'
-                  : 'border-line bg-panel text-muted'
-              }`}
+              className={`type-figure min-h-14 rounded-sharp border text-lg transition-colors
+                duration-150 ease-out ${
+                  players === n
+                    ? 'border-rust bg-rust/12 text-ink'
+                    : 'border-line bg-raised text-muted hover:border-faint'
+                }`}
             >
               {n}
             </button>
@@ -164,59 +165,61 @@ function Setup({
         </div>
       </section>
 
-      <section className="flex flex-col gap-3">
-        <h2 className="text-xs font-semibold uppercase tracking-widest text-rust">Semilla</h2>
+      <section className="mt-6 flex flex-col gap-3">
+        <p className="type-label">Semilla</p>
         <div className="flex gap-2">
           <input
             type="number"
             value={seed}
             onChange={(e) => setSeed(Number(e.target.value) || 0)}
-            className="min-h-14 flex-1 rounded-sharp border-2 border-line bg-panel px-4 text-lg"
+            className="type-figure min-h-14 flex-1 rounded-sharp border border-line bg-raised px-4
+              text-lg text-ink focus:border-rust focus:outline-none"
             aria-label="Semilla del mapa"
           />
           <button
             type="button"
             onClick={() => setSeed(Math.floor(Math.random() * 1_000_000))}
-            className="min-h-14 rounded-sharp border-2 border-line bg-panel px-4 text-sm text-muted"
+            className="type-label min-h-14 rounded-sharp border border-line bg-raised px-4
+              hover:border-faint hover:text-ink"
           >
             Azar
           </button>
         </div>
-        <p className="text-xs text-faint">
+        <p className="text-xs leading-relaxed text-muted">
           La misma semilla produce siempre el mismo mapa. Reproducible entre sesiones.
         </p>
       </section>
 
-      <section className="flex flex-col gap-2">
-        <h2 className="text-xs font-semibold uppercase tracking-widest text-rust">Facciones</h2>
+      <section className="mt-6 flex flex-col gap-2">
+        <p className="type-label">Facciones</p>
         <ul className="flex flex-col gap-2">
           {factions.map((faction, index) => (
             <li
               key={index}
-              className="flex min-h-14 items-center gap-3 rounded-sharp border-2 border-line bg-panel px-3"
+              className="registered flex min-h-14 items-center gap-3 rounded-sharp border
+                border-line bg-panel px-3"
             >
+              {/* Barra de color + emblema. Nunca solo color: quien no distinga rojo de
+                  verde tiene que poder jugar igual. */}
               <span
-                className="h-6 w-6 shrink-0 rounded-sharp border-2"
-                style={{ borderColor: seatColor(index as Seat), background: seatColor(index as Seat) }}
+                className="h-8 w-1 shrink-0"
+                style={{ background: seatColor(index as Seat) }}
                 aria-hidden
               />
-              <span className="flex-1">
-                <span className="block text-sm font-semibold">{NAMES[index]}</span>
-                <span className="block text-xs text-muted">{FACTION_NAME[faction]}</span>
+              <FactionEmblem factionId={faction} size={22} className="shrink-0 text-muted" />
+              <span className="min-w-0 flex-1">
+                <span className="type-title block text-sm text-ink">{NAMES[index]}</span>
+                <span className="type-label block !tracking-wider">{FACTION_NAME[faction]}</span>
               </span>
             </li>
           ))}
         </ul>
       </section>
 
-      <button
-        type="button"
-        onClick={() => onStart(players, seed, factions)}
-        className="mt-auto min-h-14 rounded-sharp bg-rust text-lg font-bold text-void"
-      >
-        Empezar campaña
-      </button>
-    </main>
+      <div className="mt-auto pt-8">
+        <Command onClick={() => onStart(players, seed, factions)}>Empezar campaña</Command>
+      </div>
+    </Screen>
   );
 }
 
@@ -432,38 +435,17 @@ function draftReducer(draft: Draft, action: DraftAction): Draft {
 function TopBar({ view, state }: { view: PlayerView; state: GameState }) {
   const self = view.self;
   return (
-    <header className="shrink-0 border-b border-line bg-panel">
-      <div className="flex items-center gap-2 px-3 py-2">
-        <span
-          className="h-8 w-1.5 shrink-0 rounded-sharp"
-          style={{ background: seatColor(view.seat) }}
-          aria-hidden
-        />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold leading-tight">
-            {self.name} · {FACTION_NAME[self.factionId]}
-          </p>
-          <p className="truncate text-xs text-muted">{DOCTRINE_NAME[self.doctrineId]}</p>
-        </div>
-        <div className="shrink-0 text-right">
-          <p className="text-sm font-semibold leading-tight">
-            {state.meta.phase === 'parley' ? 'Parlamento' : `Turno ${state.meta.turn}`}
-          </p>
-          <p className="text-xs text-muted">
-            {view.control.filter((o) => o === view.seat).length} regiones
-          </p>
-        </div>
-      </div>
-      <ul className="flex justify-between gap-1 border-t border-line px-3 py-1.5 text-sm">
-        {(Object.keys(RESOURCE_LABEL) as (keyof typeof RESOURCE_LABEL)[]).map((key) => (
-          <li key={key} className="flex items-center gap-1" title={RESOURCE_LABEL[key].name}>
-            <span aria-hidden className="text-muted">{RESOURCE_LABEL[key].glyph}</span>
-            <span className="font-semibold">{Math.round(self.resources[key])}</span>
-            <span className="sr-only">{RESOURCE_LABEL[key].name}</span>
-          </li>
-        ))}
-      </ul>
-    </header>
+    <CommandHeader
+      seat={view.seat}
+      name={`${self.name} · ${FACTION_NAME[self.factionId]}`}
+      factionId={self.factionId}
+      doctrine={DOCTRINE_NAME[self.doctrineId] ?? self.doctrineId}
+      phase={state.meta.phase === 'parley' ? 'Parlamento' : 'Guerra'}
+      turn={`Turno ${state.meta.turn}`}
+      regions={view.control.filter((owner) => owner === view.seat).length}
+      regionsLabel="regiones"
+      resources={self.resources}
+    />
   );
 }
 
@@ -694,49 +676,25 @@ function BottomBar({
 }) {
   return (
     // Zona cómoda del pulgar: todas las acciones primarias viven aquí.
-    <footer className="shrink-0 border-t border-line bg-panel px-3 py-2">
-      <div className="mb-2 flex items-center justify-between text-xs text-muted">
-        <span>{orders > 0 ? `${orders} órdenes` : 'Sin órdenes'}</span>
-        <span>{phase}</span>
-      </div>
-      <div className="flex gap-2">
-        <button
-          type="button"
-          onClick={onReset}
-          className="min-h-14 min-w-11 rounded-sharp border-2 border-line px-3 text-sm text-muted"
-          aria-label="Nueva campaña"
-        >
-          ⟲
-        </button>
-        {hasLog && (
-          <button
-            type="button"
-            onClick={onLog}
-            className="min-h-14 min-w-14 rounded-sharp border-2 border-line text-sm text-muted"
-            aria-label="Registro del turno anterior"
-          >
-            ☰
-          </button>
-        )}
-        {canBuild && (
-          <button
-            type="button"
-            onClick={onBuild}
-            className="min-h-14 min-w-14 rounded-sharp border-2 border-line text-lg text-muted"
-            aria-label="Producción"
-          >
-            ⬢
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={onSubmit}
-          className="min-h-14 flex-1 rounded-sharp bg-rust text-lg font-bold text-void"
-        >
-          Enviar turno
-        </button>
-      </div>
-    </footer>
+    <OrderBar
+      status={orders > 0 ? `${orders} órdenes` : 'Sin órdenes'}
+      phase={phase}
+      primary={<OrderCommit onClick={onSubmit}>Enviar turno</OrderCommit>}
+    >
+      <OrderTool onClick={onReset} label="Nueva campaña">
+        <Back size={20} />
+      </OrderTool>
+      {hasLog && (
+        <OrderTool onClick={onLog} label="Registro del turno anterior">
+          <Intel size={20} />
+        </OrderTool>
+      )}
+      {canBuild && (
+        <OrderTool onClick={onBuild} label="Producción">
+          <Industry size={20} />
+        </OrderTool>
+      )}
+    </OrderBar>
   );
 }
 

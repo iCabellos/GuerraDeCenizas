@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { FACTION_IDS, type FactionId } from '@gdc/core';
 import { localeFromHeader, isLocale, type Locale } from '../i18n/index';
 import { headers } from 'next/headers';
 import { userClient } from './supabase';
@@ -9,7 +10,7 @@ export interface Viewer {
   profileId: string;
   displayName: string;
   locale: Locale;
-  factionId: string;
+  factionId: FactionId;
 }
 
 /**
@@ -36,7 +37,12 @@ export async function currentViewer(): Promise<Viewer | null> {
     profileId: data.user.id,
     displayName: profile.display_name as string,
     locale: isLocale(profile.locale) ? profile.locale : 'es',
-    factionId: profile.faction_id as string,
+    // La facción sale de una columna `text`: se valida contra el catálogo del motor en
+    // vez de confiar en ella. Un valor corrupto pintaría el emblema equivocado, no un
+    // fallo — pero pintar el emblema de otra facción es mentirle al jugador.
+    factionId: FACTION_IDS.includes(profile.faction_id as FactionId)
+      ? (profile.faction_id as FactionId)
+      : 'vantera',
   };
 }
 

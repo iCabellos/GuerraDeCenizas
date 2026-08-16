@@ -8,6 +8,7 @@ import {
 } from '@gdc/core';
 import { MapView } from '@/components/MapView';
 import { CombatPreview } from '@/components/CombatPreview';
+import { CommandHeader, OrderBar, OrderCommit } from '@/components/GameChrome';
 import { browserClient } from '@/lib/supabase-browser';
 
 type Messages = Record<string, string>;
@@ -187,13 +188,17 @@ export function GameBoard({
 
   return (
     <div className="flex h-dvh flex-col">
-      <header className="flex items-baseline justify-between border-b border-line px-4 py-3">
-        <span className="text-base text-ink">{t('game.turn', { turn: view.turn })}</span>
-        <span className="text-xs uppercase tracking-wide text-muted">
-          {t(`game.${view.phase}`)}
-          {deadlineAt ? ` · ${new Date(deadlineAt).toLocaleTimeString()}` : ''}
-        </span>
-      </header>
+      <CommandHeader
+        seat={view.seat}
+        name={view.self.name}
+        factionId={view.self.factionId}
+        doctrine={deadlineAt ? new Date(deadlineAt).toLocaleTimeString() : ''}
+        phase={t(`game.${view.phase}`)}
+        turn={t('game.turn', { turn: view.turn })}
+        regions={view.control.filter((owner) => owner === view.seat).length}
+        regionsLabel=""
+        resources={view.self.resources}
+      />
 
       <div className="relative flex-1 overflow-hidden">
         <MapView
@@ -224,17 +229,22 @@ export function GameBoard({
         )}
       </div>
 
-      <footer className="flex flex-col gap-2 border-t border-line px-4 py-3">
-        {error && <p className="text-sm text-danger" role="alert">{error}</p>}
-        <button
-          type="button"
-          onClick={submit}
-          disabled={sending || sent}
-          className="min-h-14 w-full rounded-sharp bg-rust px-4 text-base font-medium text-void disabled:bg-line disabled:text-faint"
-        >
-          {sent ? t('game.submitted') : sending ? t('game.submitting') : t('game.submit')}
-        </button>
-      </footer>
+      {error && (
+        <p className="border-t border-danger/60 bg-danger/10 px-4 py-2 text-sm" role="alert">
+          {error}
+        </p>
+      )}
+      <OrderBar
+        status={draft.moves.length > 0
+          ? t('game.pending', { count: draft.moves.length })
+          : t('game.parley')}
+        phase={t(`game.${view.phase}`)}
+        primary={
+          <OrderCommit onClick={submit} disabled={sending || sent}>
+            {sent ? t('game.submitted') : sending ? t('game.submitting') : t('game.submit')}
+          </OrderCommit>
+        }
+      />
     </div>
   );
 }

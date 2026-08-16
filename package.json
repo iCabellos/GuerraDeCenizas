@@ -20,13 +20,14 @@
     "test:security": "vitest run --root apps/web",
     "typecheck": "tsc --noEmit -p packages/core/tsconfig.json && npm run typecheck -w @gdc/web",
     "check:deps": "node tools/check-deps.mjs",
+    "assets:build": "node tools/assets/build.mjs",
     "db:up": "node tools/pg/harness.mjs up",
     "db:reset": "node tools/pg/harness.mjs reset",
     "db:down": "node tools/pg/harness.mjs down",
     "db:psql": "node tools/pg/harness.mjs psql",
     "docs:pdf": "node tools/docs-pdf/build.mjs",
     "docs:check": "node tools/docs-pdf/check-links.mjs",
-    "verify": "npm run typecheck && npm run check:deps && npm test && npm run test:security && npm run docs:check"
+    "verify": "npm run assets:build && npm run typecheck && npm run check:deps && npm test && npm run test:security && npm run docs:check"
   },
   "devDependencies": {
     "markdown-it": "^14.1.0",

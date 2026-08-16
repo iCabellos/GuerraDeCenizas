@@ -2,7 +2,7 @@ import { notFound, redirect } from 'next/navigation';
 import type { PlayerView } from '@gdc/core';
 import { GameBoard } from '@/components/GameBoard';
 import { LobbyRoom } from '@/components/LobbyRoom';
-import { Shell } from '@/components/ui/Shell';
+import { Masthead, Screen } from '@/components/ui/Shell';
 import { currentViewer } from '@/lib/server/session';
 import { userClient } from '@/lib/server/supabase';
 import { DICTIONARIES } from '@/lib/i18n/index';
@@ -42,7 +42,8 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
 
   if (game.status === 'lobby') {
     return (
-      <Shell>
+      <Screen>
+        <Masthead subtitle={DICTIONARIES[viewer.locale]['lobby.inLobby']} />
         <LobbyRoom
           messages={messages}
           gameId={id}
@@ -55,7 +56,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             you: row.profile_id === viewer.profileId,
           }))}
         />
-      </Shell>
+      </Screen>
     );
   }
 

@@ -1,0 +1,17 @@
+<!--
+  asset: states/unsupplied
+  role: Fuerza sin suministro — cadena rota
+  grid: 24
+  stroke: 2
+  colors: currentColor
+  author: Iván Cabellos
+  created: 2026-08-16
+  original: true
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+     stroke="currentColor" stroke-width="2" stroke-linecap="square"
+     stroke-linejoin="miter">
+  <path d="M10 7 7 4a3.5 3.5 0 0 0-5 5l3 3"/>
+  <path d="M14 17l3 3a3.5 3.5 0 0 0 5-5l-3-3"/>
+  <path d="M9 15 15 9"/>
+</svg>

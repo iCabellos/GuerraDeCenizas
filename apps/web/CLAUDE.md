@@ -95,6 +95,24 @@ Supabase. Es lo que permite que los tests ejecuten el código real de autoridad 
 base real: un test de concurrencia contra un doble no prueba nada, porque lo que se está
 probando es la base de datos.
 
+### El registro visual
+
+«Una carta de situación desplegada sobre una mesa de mando». De ahí sale todo y nada es
+estética por sí sola:
+
+| Regla | Motivo |
+|---|---|
+| Esquinas de 4 px, nada redondeado | Es un juego militar, no una aplicación |
+| Sin sombras | La profundidad la dan el borde y la superficie, como en un plano |
+| `type-display` / `type-title` / `type-label` / `type-figure` | Una sola familia, tres registros. El contraste lo da el eje de anchura |
+| Cifras tabulares en todo lo comparable | Recursos y plazos se leen en columna |
+| Ceniza solo en menús | Sobre el mapa competiría con las fuerzas |
+| Color **nunca** como único distintivo | Barra de asiento **y** emblema, siempre |
+
+Los iconos salen de `assets/src/` por `npm run assets:build`. **No escribas SVG a mano en
+un componente**: el generador es lo que garantiza la cuadrícula, la paleta y la
+declaración de autoría. La coherencia se revisa en `/dev/gallery`, no de memoria.
+
 **Regla aprendida a base de repetirla:** un panel flotante sobre el mapa lleva
 `pointer-events-none`, y solo sus botones `pointer-events-auto`. Hacerlo más pequeño no
 resuelve nada: siempre queda una región tocable debajo.
@@ -117,3 +135,13 @@ llamada bien formada.
 
 `check-deps.mjs` verifica que nada fuera de `lib/server/` y `app/api/` importe la capa de
 autoridad.
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

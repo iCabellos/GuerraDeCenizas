@@ -1,0 +1,16 @@
+<!--
+  asset: ui/copy
+  role: Copiar al portapapeles
+  grid: 24
+  stroke: 2
+  colors: currentColor
+  author: Iván Cabellos
+  created: 2026-08-16
+  original: true
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+     stroke="currentColor" stroke-width="2" stroke-linecap="square"
+     stroke-linejoin="miter">
+  <rect x="8" y="3" width="13" height="13"/>
+  <path d="M16 21H3V8h5"/>
+</svg>

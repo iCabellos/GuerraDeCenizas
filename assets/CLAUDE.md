@@ -64,3 +64,19 @@ Usa el panel «Familia».
 comprobaciones) van **antes** que el primer asset, para que nazca ya validado.
 
 Detalle completo: [`docs/ASSET_PIPELINE.md`](../docs/ASSET_PIPELINE.md).
+
+---
+
+## Estado actual
+
+**24 assets originales**, generados a componentes por `npm run assets:build` y revisables
+en `/dev/gallery`. Tipografía resuelta: Archivo Variable, SIL OFL, en `assets/fonts/` con
+su licencia ([ADR-017](../docs/DECISIONS.md#adr-017)).
+
+Faltan las anomalías (8), la diplomacia (6) y buena parte de estados e interfaz: llegan
+con los sistemas que las usan, no antes. Un asset sin sistema detrás es un asset que se
+dibuja dos veces.
+
+**Lo que ya cazó la Galería:** el emblema de Koldvik parecía una copa de cóctel y la
+Mortaja de Oshara, una señal de peligro. Ninguno de los dos se veía mal en el archivo
+suelto — se vieron mal al ponerlos a 16 px al lado de los demás. Para eso está.

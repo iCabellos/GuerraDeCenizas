@@ -401,11 +401,33 @@ desarrollo, pero debe resolverse antes de que el repositorio sea público.
 <a id="adr-017"></a>
 
 ## ADR-017 — Tipografía
-**Estado:** ⏳ **pendiente**
+**Estado:** aceptada · 2026-08-16
 
-Requisitos: familia variable, geométrica, condensada, **números tabulares**, latín
-extendido completo (ES + EN), licencia **SIL OFL** o equivalente, subseteable.
-No bloquea el desarrollo hasta v0.9.
+**Contexto.** Los requisitos eran: familia variable, geométrica, condensada, **números
+tabulares**, cobertura de ES + EN, licencia **SIL OFL** o equivalente y subseteable. Con
+la fuente del sistema, la interfaz se leía como un formulario web — y ese era, de lejos,
+el detalle que más impedía que el juego pareciera un juego.
+
+**Decisión.** **Archivo Variable** (Omnibus-Type, SIL OFL 1.1), alojada en el propio
+repositorio, solo el subconjunto `latin`.
+
+**Consecuencias.**
+- ✅ Un único eje `wdth` (62–125 %) da los tres registros —rótulo condensado en versales,
+  texto corrido, cifra tabular— sin una segunda descarga. El contraste tipográfico lo da
+  la anchura, no cambiar de familia.
+- ✅ `tnum` de serie: las cifras de recursos y plazos se alinean en columna, que es lo que
+  permite compararlas de un vistazo.
+- ✅ Servida desde el repositorio: ni una petición a un dominio de terceros, y por tanto
+  ningún salto de maquetación en el primer segundo de partida.
+- ✅ 90 KB. Solo `latin`: cubre ES y EN enteros —ñ, tildes, ¿, ¡— y ahorra los 86 KB de
+  `latin-ext`, que solo sirven para idiomas que este juego no tiene.
+- ⚠️ Si algún día se añade un idioma con latín extendido —polaco, turco, checo—, hay que
+  volver a añadir ese subconjunto. Está anotado aquí para que no se descubra en producción.
+
+**Descartado.** Inter y similares (excelentes, pero sin eje de anchura: harían falta dos
+familias); Oswald y las condensadas puras (ilegibles en texto corrido); una fuente de
+sistema (distinta en cada dispositivo, que en un juego donde leer el mapa es media
+decisión no vale).
 
 ---
 

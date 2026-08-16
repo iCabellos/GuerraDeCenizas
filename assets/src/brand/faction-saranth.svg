@@ -1,0 +1,18 @@
+<!--
+  asset: brand/faction-saranth
+  role: Saranth — Coro. Enclave de investigación: tres frentes de onda concéntricos
+  grid: 24
+  stroke: 2
+  colors: currentColor
+  author: Iván Cabellos
+  created: 2026-08-16
+  original: true
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+     stroke="currentColor" stroke-width="2" stroke-linecap="square"
+     stroke-linejoin="miter">
+  <path d="M6 3v18"/>
+  <path d="M10 6A8 8 0 0 1 10 18"/>
+  <path d="M14 8A5.5 5.5 0 0 1 14 16"/>
+  <path d="M18 10A3 3 0 0 1 18 14"/>
+</svg>

@@ -1,0 +1,20 @@
+<!--
+  asset: brand/faction-tarn
+  role: Tarn — Enjambre. Ciudad minera: la veta de Ceniza en racimo
+  grid: 24
+  stroke: 2
+  colors: currentColor
+  author: Iván Cabellos
+  created: 2026-08-16
+  original: true
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+     stroke="currentColor" stroke-width="2" stroke-linecap="square"
+     stroke-linejoin="miter">
+  <path d="M12 2 15 6 12 10 9 6Z"/>
+  <path d="M6 12 9 16 6 20 3 16Z"/>
+  <path d="M18 12 21 16 18 20 15 16Z"/>
+  <path d="M12 10v2"/>
+  <path d="M10.5 11 7.5 13"/>
+  <path d="M13.5 11 16.5 13"/>
+</svg>
