@@ -20,11 +20,28 @@ insert into auth.users (id, email) values
   ('00000000-0000-4000-8000-000000000002', 'asiento2@ceniza.test'),
   ('00000000-0000-4000-8000-000000000009', 'ajeno@ceniza.test');
 
+-- ─────────────────────── Dos altas que nadie completa a mano ──────────────────
+--
+-- Estas dos existen para probar el trigger de alta (0009), así que **no** llevan fila en
+-- `profiles` aquí abajo: si alguien se la añade, el test deja de probar nada y pasa igual.
+-- Una con correo y otra anónima, que son los dos caminos de entrada del juego.
+insert into auth.users (id, email)        values ('00000000-0000-4000-8000-0000000000a1', 'nueva@ceniza.test');
+insert into auth.users (id, is_anonymous) values ('00000000-0000-4000-8000-0000000000a2', true);
+
+-- El trigger de alta (0009) ya ha creado un perfil por cada usuario con nombre generado.
+-- Aquí se renombran a algo reconocible en los asertos: `do update` y no `do nothing`,
+-- porque la fila ya existe. Que el seed tenga que hacer esto **es la prueba** de que el
+-- trigger corre — si dejara de correr, este `insert` volvería a ser el que crea la fila y
+-- nadie se enteraría; por eso hay además un test explícito del alta automática.
 insert into public.profiles (id, display_name, locale, faction_id) values
   ('00000000-0000-4000-8000-000000000000', 'Asiento Cero',  'es', 'vantera'),
   ('00000000-0000-4000-8000-000000000001', 'Asiento Uno',   'es', 'koldvik'),
   ('00000000-0000-4000-8000-000000000002', 'Asiento Dos',   'en', 'saranth'),
-  ('00000000-0000-4000-8000-000000000009', 'Forastera',     'es', 'tarn');
+  ('00000000-0000-4000-8000-000000000009', 'Forastera',     'es', 'tarn')
+on conflict (id) do update
+  set display_name = excluded.display_name,
+      locale       = excluded.locale,
+      faction_id   = excluded.faction_id;
 
 -- Bancos distintos: si un test de fuga leyera «el ash_bank de otro» y todos valieran
 -- lo mismo, no se notaría.

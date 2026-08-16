@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { SignInForm } from '@/components/SignInForm';
-import { Legend, Masthead, Muted, Rule, Screen } from '@/components/ui/Shell';
+import { Legend, Masthead, Muted, Notice, Rule, Screen } from '@/components/ui/Shell';
 import { currentViewer, guestLocale } from '@/lib/server/session';
 import { DICTIONARIES, translator } from '@/lib/i18n/index';
 
@@ -10,11 +10,18 @@ import { DICTIONARIES, translator } from '@/lib/i18n/index';
  * No es solo comodidad. Una contraseña obliga a gestionar recuperación, rotación y
  * fugas, y esta cuenta solo guarda progresión — nada que justifique esa superficie.
  */
-export default async function Page() {
+export default async function Page({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
   if (await currentViewer()) redirect('/');
 
   const locale = await guestLocale();
   const t = translator(locale);
+  // El callback redirige aquí con `?error=link` cuando el enlace estaba caducado o ya
+  // usado. Sin decirlo, se vuelve a ver el formulario y parece que no pasó nada.
+  const linkFailed = (await searchParams).error === 'link';
 
   return (
     <Screen>
@@ -25,6 +32,7 @@ export default async function Page() {
           <Legend>{t('auth.title')}</Legend>
           <Muted>{t('auth.intro')}</Muted>
         </div>
+        {linkFailed && <Notice tone="error">{t('error.link_expired')}</Notice>}
         {/* Los textos viajan al cliente ya resueltos: el componente no conoce el idioma. */}
         <SignInForm messages={DICTIONARIES[locale]} />
       </div>

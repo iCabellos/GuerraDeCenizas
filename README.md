@@ -270,6 +270,7 @@ npm run dev                    # http://localhost:3000
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | público | Clave publicable (`sb_publishable_…`). Solo puede lo que permita la RLS. |
 | `SUPABASE_SECRET_KEY` | **secreto — solo servidor** | Clave secreta (`sb_secret_…`). Usada exclusivamente en Route Handlers para la resolución de turnos. **Nunca** en código de cliente. |
 | `CRON_SECRET` | **secreto** | Compartido con `pg_cron` para autenticar el disparador de resolución. |
+| `NEXT_PUBLIC_SITE_URL` | público | Dominio público, sin barra final. Es el `redirect_to` del enlace mágico; tiene que estar en la lista blanca de `supabase/config.toml`. |
 
 Los nombres antiguos —`NEXT_PUBLIC_SUPABASE_ANON_KEY` y `SUPABASE_SERVICE_ROLE_KEY`, con
 claves JWT `eyJ…`— siguen funcionando: es la misma clave con otro nombre y el mismo rol de

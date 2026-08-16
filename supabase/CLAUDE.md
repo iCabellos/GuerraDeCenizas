@@ -37,8 +37,37 @@ afecte al juego: se muta desde Route Handlers con `service_role`, no desde el cl
 npm run db:reset            # Postgres efímero local: shim + migraciones (tools/pg)
 npm run db:psql             # consola contra esa base
 npm run test:security       # los tests de RLS — BLOQUEANTES
-npx supabase db push        # aplica al proyecto remoto
+npx supabase db push        # aplica al proyecto remoto (normalmente lo hace el pipeline)
 ```
+
+**Al proyecto real las aplica el despliegue**, no una persona: `.github/workflows/deploy.yml`
+en cada cambio bajo `supabase/` que llegue a `main`, y comprueba después que `game_states`
+sigue con RLS activa y cero políticas. Si eso falla, el despliegue se para.
+
+## `config.toml` es la fuente de la verdad, el panel es el resultado
+
+Los ajustes de Auth —Site URL, lista blanca de redirecciones, sesiones anónimas— y los
+secretos del vault viven en [`config.toml`](config.toml) y los empuja el mismo workflow
+([ADR-032](../docs/DECISIONS.md#adr-032)). **Un cambio hecho a mano en el panel se pierde
+en el siguiente despliegue.**
+
+Nació de un fallo que no dejaba rastro: el enlace de confirmación llevaba a
+`http://localhost:3000` porque Supabase sustituye **en silencio** un `redirect_to` que no
+esté en su lista blanca por la Site URL. Nada fallaba, ni había test que pudiera cazarlo,
+porque el ajuste no estaba en el repositorio.
+
+⚠️ `config push` empuja el bloque entero: **lo que no declares se manda con el valor por
+defecto del CLI**, no se deja como está. Al añadir un ajuste, escríbelo aunque coincida
+con el defecto.
+
+## Al añadir un trigger o una función `security definer`
+
+`revoke all on function ... from public, anon, authenticated;` — **nombrando a los tres**.
+`revoke ... from public` no deshace el GRANT explícito que Supabase concede a `anon` y
+`authenticated` al crear la función. Hay un test que enumera todas las funciones
+`security definer` invocables por `authenticated` y exige que la lista sea exactamente la
+esperada; ya ha cazado esto dos veces, una de ellas con `begin_resolution`, que devuelve
+el estado autoritativo entero.
 
 El arnés local **no usa Docker**: levanta un clúster con los binarios del sistema y
 habla por socket unix. Ver [`tools/pg/README.md`](../tools/pg/README.md).

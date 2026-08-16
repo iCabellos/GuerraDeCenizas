@@ -34,9 +34,14 @@ function freshAccounts(): void {
                       public.profiles restart identity cascade;
        delete from auth.users;`);
   PROFILES.forEach((id, index) => {
+    // El alta en `auth.users` ya crea el perfil (migración 0009), así que esto lo
+    // renombra en vez de crearlo. `do update` y no `do nothing`: los asertos de abajo
+    // hablan de «Jugadora N» y de una facción concreta.
     sql(`insert into auth.users (id, email) values ('${id}', 'j${index}@ceniza.test');
          insert into public.profiles (id, display_name, faction_id)
-         values ('${id}', 'Jugadora ${index}', '${['vantera', 'koldvik', 'saranth'][index]}');`);
+         values ('${id}', 'Jugadora ${index}', '${['vantera', 'koldvik', 'saranth'][index]}')
+         on conflict (id) do update
+           set display_name = excluded.display_name, faction_id = excluded.faction_id;`);
   });
 }
 
@@ -278,7 +283,8 @@ describe('enviar órdenes', () => {
     sql(`insert into auth.users (id, email)
          values ('00000000-0000-4000-8000-0000000000ff', 'nadie@ceniza.test');
          insert into public.profiles (id, display_name)
-         values ('00000000-0000-4000-8000-0000000000ff', 'Forastera')`);
+         values ('00000000-0000-4000-8000-0000000000ff', 'Forastera')
+         on conflict (id) do update set display_name = excluded.display_name`);
 
     const sent = await rpc('submit_orders', {
       p_game: gameId, p_profile: '00000000-0000-4000-8000-0000000000ff', p_turn: 0,

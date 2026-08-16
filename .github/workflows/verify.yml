@@ -1,0 +1,65 @@
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║ Verificación — lo mismo que `npm run verify`, en cada cambio                  ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+#
+# El repositorio ya tenía el comando; lo que no tenía era quien lo ejecutara. Hasta ahora
+# la única red de seguridad era acordarse, y las reglas bloqueantes del proyecto —los
+# tests de RLS, la regla de oro de la metaprogresión, `core` sin dependencias— dependían
+# de eso. Una regla bloqueante que depende de la memoria de alguien no es bloqueante.
+
+name: verify
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Un push que llega mientras corre el anterior cancela al anterior: lo que importa es si
+# la punta de la rama está bien, no si lo estaba hace dos commits.
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Los tests de RLS son bloqueantes y corren contra un Postgres **real**: un doble no
+      # prueba nada cuando lo que se está probando es la base de datos (ADR-024). El arnés
+      # levanta un clúster efímero con los binarios del sistema, sin Docker — y los
+      # runners de GitHub traen PostgreSQL instalado, así que no hay nada que preparar.
+      - name: Comprobar que hay binarios de PostgreSQL
+        run: |
+          ls -d /usr/lib/postgresql/*/bin
+          "$(ls -d /usr/lib/postgresql/*/bin | tail -1)"/initdb --version
+
+      # El mismo comando que se ejecuta antes de un commit, sin partirlo en pasos: si
+      # aquí pasara algo que en local no, la diferencia sería el propio workflow.
+      - run: npm run verify
+
+      # `verify` termina compilando, así que llegados aquí existe el bundle de cliente.
+      # Esta es la última línea de defensa de la niebla de guerra: si la clave de servicio
+      # acabara en el navegador, `game_states` se leería entero desde las herramientas de
+      # desarrollo. `check-deps` mira el fuente; esto mira lo que de verdad se sirve.
+      - name: La clave de servicio no está en el bundle de cliente
+        run: |
+          if grep -rlE 'SUPABASE_SERVICE_ROLE_KEY|SUPABASE_SECRET_KEY|SERVICE_ROLE' \
+               apps/web/.next/static/; then
+            echo "::error::La clave de servicio aparece en el bundle de cliente"
+            exit 1
+          fi
+          echo "✓ el rol de servicio no llega al navegador"

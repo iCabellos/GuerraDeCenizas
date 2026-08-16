@@ -1,0 +1,104 @@
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║ Configuración del proyecto Supabase, versionada                              ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+#
+# El despliegue empuja este archivo con `supabase config push`, así que **este archivo es
+# la fuente de la verdad y el panel es el resultado**. Un cambio hecho a mano en el panel
+# se pierde en el siguiente despliegue: si hay que cambiar algo, se cambia aquí.
+#
+# Existe por un fallo real. El correo de alta llegaba con
+# `redirect_to=http://localhost:3000` y confirmar la cuenta te mandaba a una máquina que
+# no existe. La causa no estaba en el código: Supabase solo acepta un `redirect_to` que
+# esté en su lista blanca, y si no lo está lo sustituye **en silencio** por su Site URL,
+# que de fábrica es `http://localhost:3000`. Es decir, era un ajuste del panel que nadie
+# había tocado, invisible desde el repositorio, y que ningún test podía cazar.
+#
+# ⚠ `config push` empuja el bloque entero: lo que no esté aquí se manda con el valor por
+# defecto del CLI, no se deja como está en el panel. Por eso lo de abajo es explícito
+# aunque coincida con el defecto — un valor omitido es un valor decidido por descuido.
+
+project_id = "guerra-de-cenizas"
+
+# ────────────────────────────── Los secretos del reloj ────────────────────────
+#
+# `supabase db push` los crea en el vault a partir de estas entradas. Hasta ahora eran dos
+# `select vault.create_secret(...)` copiados a mano en el SQL Editor «una sola vez por
+# proyecto» (migración 0007), que es la clase de paso que se olvida en el proyecto
+# siguiente y deja el reloj parado sin que nada dé error: `pg_cron` llama, el `Authorization`
+# va vacío, `/api/cron/resolve-due` responde 401 y las partidas con ausencias se quedan
+# quietas. Ahora los pone el despliegue.
+#
+# Los valores no están aquí: son variables de entorno que el workflow toma de los secretos
+# del repositorio. `gdc_cron_secret` tiene que valer **exactamente lo mismo** que
+# `CRON_SECRET` en Vercel; si no coinciden, el reloj queda parado igual.
+[db.vault]
+gdc_resolve_url = "env(GDC_RESOLVE_URL)"
+gdc_cron_secret = "env(GDC_CRON_SECRET)"
+
+[auth]
+enabled = true
+
+# La URL a la que Supabase manda los correos y contra la que valida los redirect.
+# La inyecta el despliegue desde la variable GDC_SITE_URL (ver .github/workflows/deploy.yml).
+site_url = "env(GDC_SITE_URL)"
+
+# Los despliegues de preview de Vercel llevan un dominio distinto en cada rama, así que se
+# permiten por comodín. `localhost` sigue en la lista porque `npm run dev` también manda
+# enlaces mágicos, y sin esto dejarían de funcionar en local.
+#
+# Cada entrada es una variable **entera**, no una plantilla. `env(...)` a mitad de cadena
+# podría funcionar, pero no lo puedo comprobar sin empujar contra el proyecto real, y una
+# lista blanca de redirecciones mal formada no falla: acepta menos de la cuenta y manda a
+# la persona a la Site URL, que es exactamente el fallo que se está arreglando.
+additional_redirect_urls = [
+  "http://localhost:3000/auth/callback",
+  "http://127.0.0.1:3000/auth/callback",
+  "env(GDC_CALLBACK_URL)",
+  "env(GDC_PREVIEW_URL_PATTERN)",
+]
+
+# Una hora. Un turno en cadencia Diaria dura doce, así que el token caduca durante la
+# partida por diseño: lo renueva `proxy.ts` en cada navegación.
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+refresh_token_reuse_interval = 10
+
+enable_signup = true
+
+# ─────────────────────────────────── Invitados ────────────────────────────────
+#
+# Una sesión anónima es una fila real en `auth.users`: el trigger de alta (migración 0009)
+# le crea perfil y Ciudad igual que a cualquiera, y RLS la trata igual porque su rol de
+# Postgres también es `authenticated`. Lo único que no tiene es forma de identificarse, y
+# de ahí sale la propiedad que se pedía: la sesión vive en la cookie de ese navegador y no
+# hay manera de entrar con ella desde otro dispositivo.
+enable_anonymous_sign_ins = true
+
+enable_manual_linking = false
+minimum_password_length = 8
+password_requirements = ""
+
+[auth.rate_limit]
+# Un alta anónima no cuesta nada de hacer, así que sin límite es una forma cómoda de
+# llenar `auth.users` desde una sola IP. 30/hora deja pasar a una persona que prueba el
+# juego y para el goteo automático. Si hiciera falta más, la respuesta es un captcha en
+# [auth.captcha], no subir el número.
+anonymous_users = 30
+email_sent = 2
+sms_sent = 30
+token_refresh = 150
+sign_in_sign_ups = 30
+token_verifications = 30
+web3 = 30
+
+[auth.email]
+enable_signup = true
+double_confirm_changes = true
+# Activado porque DEPLOYMENT §2.2 ya lo daba por activado. Con enlace mágico la diferencia
+# es solo qué plantilla de correo se usa —en los dos casos hay que abrir el buzón para
+# entrar—, así que no hay motivo para contradecir lo que ya estaba escrito.
+enable_confirmations = true
+secure_password_change = false
+max_frequency = "60s"
+otp_length = 6
+otp_expiry = 3600

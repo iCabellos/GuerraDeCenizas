@@ -14,6 +14,23 @@ Este proyecto sigue [SemVer](https://semver.org/lang/es/).
 
 ### Corregido
 
+- **El enlace del correo de alta llevaba a `http://localhost:3000`.** Supabase solo acepta
+  un `redirect_to` que esté en su lista blanca y, cuando no lo está, lo sustituye **en
+  silencio** por su Site URL — de fábrica, localhost. No había error en ningún log ni test
+  que pudiera cazarlo, porque el ajuste no vivía en el repositorio. Hacen falta las dos
+  mitades: `lib/site-url.ts` pide la URL correcta y `supabase/config.toml` hace que
+  Supabase la acepte, empujado por el pipeline.
+
+- **Entrar dejaba la cuenta en un bucle.** El enlace creaba el usuario en `auth.users`
+  pero nadie creaba el perfil, y sin perfil `/` redirige a `/sign-in`, que vuelve a
+  mostrar el formulario. Ahora el perfil lo crea un trigger sobre `auth.users`
+  ([ADR-030](docs/DECISIONS.md#adr-030)), con backfill para las cuentas ya atrapadas.
+
+- **`/auth/callback` solo entendía uno de los dos formatos de enlace de Supabase.** Con
+  `?code=` funcionaba; con `?token_hash=&type=` —el de las plantillas que usan
+  `{{ .TokenHash }}`— redirigía bien y no iniciaba sesión. Ahora acepta los dos, y avisa
+  cuando el enlace ha caducado en vez de volver al formulario sin decir nada.
+
 - **Copiar las variables que sugiere el panel de Supabase dejaba el sitio caído.** Supabase
   ha cambiado sus claves de API: `sb_publishable_…` y `sb_secret_…` sustituyen a los JWT
   `anon` y `service_role`, y el panel propone llamarlas
@@ -35,6 +52,31 @@ Este proyecto sigue [SemVer](https://semver.org/lang/es/).
   ejecutando `npm run build`: antes podía estar en verde con el despliegue roto.
 
 ### Añadido
+
+**Pipeline de despliegue** — `.github/workflows/`
+- `verify.yml`: `npm run verify` en cada pull request. El comando existía desde el
+  principio; lo que no había era **quien lo ejecutara**, así que las reglas bloqueantes del
+  proyecto dependían de que alguien se acordara. Añade un paso que busca la clave de
+  servicio en el bundle **compilado**: `check:deps` mira el fuente, esto mira lo que se
+  sirve al navegador.
+- `deploy.yml`: migraciones, ajustes de Auth y secretos del vault contra el proyecto real,
+  y **comprueba el resultado** — incluido que `game_states` sigue con RLS activa y cero
+  políticas, que para el despliegue si falla.
+- `supabase/config.toml` versionado: es la fuente de la verdad y el panel es el resultado
+  ([ADR-032](docs/DECISIONS.md#adr-032)). Sustituye tres pasos manuales que compartían lo
+  peor que puede tener un paso manual: **no fallaban ruidosamente**.
+
+**Entrar sin cuenta** — [ADR-031](docs/DECISIONS.md#adr-031)
+- Una sesión anónima de Supabase, no un camino aparte: crea una fila real en `auth.users`,
+  el trigger de alta le hace perfil y Ciudad como a cualquiera, y RLS la trata igual porque
+  su rol de Postgres también es `authenticated`. Cero código de autorización nuevo.
+- Sin correo no hay forma de identificarse, así que la sesión vive en ese navegador y en
+  ninguno más. No hay que implementar la limitación: es lo que queda cuando no hay
+  credencial. Se avisa **antes** de entrar, debajo del botón.
+- `profiles.is_guest`, no escribible desde el cliente: si lo fuera, la marca no
+  significaría nada.
+- 13 tests contra el Postgres real: el alta, la marca, y que el trigger `security definer`
+  no haya abierto nada de rebote.
 
 **Esquema de base de datos y RLS** — `supabase/migrations/`
 - Seis migraciones: cuentas y metaprogresión, partidas y asientos, estado y órdenes,

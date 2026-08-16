@@ -26,10 +26,14 @@ beforeEach(() => {
                       public.cities, public.profiles restart identity cascade;
        delete from auth.users;`);
   PROFILES.forEach((id, index) => {
+    // El perfil ya existe: lo crea el trigger de alta al insertar en `auth.users`
+    // (migración 0009). Esto lo renombra para que los asertos puedan nombrarlo.
     sql(`insert into auth.users (id, email) values ('${id}', 'q${index}@ceniza.test');
          insert into public.profiles (id, display_name, faction_id)
          values ('${id}', 'Jugadora ${index}',
-                 '${['vantera', 'koldvik', 'saranth', 'meridia', 'oshara', 'tarn'][index]}')`);
+                 '${['vantera', 'koldvik', 'saranth', 'meridia', 'oshara', 'tarn'][index]}')
+         on conflict (id) do update
+           set display_name = excluded.display_name, faction_id = excluded.faction_id`);
   });
 });
 

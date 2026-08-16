@@ -116,5 +116,10 @@
   "gallery.intro": "QA visual: silueta, escala y coherencia. Solo en desarrollo.",
   "a11y.city": "Tu ciudad",
   "a11y.searching": "Buscando campaña",
-  "a11y.cancel": "Cancelar búsqueda"
+  "a11y.cancel": "Cancelar búsqueda",
+  "auth.guest": "Entrar sin cuenta",
+  "auth.guestEntering": "Entrando…",
+  "auth.guestWarning": "Tu progreso se queda en este dispositivo. Sin correo no hay forma de recuperarlo en otro.",
+  "error.guest_unavailable": "Ahora mismo no se puede entrar sin cuenta.",
+  "error.link_expired": "Ese enlace ya no vale. Pide otro."
 }

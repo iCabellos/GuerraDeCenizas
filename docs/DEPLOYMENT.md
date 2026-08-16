@@ -9,6 +9,7 @@
 
 1. [Lo que hay que crear](#1-lo-que-hay-que-crear)
 2. [Supabase](#2-supabase)
+2bis. [El pipeline](#2-bis-el-pipeline)
 3. [Vercel](#3-vercel)
 4. [El reloj](#4-el-reloj)
 5. [Comprobación posterior](#5-comprobación-posterior)
@@ -32,6 +33,9 @@ Postgres y el empuje lo hace Realtime sobre las mismas tablas.
 ## 2. Supabase
 
 ### 2.1 Migraciones
+
+**Las aplica el pipeline** ([§2 bis](#2-bis-el-pipeline)) en cada cambio bajo `supabase/`
+que llegue a `main`. A mano, para un proyecto nuevo o para depurar:
 
 ```bash
 npx supabase link --project-ref TU-REF
@@ -60,21 +64,24 @@ la niebla de guerra acaba de dejar de existir.
 
 ### 2.2 Auth
 
-Panel → Authentication → Providers:
+**Esto ya no se toca en el panel.** Vive en [`supabase/config.toml`](../supabase/config.toml)
+y lo empuja el pipeline con `supabase config push`. El panel es el resultado, no la fuente:
+un cambio hecho a mano allí se pierde en el siguiente despliegue.
 
-- **Email** activado, **Confirm email** activado.
-- Desactivar todo lo demás. Cada proveedor añadido es superficie que hay que mantener.
+| Ajuste | Valor | Por qué |
+|---|---|---|
+| `site_url` | el dominio de producción | Es la lista blanca de redirecciones **y** el destino de respaldo |
+| `additional_redirect_urls` | callback de producción, comodín de preview, `localhost` | Los preview de Vercel cambian de dominio en cada rama |
+| `enable_anonymous_sign_ins` | `true` | El modo invitado |
+| `enable_confirmations` | `true` | Ya estaba así antes de versionarlo |
 
-Panel → Authentication → URL Configuration:
-
-```
-Site URL       https://TU-APP.vercel.app
-Redirect URLs  https://TU-APP.vercel.app/auth/callback
-               http://localhost:3000/auth/callback
-```
-
-Sin la URL de retorno en la lista, el enlace del correo lleva a una pantalla de error de
-Supabase y el jugador no tiene forma de saber por qué.
+**Este ajuste fue un fallo real y silencioso.** El correo de alta llegaba con
+`redirect_to=http://localhost:3000`: confirmar la cuenta mandaba a una máquina que no
+existe. La causa no estaba en el código — Supabase **solo acepta un `redirect_to` que esté
+en su lista blanca**, y cuando no lo está lo sustituye sin avisar por la Site URL, que de
+fábrica es `http://localhost:3000`. No hay error en ningún log, no hay test que lo pueda
+cazar y el enlace parece correcto. Por eso la configuración está ahora en el repositorio:
+para que la próxima vez el fallo sea imposible en lugar de invisible.
 
 ### 2.3 Realtime
 
@@ -86,6 +93,68 @@ ha resuelto** hasta que recarga.
 `game_states` **no** está en la publicación, y eso es deliberado. Realtime respeta RLS,
 así que tampoco filtraría nada — pero una tabla que nadie puede leer no tiene por qué
 estar publicada.
+
+---
+
+## 2 bis. El pipeline
+
+Todo lo de arriba —migraciones, ajustes de Auth y los secretos del reloj— lo aplica
+[`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) cuando llega a `main` un
+cambio bajo `supabase/`. La aplicación la sigue desplegando Vercel por su cuenta; este
+workflow es la mitad que Vercel no toca.
+
+**Por qué automatizarlo y no dejarlo documentado.** Los tres pasos manuales que sustituye
+comparten una propiedad desagradable: **no fallan ruidosamente**.
+
+| Si falta | Qué se ve | Qué pasa de verdad |
+|---|---|---|
+| Migraciones | la aplicación arranca | se cae al primer `select` |
+| `site_url` | el correo llega y el enlace parece bueno | te manda a `http://localhost:3000` |
+| Secretos del vault | `pg_cron` late, sin errores | llama con `Authorization` vacío, recibe 401, y las partidas con ausencias no avanzan |
+
+Ninguno de los tres lo puede cazar un test, porque ninguno vive en el repositorio.
+
+### Qué hace, en orden
+
+1. Comprueba que están las seis piezas de configuración. Falla **antes** de tocar nada y
+   dice cuál falta por su nombre — lo mismo que hace `/api/health` para la aplicación.
+2. `supabase db push --dry-run`, para dejar en el log qué se va a aplicar.
+3. `supabase db push`: migraciones **y** los secretos del vault, que salen de `[db.vault]`
+   en `config.toml`.
+4. `supabase config push`: `site_url`, la lista blanca de redirecciones y las sesiones
+   anónimas.
+5. Comprueba el resultado: que `pg_cron` tiene el trabajo programado, que el vault tiene
+   sus dos secretos y que **`game_states` sigue con RLS activa y cero políticas**. Esta
+   última para el despliegue si falla: es donde vive la niebla de guerra
+   ([ADR-006](DECISIONS.md#adr-006)), y una política añadida por descuido no rompe ningún
+   test — solo enseña la partida entera a todo el mundo.
+
+### Lo que hay que configurar una vez
+
+En **Settings → Environments → `production`**:
+
+| | Nombre | Valor |
+|---|---|---|
+| Secret | `SUPABASE_ACCESS_TOKEN` | token personal, panel de Supabase → Account → Access Tokens |
+| Secret | `SUPABASE_DB_PASSWORD` | la contraseña de la base de datos |
+| Secret | `CRON_SECRET` | **el mismo valor** que `CRON_SECRET` en Vercel |
+| Variable | `SUPABASE_PROJECT_REF` | la referencia del proyecto |
+| Variable | `GDC_SITE_URL` | `https://TU-APP.vercel.app`, sin barra final |
+| Variable | `GDC_PREVIEW_URL_PATTERN` | `https://TU-APP-*.vercel.app/**` |
+
+`CRON_SECRET` tiene que coincidir en los dos sitios. Son los dos extremos del mismo
+secreto compartido: si no coinciden, el reloj queda parado y no lo dice nadie.
+
+### Verificación
+
+[`.github/workflows/verify.yml`](../.github/workflows/verify.yml) ejecuta `npm run verify`
+en cada pull request. Es el mismo comando de siempre; lo que no había era quien lo
+ejecutara, así que las reglas bloqueantes del proyecto —los tests de RLS, la regla de oro
+de la metaprogresión, `core` sin dependencias— dependían de que alguien se acordara. Una
+regla bloqueante que depende de la memoria no es bloqueante.
+
+Añade un paso más al final: buscar la clave de servicio en el bundle compilado.
+`check:deps` mira el código fuente; esto mira lo que de verdad se sirve al navegador.
 
 ---
 
@@ -155,7 +224,13 @@ Copiar de [`.env.example`](../.env.example):
 | `NEXT_PUBLIC_SUPABASE_URL` | todos | pública |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | todos | pública, RLS la contiene |
 | `SUPABASE_SECRET_KEY` | todos | ⚠ **nunca** con prefijo `NEXT_PUBLIC_` |
-| `CRON_SECRET` | todos | cadena larga y aleatoria |
+| `CRON_SECRET` | todos | cadena larga y aleatoria; **el mismo valor** que en el pipeline |
+| `NEXT_PUBLIC_SITE_URL` | producción | el dominio público, sin barra final |
+
+`NEXT_PUBLIC_SITE_URL` es la mitad del cliente del arreglo del enlace a localhost: es la
+URL que se pide como `redirect_to`. La otra mitad —que Supabase la acepte— la pone
+`config.toml` ([§2.2](#22-auth)). Si se omite, se usa el dominio de producción que Vercel
+inyecta sola, que casi siempre es el correcto; declararla explícitamente evita el «casi».
 
 **Las dos generaciones de claves de Supabase valen.** El panel sugiere hoy
 `sb_publishable_…` y `sb_secret_…`; los proyectos anteriores tienen JWT (`eyJ…`) bajo los
@@ -182,7 +257,9 @@ Vercel Hobby permite **un cron diario**, lo que no sirve para turnos de tres min
 reloj vive en Supabase ([ADR-014](DECISIONS.md#adr-014)): `pg_cron` llama cada minuto a
 `/api/cron/resolve-due` a través de `pg_net`.
 
-Una sola vez por proyecto, desde el SQL Editor:
+**Los dos secretos los pone el pipeline** ([§2 bis](#2-bis-el-pipeline)) desde
+`[db.vault]` en `config.toml`, y comprueba después que están. A mano, si hiciera falta,
+desde el SQL Editor:
 
 ```sql
 select vault.create_secret('https://TU-APP.vercel.app/api/cron/resolve-due',
@@ -262,6 +339,9 @@ curl -s "$SUPABASE_URL/rest/v1/game_states?select=*" \
 | Síntoma | Causa probable |
 |---|---|
 | El enlace del correo lleva a un error de Supabase | Falta la URL en *Redirect URLs* |
+| El enlace del correo lleva a `http://localhost:3000` | `site_url` sin configurar. Supabase sustituye **en silencio** un `redirect_to` que no esté en la lista blanca por su Site URL, y de fábrica es localhost. Lo arregla `config.toml` + el pipeline ([§2.2](#22-auth)) |
+| «Entrar sin cuenta» no hace nada | `enable_anonymous_sign_ins` en `false`. Está en `config.toml`; lo empuja el pipeline |
+| Entras y vuelves a la pantalla de acceso, en bucle | Usuario en `auth.users` sin fila en `profiles`. Lo crea un trigger desde la migración `0009`; si la base es anterior, aplicar migraciones |
 | El turno resuelve pero nadie se entera hasta recargar | `player_views` no está en `supabase_realtime` |
 | `Internal Server Error` en todo el sitio | Falta alguna variable de entorno. **Consulta `/api/health`**: dice cuáles en una petición. Falla a propósito — un servidor a medias que responde 500 en mitad de una partida es mucho peor de depurar |
 | Los turnos vencidos no resuelven | Secretos del *vault* mal puestos, o `CRON_SECRET` distinto entre Vercel y Supabase |
