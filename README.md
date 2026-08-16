@@ -267,13 +267,17 @@ npm run dev                    # http://localhost:3000
 | Variable | Ámbito | Descripción |
 |---|---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | público | URL del proyecto Supabase |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | público | Clave anónima. Solo puede lo que permita la RLS. |
-| `SUPABASE_SERVICE_ROLE_KEY` | **secreto — solo servidor** | Usada exclusivamente en Route Handlers para la resolución de turnos. **Nunca** en código de cliente. |
-| `TURN_RESOLVER_SECRET` | **secreto** | HMAC compartido con `pg_cron` para autenticar el disparador de resolución. |
-| `NEXT_PUBLIC_DEFAULT_LOCALE` | público | `es` o `en` |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | público | Clave publicable (`sb_publishable_…`). Solo puede lo que permita la RLS. |
+| `SUPABASE_SECRET_KEY` | **secreto — solo servidor** | Clave secreta (`sb_secret_…`). Usada exclusivamente en Route Handlers para la resolución de turnos. **Nunca** en código de cliente. |
+| `CRON_SECRET` | **secreto** | Compartido con `pg_cron` para autenticar el disparador de resolución. |
 
-> ⚠️ Cualquier variable con prefijo `NEXT_PUBLIC_` acaba en el navegador. La clave
-> `service_role` **nunca** lleva ese prefijo. Hay un test de CI que falla si aparece.
+Los nombres antiguos —`NEXT_PUBLIC_SUPABASE_ANON_KEY` y `SUPABASE_SERVICE_ROLE_KEY`, con
+claves JWT `eyJ…`— siguen funcionando: es la misma clave con otro nombre y el mismo rol de
+Postgres detrás. Si defines las dos de un par, gana la nueva. `GET /api/health` responde
+qué falta, por nombre y nunca por valor.
+
+> ⚠️ Cualquier variable con prefijo `NEXT_PUBLIC_` acaba en el navegador. La clave secreta
+> **nunca** lleva ese prefijo. Hay un test de CI que falla si aparece.
 
 ### Base de datos
 

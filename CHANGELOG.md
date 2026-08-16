@@ -14,6 +14,18 @@ Este proyecto sigue [SemVer](https://semver.org/lang/es/).
 
 ### Corregido
 
+- **Copiar las variables que sugiere el panel de Supabase dejaba el sitio caído.** Supabase
+  ha cambiado sus claves de API: `sb_publishable_…` y `sb_secret_…` sustituyen a los JWT
+  `anon` y `service_role`, y el panel propone llamarlas
+  `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` y `SUPABASE_SECRET_KEY`. El código solo leía los
+  nombres viejos, así que seguir esa sugerencia daba «Internal Server Error» sin pista.
+  Ahora se aceptan **los dos nombres** de cada clave, con el nuevo por delante
+  ([ADR-029](docs/DECISIONS.md#adr-029)). Es un cambio de nombre, no de rol de Postgres:
+  ninguna política de RLS ni ninguno de los 43 tests de seguridad cambia.
+  La regla de `check:deps` vigila también el nombre nuevo de la clave secreta —si solo
+  mirara el viejo, bastaría con usar el nuevo para colarla al cliente— y un test comprueba
+  que ningún alias suyo lleva prefijo `NEXT_PUBLIC_`.
+
 - **El despliegue en Vercel fallaba con `Module not found: './art/generated'`.** Los
   componentes de arte son un artefacto generado y están en `.gitignore`, pero solo
   `npm run verify` los generaba: `npm run build` a secas —el comando que ejecuta el

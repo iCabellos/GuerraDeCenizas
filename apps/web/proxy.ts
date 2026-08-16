@@ -17,8 +17,12 @@ import { NextResponse, type NextRequest } from 'next/server';
 export default async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
 
+  // Los dos nombres de la clave publicable, por lo mismo que en `lib/supabase-browser.ts`:
+  // Next solo sustituye los accesos escritos literalmente.
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const anonKey =
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   /**
    * Sin configuración, se deja pasar la petición.

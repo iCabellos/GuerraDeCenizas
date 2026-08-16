@@ -153,14 +153,26 @@ Copiar de [`.env.example`](../.env.example):
 | Variable | Entorno | Notas |
 |---|---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | todos | pública |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | todos | pública, RLS la contiene |
-| `SUPABASE_SERVICE_ROLE_KEY` | todos | ⚠ **nunca** con prefijo `NEXT_PUBLIC_` |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | todos | pública, RLS la contiene |
+| `SUPABASE_SECRET_KEY` | todos | ⚠ **nunca** con prefijo `NEXT_PUBLIC_` |
 | `CRON_SECRET` | todos | cadena larga y aleatoria |
 
-`SUPABASE_SERVICE_ROLE_KEY` omite RLS: con ella se lee `game_states` entero. Si acabara
-en el bundle de cliente, la niebla de guerra sería decorativa para cualquiera que abra
-las herramientas de desarrollo. Hay una regla estructural (`npm run check:deps`) que falla
-si aparece fuera de `apps/web/lib/server/`.
+**Las dos generaciones de claves de Supabase valen.** El panel sugiere hoy
+`sb_publishable_…` y `sb_secret_…`; los proyectos anteriores tienen JWT (`eyJ…`) bajo los
+nombres `NEXT_PUBLIC_SUPABASE_ANON_KEY` y `SUPABASE_SERVICE_ROLE_KEY`. Cambia el nombre,
+no el rol —la publicable sigue siendo `anon` y la secreta `service_role`—, así que
+`apps/web/lib/server/env.ts` acepta los cuatro nombres y prefiere el nuevo si están los
+dos. No hace falta tocar ninguna política de RLS.
+
+La clave secreta omite RLS: con ella se lee `game_states` entero. Si acabara en el bundle
+de cliente, la niebla de guerra sería decorativa para cualquiera que abra las herramientas
+de desarrollo. Hay una regla estructural (`npm run check:deps`) que falla si cualquiera de
+sus dos nombres aparece fuera de `apps/web/lib/server/`, y un test que comprueba que
+ninguno lleva prefijo `NEXT_PUBLIC_`.
+
+**Si una clave se expone —un pantallazo, un chat, un log—, se rota.** Panel → *API Keys* →
+*Rotate*, y se actualiza el valor en Vercel. Rotar la secreta es especialmente urgente:
+quien la tenga lee el estado completo de todas las partidas con una petición HTTP.
 
 ---
 

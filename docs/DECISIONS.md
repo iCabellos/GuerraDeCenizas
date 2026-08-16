@@ -36,6 +36,7 @@
 | [026](#adr-026) | Una sola vista: la ciudad, y un botón | aceptada |
 | [027](#adr-027) | La interfaz no explica: enseña | aceptada |
 | [028](#adr-028) | Se evalúa Turso y se descarta | aceptada |
+| [029](#adr-029) | Las claves de Supabase se aceptan por sus dos nombres | aceptada |
 
 ---
 
@@ -813,6 +814,56 @@ dejar dicho que aquello **no fue culpa de Supabase**: fueron tres problemas enca
 de configuración de Vercel —el `prebuild`, el Root Directory y el Framework Preset—,
 todos documentados en [DEPLOYMENT §6](DEPLOYMENT.md#6-lo-que-puede-salir-mal). Cambiar de
 base de datos por eso habría sido arreglar el tejado porque gotea la puerta.
+
+---
+
+<a id="adr-029"></a>
+
+## ADR-029 — Las claves de Supabase se aceptan por sus dos nombres
+**Estado:** aceptada · 2026-08-16
+
+**Contexto.** Supabase ha cambiado su sistema de claves de API. Donde antes había dos JWT
+(`eyJ…`) llamados `anon` y `service_role`, ahora hay `sb_publishable_…` y `sb_secret_…`, y
+el panel del proyecto sugiere copiarlas en variables llamadas
+`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` y `SUPABASE_SECRET_KEY`. El código leía únicamente
+los nombres antiguos, así que **seguir la sugerencia del panel dejaba el despliegue con un
+«Internal Server Error» sin más pista**. Es un fallo de configuración silencioso, que es
+justo la clase que ya costó una tarde.
+
+**Decisión.** Cada clave admite **los dos nombres**, con el nuevo primero.
+`apps/web/lib/server/env.ts` resuelve el primero que esté definido; `.env.example`, el
+README y `DEPLOYMENT.md` documentan el nuevo; los antiguos siguen valiendo sin aviso de
+obsolescencia.
+
+**Por qué no basta con renombrar y ya.** Cambiar los nombres a secas rompería cualquier
+despliegue existente en el instante del `git pull` — incluido el de producción, y sin
+error de compilación que lo cace. Aceptar los dos hace que actualizar sea inocuo y que
+empezar de cero funcione copiando lo que dice el panel.
+
+**Lo que no cambia: el rol de Postgres.** La clave publicable sigue autenticando como
+`anon` y la secreta como `service_role`. Ni una política de RLS, ni el shim de Supabase de
+`tools/pg/`, ni uno solo de los 43 tests de seguridad se ven afectados. Es un cambio de
+nombre, no de modelo de permisos — y conviene dejarlo escrito, porque «Supabase cambió las
+claves» suena a algo que debería obligar a revisar la seguridad, y no lo es.
+
+**Consecuencias.**
+- ✅ Copiar lo que sugiere el panel de Supabase funciona.
+- ✅ Un despliegue con los nombres antiguos sigue arrancando tras actualizar.
+- ✅ La regla estructural de `check-deps.mjs` vigila los **dos** nombres de la clave
+  secreta: si solo mirara el antiguo, bastaría con usar el nuevo para colarla al cliente.
+- ✅ Un test comprueba que ningún alias de la clave secreta lleva prefijo `NEXT_PUBLIC_`.
+  Es la invariante que de verdad importa: ese prefijo la publicaría en el navegador.
+- ⚠️ Dos nombres por clave es más superficie que uno. Se acota a una tabla de cuatro
+  entradas en un único archivo, y `/api/health` informa siempre del nombre nuevo, así que
+  el antiguo no se propaga a documentación ni a mensajes de error.
+
+**Descartado.**
+- **Renombrar sin compatibilidad.** Rompe los despliegues existentes en silencio.
+- **Quedarse solo con los nombres antiguos.** Condena a cada persona que cree un proyecto
+  nuevo a repetir el mismo diagnóstico de diez minutos.
+- **Deducir el nombre por el prefijo del valor** (`sb_` frente a `eyJ`). Adivinar la
+  variable a partir de su contenido es exactamente el tipo de magia que falla el día que
+  Supabase estrene un tercer formato.
 
 ---
 
