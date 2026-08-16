@@ -93,20 +93,36 @@ estar publicada.
 
 ### 3.1 Configuración del proyecto
 
-| Ajuste | Valor |
-|---|---|
-| Framework | Next.js |
-| Root directory | `apps/web` |
-| Install command | `npm install --workspaces --include-workspace-root` |
-| Build command | `npm run build` |
+**La configuración vive en [`vercel.json`](../vercel.json), no en el panel.** Un
+despliegue que depende de ajustes que solo existen en una interfaz web no es
+reproducible: no se revisa en un diff, no se puede volver atrás y nadie sabe que
+cambió.
 
-`build` genera los assets antes de compilar (`prebuild`). Están en `.gitignore` a
-propósito —son un artefacto— así que un clon limpio no los trae y sin ese paso el
-despliegue falla con `Module not found: './art/generated'`.
+```json
+{
+  "framework": "nextjs",
+  "installCommand": "npm install --workspaces --include-workspace-root",
+  "buildCommand": "npm run build",
+  "outputDirectory": "apps/web/.next"
+}
+```
 
-El monorepo usa workspaces de npm y `@gdc/core` se consume **como fuente TypeScript sin
-compilar** ([ADR-022](DECISIONS.md#adr-022)). Por eso el `install` tiene que incluir la
-raíz: sin `--include-workspace-root`, `apps/web` no encuentra el motor.
+Tres cosas que no son evidentes y que ya han roto un despliegue cada una:
+
+- **`--include-workspace-root`.** El monorepo usa workspaces de npm y `@gdc/core` se
+  consume como fuente TypeScript sin compilar ([ADR-022](DECISIONS.md#adr-022)). Sin esa
+  bandera, `apps/web` no encuentra el motor.
+- **`outputDirectory`.** Con el *Root Directory* del proyecto sin fijar, Vercel construye
+  desde la raíz del repositorio y busca `.next` **ahí**; Next lo deja en `apps/web/.next`.
+  El build sale correcto y el despliegue falla después, al recoger la salida.
+- **El `prebuild`.** `npm run build` genera los assets antes de compilar. Están en
+  `.gitignore` porque son un artefacto, así que un clon limpio no los trae y sin ese paso
+  la compilación falla con `Module not found: './art/generated'`.
+
+> **Alternativa por panel.** Fijar *Root Directory* = `apps/web` con «Include source files
+> outside of the Root Directory» activado también funciona, y es la vía que documenta
+> Vercel para monorepos. Si se elige, `vercel.json` debe moverse a `apps/web/` —
+> Vercel lo busca dentro del *Root Directory*— y el `outputDirectory` deja de hacer falta.
 
 ### 3.2 Variables de entorno
 
