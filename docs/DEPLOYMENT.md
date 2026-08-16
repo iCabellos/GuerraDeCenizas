@@ -93,36 +93,32 @@ estar publicada.
 
 ### 3.1 Configuración del proyecto
 
-**La configuración vive en [`vercel.json`](../vercel.json), no en el panel.** Un
-despliegue que depende de ajustes que solo existen en una interfaz web no es
-reproducible: no se revisa en un diff, no se puede volver atrás y nadie sabe que
-cambió.
+**Root Directory = `apps/web`**, con «Include source files outside of the Root Directory
+in the Build Step» **activado**. Los dos ajustes, no uno.
 
-```json
-{
-  "framework": "nextjs",
-  "installCommand": "npm install --workspaces --include-workspace-root",
-  "buildCommand": "npm run build",
-  "outputDirectory": "apps/web/.next"
-}
-```
+| Ajuste | Valor |
+|---|---|
+| Framework | Next.js (se detecta solo) |
+| Root Directory | `apps/web` |
+| Include files outside Root Directory | ✅ **obligatorio** |
+| Install command | por defecto — Vercel detecta los workspaces e instala en la raíz |
+| Build command | por defecto (`npm run build`) |
 
-Tres cosas que no son evidentes y que ya han roto un despliegue cada una:
+**Por qué el Root Directory no puede quedarse sin fijar.** Vercel trata Next.js como un
+caso especial: espera la aplicación *en* el Root Directory y busca ahí su salida. Sin
+fijarlo, construye desde la raíz del repositorio, la compilación sale correcta y el
+despliegue se cae después al recoger el resultado, porque Next dejó todo en
+`apps/web/.next`. Un `outputDirectory` en `vercel.json` **no** lo arregla — ese ajuste
+existe para proyectos estáticos, no para Next.
 
-- **`--include-workspace-root`.** El monorepo usa workspaces de npm y `@gdc/core` se
-  consume como fuente TypeScript sin compilar ([ADR-022](DECISIONS.md#adr-022)). Sin esa
-  bandera, `apps/web` no encuentra el motor.
-- **`outputDirectory`.** Con el *Root Directory* del proyecto sin fijar, Vercel construye
-  desde la raíz del repositorio y busca `.next` **ahí**; Next lo deja en `apps/web/.next`.
-  El build sale correcto y el despliegue falla después, al recoger la salida.
-- **El `prebuild`.** `npm run build` genera los assets antes de compilar. Están en
-  `.gitignore` porque son un artefacto, así que un clon limpio no los trae y sin ese paso
-  la compilación falla con `Module not found: './art/generated'`.
+**Por qué hace falta la casilla.** Dos cosas del build viven fuera de `apps/web`:
+`packages/core`, porque el motor se consume como fuente TypeScript sin compilar
+([ADR-022](DECISIONS.md#adr-022)), y `tools/assets/`, que genera los componentes de arte
+en el `prebuild`. Sin la casilla, ninguno de los dos llega a la máquina de build.
 
-> **Alternativa por panel.** Fijar *Root Directory* = `apps/web` con «Include source files
-> outside of the Root Directory» activado también funciona, y es la vía que documenta
-> Vercel para monorepos. Si se elige, `vercel.json` debe moverse a `apps/web/` —
-> Vercel lo busca dentro del *Root Directory*— y el `outputDirectory` deja de hacer falta.
+**El `prebuild`.** `npm run build` genera los assets antes de compilar. Están en
+`.gitignore` porque son un artefacto, así que un clon limpio no los trae y sin ese paso la
+compilación falla con `Module not found: './art/generated'`.
 
 ### 3.2 Variables de entorno
 
@@ -214,6 +210,7 @@ curl -s "$SUPABASE_URL/rest/v1/game_states?select=*" \
 | Los turnos vencidos no resuelven | Secretos del *vault* mal puestos, o `CRON_SECRET` distinto entre Vercel y Supabase |
 | Build en Vercel: no encuentra `@gdc/core` | Falta `--include-workspace-root` en el *install* |
 | Build en Vercel: `Module not found: './art/generated'` | El *build command* no pasa por `npm run build`. Los componentes de arte son un artefacto generado y no están versionados; los crea el `prebuild` |
+| Build en Vercel correcto pero despliegue fallido | *Root Directory* sin fijar. Next deja la salida en `apps/web/.next` y Vercel la busca en la raíz. Ver §3.1 |
 | Se entra a la ciudad pero buscar campaña no hace nada | `matchmaking_queue` sin migrar, o `/api/match` devolviendo 500. Mirar los logs de la función |
 | Una partida se queda «resolviendo» | Un arrendamiento colgado. Vence solo en 30 s ([ADR-025](DECISIONS.md#adr-025)); si persiste, mirar los errores de `/api/cron/resolve-due` |
 
