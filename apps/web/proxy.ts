@@ -17,9 +17,25 @@ import { NextResponse, type NextRequest } from 'next/server';
 export default async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
 
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  /**
+   * Sin configuración, se deja pasar la petición.
+   *
+   * Esto corre en **todas** las rutas, así que reventar aquí convierte cualquier variable
+   * de entorno ausente en un «Internal Server Error» pelado en el sitio entero, sin una
+   * pista de qué falta. Dejando pasar, el fallo aflora en la página, que sí dice cuál es
+   * la variable — y `/api/health` lo dice sin siquiera mirar un log.
+   *
+   * No se pierde ninguna garantía: refrescar la sesión es una optimización. Las páginas
+   * validan el token con `getUser()` por su cuenta, y RLS decide lo que se ve.
+   */
+  if (!url || !anonKey) return response;
+
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    url,
+    anonKey,
     {
       cookies: {
         getAll: () => request.cookies.getAll(),
