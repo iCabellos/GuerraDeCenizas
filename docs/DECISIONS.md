@@ -30,6 +30,12 @@
 | [020](#adr-020) | Sin sistema de armamento nuclear | aceptada |
 | [021](#adr-021) | Las facciones se ligan a la cuenta y solo cambian el camino | aceptada |
 | [022](#adr-022) | `packages/core` se consume como fuente TypeScript, sin compilar | aceptada |
+| [023](#adr-023) | Políticas RLS a través de funciones `security definer` | aceptada |
+| [024](#adr-024) | Tests de RLS contra un Postgres efímero real | aceptada |
+| [025](#adr-025) | La resolución de turno se parte en arrendar y confirmar | aceptada |
+| [026](#adr-026) | Una sola vista: la ciudad, y un botón | aceptada |
+| [027](#adr-027) | La interfaz no explica: enseña | aceptada |
+| [028](#adr-028) | Se evalúa Turso y se descarta | aceptada |
 
 ---
 
@@ -742,6 +748,71 @@ comunica con **forma, posición, cantidad y movimiento**. Concretamente:
 **Descartado.** Tooltips (no existen en táctil); un tutorial de bienvenida (se salta y no
 resuelve el problema de fondo); iconos con etiqueta debajo (es texto explicativo con un
 adorno encima).
+
+---
+
+<a id="adr-028"></a>
+
+## ADR-028 — Se evalúa Turso y se descarta: la niebla de guerra vive en el esquema
+**Estado:** aceptada · 2026-08-16
+
+**Contexto.** Turso (libSQL) ofrece réplicas embebidas, lectura en el borde y bases de
+datos por inquilino a coste casi nulo. Sobre el papel encaja con un juego por turnos
+asíncrono, y «una partida es un inquilino» es un modelo atractivo. Se evalúa antes de
+seguir invirtiendo en el esquema actual.
+
+**Decisión.** **Se descarta.** El proyecto sigue sobre Postgres en Supabase.
+
+**Por qué, medido sobre lo que ya existe.**
+
+| Rasgo en uso | Veces | En libSQL |
+|---|---:|---|
+| Políticas RLS | 17 | no existe RLS |
+| `auth.uid()` | 14 | no hay servicio de auth |
+| Funciones `security definer` | 18 | no hay procedimientos almacenados |
+| `jsonb` | 108 | hay JSON1, pero no el tipo, ni `jsonb_array_elements`, ni GIN |
+| `for update` / `skip locked` | 13 | escritor único, bloqueo a nivel de base |
+| `smallint[]` + GIN | 6 | no hay tipos array |
+| `pg_cron` + `pg_net` | el reloj | no hay planificador |
+
+Lo decisivo no es el recuento: es **dónde vive la niebla de guerra**.
+`game_states` tiene RLS activa y **cero políticas**, así que es ilegible por construcción
+y no por convención — con 43 tests bloqueantes que lo verifican contra un Postgres real
+([ADR-024](#adr-024)). Sin RLS, ese filtrado pasa a ser código de aplicación: la niebla
+dependería de que ningún manejador tenga un fallo, y un fallo ahí **no da error**, da un
+jugador viendo lo que no debe sin que nadie se entere. Es el riesgo técnico nº 1 del
+proyecto ([DISCOVERY T1](DISCOVERY.md#22-riesgos-técnicos)), y moverlo al código es
+exactamente la decisión contraria a la que se tomó.
+
+Y no habría qué testear: `npm run test:security` existe **porque la seguridad está en la
+base**. Movida al código se convierte en tests de manejadores, que cubren lo que uno se
+acuerda de cubrir.
+
+**Consecuencias.**
+- ✅ Se conserva la garantía estructural: lo que un jugador no debe ver no sale del
+  servidor porque la base no lo entrega, no porque el código se acuerde de filtrarlo.
+- ✅ Se conservan las dos piezas con más carreras probadas: el `for update skip locked`
+  del emparejamiento y el arrendamiento + `state_version` de la resolución
+  ([ADR-025](#adr-025)). Sobre un motor de escritor único habría que rediseñarlas, no
+  portarlas.
+- ⚠️ Se renuncia a la lectura en el borde y a las réplicas embebidas. Con cadencia Diaria
+  —la propuesta por defecto— la latencia de lectura no es el cuello de botella.
+- ⚠️ Se mantiene la dependencia del free tier de Supabase, cuyo punto de ruptura conocido
+  son las **200 conexiones concurrentes** de Realtime. La salida documentada es agrupar
+  canales por partida, no cambiar de base.
+
+**Descartado.** Turso con una base por partida: el aislamiento que importa **no es entre
+partidas, sino entre asientos dentro de una misma partida**, así que una base por partida
+deja a los cinco jugadores viendo lo mismo — que es el problema entero. Turso con el
+filtrado en la API: es la opción anterior con más pasos y la misma pérdida. Un híbrido
+Postgres + Turso para lecturas públicas —archivo de partidas terminadas, por ejemplo—
+**no se descarta para después de v1.0**: ahí sí tendría sentido y convive con Supabase.
+
+**Nota.** Esta evaluación surgió tras una jornada peleando con el despliegue. Conviene
+dejar dicho que aquello **no fue culpa de Supabase**: fueron tres problemas encadenados
+de configuración de Vercel —el `prebuild`, el Root Directory y el Framework Preset—,
+todos documentados en [DEPLOYMENT §6](DEPLOYMENT.md#6-lo-que-puede-salir-mal). Cambiar de
+base de datos por eso habría sido arreglar el tejado porque gotea la puerta.
 
 ---
 

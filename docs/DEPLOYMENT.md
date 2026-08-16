@@ -199,9 +199,28 @@ partidas con ausencias; no las bloquea.
 
 ## 5. Comprobación posterior
 
-Antes de invitar a nadie:
+**Empieza por aquí.** Una sola petición dice si el despliegue está configurado:
+
+```bash
+curl -s https://TU-APP.vercel.app/api/health
+```
+
+```json
+{ "ok": true, "missing": [], "engine": "0.2.0", "mapgen": "0.1.0" }
+```
+
+Si devuelve **503**, `missing` trae los nombres de las variables que faltan. Devuelve
+nombres y nunca valores — y esos nombres ya están en `.env.example`, así que no revela
+nada que no esté en el repositorio.
+
+Existe porque costó una tarde: con una variable sin definir, la aplicación respondía
+`Internal Server Error` y nada más. El mensaje explícito estaba en el log de una función
+que hay que saber buscar.
+
+Y después, antes de invitar a nadie:
 
 ```
+□ /api/health responde 200 con missing vacío
 □ Un correo de acceso llega y el enlace entra directo a la ciudad
 □ La ciudad se dibuja con el emblema de tu facción y es la MISMA al recargar
 □ Buscar campaña deja la cuenta en cola; se ven las ciudades pendientes parpadear
@@ -232,7 +251,7 @@ curl -s "$SUPABASE_URL/rest/v1/game_states?select=*" \
 |---|---|
 | El enlace del correo lleva a un error de Supabase | Falta la URL en *Redirect URLs* |
 | El turno resuelve pero nadie se entera hasta recargar | `player_views` no está en `supabase_realtime` |
-| «Falta la variable de entorno …» al arrancar | Variable sin definir en Vercel. Falla al arrancar a propósito: un servidor a medias que responde 500 en mitad de una partida es mucho peor de depurar |
+| `Internal Server Error` en todo el sitio | Falta alguna variable de entorno. **Consulta `/api/health`**: dice cuáles en una petición. Falla a propósito — un servidor a medias que responde 500 en mitad de una partida es mucho peor de depurar |
 | Los turnos vencidos no resuelven | Secretos del *vault* mal puestos, o `CRON_SECRET` distinto entre Vercel y Supabase |
 | Build en Vercel: no encuentra `@gdc/core` | Falta `--include-workspace-root` en el *install* |
 | Build en Vercel: `Module not found: './art/generated'` | El *build command* no pasa por `npm run build`. Los componentes de arte son un artefacto generado y no están versionados; los crea el `prebuild` |
