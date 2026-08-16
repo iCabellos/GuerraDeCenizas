@@ -27,7 +27,7 @@
     "db:psql": "node tools/pg/harness.mjs psql",
     "docs:pdf": "node tools/docs-pdf/build.mjs",
     "docs:check": "node tools/docs-pdf/check-links.mjs",
-    "verify": "npm run assets:build && npm run typecheck && npm run check:deps && npm test && npm run test:security && npm run docs:check"
+    "verify": "npm run typecheck && npm run check:deps && npm test && npm run test:security && npm run docs:check && npm run build"
   },
   "devDependencies": {
     "markdown-it": "^14.1.0",

@@ -12,6 +12,16 @@ Este proyecto sigue [SemVer](https://semver.org/lang/es/).
 
 ## [Sin publicar] — v0.3 en curso
 
+### Corregido
+
+- **El despliegue en Vercel fallaba con `Module not found: './art/generated'`.** Los
+  componentes de arte son un artefacto generado y están en `.gitignore`, pero solo
+  `npm run verify` los generaba: `npm run build` a secas —el comando que ejecuta el
+  despliegue— no. En local nunca se notaba porque el directorio ya existía.
+  Ahora `dev`, `build` y `typecheck` llevan su `pre*` y generan lo que consumen, así que
+  el fallo deja de ser detectable para pasar a ser imposible. Y `verify` termina
+  ejecutando `npm run build`: antes podía estar en verde con el despliegue roto.
+
 ### Añadido
 
 **Esquema de base de datos y RLS** — `supabase/migrations/`

@@ -3,9 +3,12 @@
   "version": "0.2.0",
   "private": true,
   "scripts": {
+    "predev": "node ../../tools/assets/build.mjs",
     "dev": "next dev",
+    "prebuild": "node ../../tools/assets/build.mjs",
     "build": "next build",
     "start": "next start",
+    "pretypecheck": "node ../../tools/assets/build.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

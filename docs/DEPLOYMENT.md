@@ -93,16 +93,32 @@ estar publicada.
 
 ### 3.1 Configuración del proyecto
 
+**Root Directory = `apps/web`**, con «Include source files outside of the Root Directory
+in the Build Step» **activado**. Los dos ajustes, no uno.
+
 | Ajuste | Valor |
 |---|---|
-| Framework | Next.js |
-| Root directory | `apps/web` |
-| Install command | `npm install --workspaces --include-workspace-root` |
-| Build command | `npm run build` |
+| Framework | Next.js (se detecta solo) |
+| Root Directory | `apps/web` |
+| Include files outside Root Directory | ✅ **obligatorio** |
+| Install command | por defecto — Vercel detecta los workspaces e instala en la raíz |
+| Build command | por defecto (`npm run build`) |
 
-El monorepo usa workspaces de npm y `@gdc/core` se consume **como fuente TypeScript sin
-compilar** ([ADR-022](DECISIONS.md#adr-022)). Por eso el `install` tiene que incluir la
-raíz: sin `--include-workspace-root`, `apps/web` no encuentra el motor.
+**Por qué el Root Directory no puede quedarse sin fijar.** Vercel trata Next.js como un
+caso especial: espera la aplicación *en* el Root Directory y busca ahí su salida. Sin
+fijarlo, construye desde la raíz del repositorio, la compilación sale correcta y el
+despliegue se cae después al recoger el resultado, porque Next dejó todo en
+`apps/web/.next`. Un `outputDirectory` en `vercel.json` **no** lo arregla — ese ajuste
+existe para proyectos estáticos, no para Next.
+
+**Por qué hace falta la casilla.** Dos cosas del build viven fuera de `apps/web`:
+`packages/core`, porque el motor se consume como fuente TypeScript sin compilar
+([ADR-022](DECISIONS.md#adr-022)), y `tools/assets/`, que genera los componentes de arte
+en el `prebuild`. Sin la casilla, ninguno de los dos llega a la máquina de build.
+
+**El `prebuild`.** `npm run build` genera los assets antes de compilar. Están en
+`.gitignore` porque son un artefacto, así que un clon limpio no los trae y sin ese paso la
+compilación falla con `Module not found: './art/generated'`.
 
 ### 3.2 Variables de entorno
 
@@ -160,17 +176,19 @@ partidas con ausencias; no las bloquea.
 Antes de invitar a nadie:
 
 ```
-□ Un correo de acceso llega y el enlace entra a /games
-□ Crear partida devuelve un código de 6 caracteres
-□ Otra cuenta entra con ese código y aparece en la sala sin recargar   ← Realtime
-□ La partida empieza y cada asiento ve un mapa distinto                ← niebla
+□ Un correo de acceso llega y el enlace entra directo a la ciudad
+□ La ciudad se dibuja con el emblema de tu facción y es la MISMA al recargar
+□ Buscar campaña deja la cuenta en cola; se ven las ciudades pendientes parpadear
+□ Una segunda cuenta buscando lo mismo forma la partida y AMBAS entran solas ← Realtime
+□ Cada asiento ve un mapa distinto                                     ← niebla
 □ GET /rest/v1/game_states con la clave anónima devuelve 401 o vacío   ← RLS
-□ Enviar órdenes desde los tres asientos resuelve el turno al instante
+□ Enviar órdenes desde todos los asientos resuelve el turno al instante
 □ Dejar vencer un plazo sin enviar resuelve el turno igual             ← pg_cron
+□ Una cuenta sola en cola acaba emparejada con Mando Automático        ← pg_cron
 □ cron.job_run_details no acumula errores
 ```
 
-La cuarta y la quinta son las que de verdad importan. Si `game_states` responde algo con
+La quinta y la sexta son las que de verdad importan. Si `game_states` responde algo con
 la clave anónima, **hay que parar el despliegue**: el resto del juego funciona igual con
 la niebla rota, y por eso nadie lo notaría.
 
@@ -191,6 +209,9 @@ curl -s "$SUPABASE_URL/rest/v1/game_states?select=*" \
 | «Falta la variable de entorno …» al arrancar | Variable sin definir en Vercel. Falla al arrancar a propósito: un servidor a medias que responde 500 en mitad de una partida es mucho peor de depurar |
 | Los turnos vencidos no resuelven | Secretos del *vault* mal puestos, o `CRON_SECRET` distinto entre Vercel y Supabase |
 | Build en Vercel: no encuentra `@gdc/core` | Falta `--include-workspace-root` en el *install* |
+| Build en Vercel: `Module not found: './art/generated'` | El *build command* no pasa por `npm run build`. Los componentes de arte son un artefacto generado y no están versionados; los crea el `prebuild` |
+| Build en Vercel correcto pero despliegue fallido | *Root Directory* sin fijar. Next deja la salida en `apps/web/.next` y Vercel la busca en la raíz. Ver §3.1 |
+| Se entra a la ciudad pero buscar campaña no hace nada | `matchmaking_queue` sin migrar, o `/api/match` devolviendo 500. Mirar los logs de la función |
 | Una partida se queda «resolviendo» | Un arrendamiento colgado. Vence solo en 30 s ([ADR-025](DECISIONS.md#adr-025)); si persiste, mirar los errores de `/api/cron/resolve-due` |
 
 ---

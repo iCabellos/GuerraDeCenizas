@@ -100,7 +100,7 @@ colas de producción, el árbol tecnológico grande y el arsenal nuclear.
 ## Comandos
 
 ```bash
-npm run verify              # ⭐ typecheck + estructura + tests + enlaces. Antes de commit.
+npm run verify              # ⭐ typecheck + estructura + tests + enlaces + BUILD. Antes de commit.
 
 npm test                    # Vitest — motor, mapgen, facciones, reglas
 npm run test:watch          # TDD
@@ -192,7 +192,14 @@ No las repitas. Cada una salió de un fallo real de este repositorio:
 8. **Un entorno de pruebas infiel prueba lo que no es.** El shim de Supabase reproduce sus
    permisos por defecto justamente para que los tests de RLS puedan fallar; sin eso
    pasarían por falta de permisos y el agujero saldría en producción.
-9. **Nada que decida el servidor puede venir en la petición.** `startGame` recibía la
+9. **Un `verify` en verde no significa que el despliegue funcione.** `verify` generaba los
+   assets por su cuenta y luego **no compilaba nunca**, así que el build de Vercel se caía
+   con `Module not found: './art/generated'` — código generado que está en `.gitignore`.
+   Ahora `verify` termina ejecutando `npm run build`, el mismo comando que el despliegue.
+10. **Todo consumidor de código generado lo genera él mismo.** `dev`, `build` y `typecheck`
+   llevan su `pre*` correspondiente. Recordar ejecutar un paso previo no es una solución:
+   la solución es que no haga falta acordarse.
+11. **Nada que decida el servidor puede venir en la petición.** `startGame` recibía la
    lista de asientos del llamante: con eso, el anfitrión podía empezar una partida de tres
    con un solo jugador dentro. Ahora la lee de la base de datos.
 
