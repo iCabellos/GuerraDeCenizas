@@ -98,18 +98,29 @@ in the Build Step» **activado**. Los dos ajustes, no uno.
 
 | Ajuste | Valor |
 |---|---|
-| Framework | Next.js (se detecta solo) |
+| **Framework Preset** | **Next.js** — compruébalo, no des por hecho que se detectó |
 | Root Directory | `apps/web` |
 | Include files outside Root Directory | ✅ **obligatorio** |
+| **Build Command** | **Override → `npm run build`** |
 | Install command | por defecto — Vercel detecta los workspaces e instala en la raíz |
-| Build command | por defecto (`npm run build`) |
 
-**Por qué el Root Directory no puede quedarse sin fijar.** Vercel detecta el framework
-mirando el Root Directory: busca ahí `next` entre las dependencias y un `next.config.*`.
-En la raíz de este repositorio no hay ninguna de las dos cosas —es solo el nodo de
-workspaces, sin una sola dependencia de runtime—, así que la detección falla y cae al
-preset **«Other»**, que espera una carpeta `public/`. De ahí este error, que no menciona
-Next por ninguna parte:
+**El Framework Preset no se corrige solo.** La detección ocurre **una vez, al crear el
+proyecto**, mirando el Root Directory de ese momento. Si el proyecto se creó con el Root
+Directory vacío, Vercel miró la raíz del repositorio, no encontró Next y guardó el preset
+como **«Other»** — y cambiar el Root Directory después **no vuelve a lanzarla**. El preset
+se queda como estaba, para siempre, hasta que alguien lo cambia a mano.
+
+**El Build Command hay que forzarlo.** Con el preset de Next, Vercel puede ejecutar
+`next build` directamente, y eso **se salta el `prebuild`**: vuelve el
+`Module not found: './art/generated'`. Escribiendo `npm run build` en el Override se
+ejecuta el `prebuild` sí o sí.
+
+**De dónde sale el preset «Other».** Vercel detecta el framework mirando el Root
+Directory: busca ahí `next` entre las dependencias y un `next.config.*`. En la raíz de
+este repositorio no hay ninguna de las dos cosas —es solo el nodo de workspaces, sin una
+sola dependencia de runtime—, así que si el proyecto se creó sin Root Directory la
+detección falló y quedó **«Other»**, que espera una carpeta `public/`. De ahí este error,
+que no menciona Next por ninguna parte:
 
 ```
 No Output Directory named "public" found after the Build completed.
@@ -117,6 +128,10 @@ No Output Directory named "public" found after the Build completed.
 
 Es engañoso: la compilación **ha ido bien**. Lo que falla es que Vercel nunca supo que
 esto era una aplicación de Next.
+
+Y ojo: **arreglar el Root Directory no arregla el preset.** Son dos ajustes distintos en
+la misma pantalla, y el segundo se queda en «Other» hasta que se cambia a mano. Es el
+error que más tiempo costó de los tres.
 
 Y no se arregla desde el repositorio. Un `vercel.json` con `framework` y `outputDirectory`
 **no** vale: para Next.js, Vercel usa la Build Output API y el ajuste de directorio de
@@ -221,7 +236,8 @@ curl -s "$SUPABASE_URL/rest/v1/game_states?select=*" \
 | Los turnos vencidos no resuelven | Secretos del *vault* mal puestos, o `CRON_SECRET` distinto entre Vercel y Supabase |
 | Build en Vercel: no encuentra `@gdc/core` | Falta `--include-workspace-root` en el *install* |
 | Build en Vercel: `Module not found: './art/generated'` | El *build command* no pasa por `npm run build`. Los componentes de arte son un artefacto generado y no están versionados; los crea el `prebuild` |
-| `No Output Directory named "public" found` | *Root Directory* sin fijar. Vercel no detecta Next —en la raíz no hay `next.config.*` ni dependencias— y cae al preset «Other», que espera `public/`. La compilación fue correcta. Ver §3.1 |
+| `No Output Directory named "public" found` | **Framework Preset en «Other»**, que espera `public/`. La compilación fue correcta. Corregir el Root Directory **no** cambia el preset: hay que ponerlo a Next.js a mano. Ver §3.1 |
+| Vuelve `Module not found: './art/generated'` tras poner el preset de Next | Vercel está ejecutando `next build` en vez de `npm run build`, así que se salta el `prebuild`. Forzar el *Build Command* a `npm run build` |
 | Se entra a la ciudad pero buscar campaña no hace nada | `matchmaking_queue` sin migrar, o `/api/match` devolviendo 500. Mirar los logs de la función |
 | Una partida se queda «resolviendo» | Un arrendamiento colgado. Vence solo en 30 s ([ADR-025](DECISIONS.md#adr-025)); si persiste, mirar los errores de `/api/cron/resolve-due` |
 
