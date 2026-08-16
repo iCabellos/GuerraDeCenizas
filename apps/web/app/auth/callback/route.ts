@@ -10,7 +10,7 @@ import { userClient } from '@/lib/server/supabase';
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const code = url.searchParams.get('code');
-  const next = url.searchParams.get('next') ?? '/games';
+  const next = url.searchParams.get('next') ?? '/';
 
   if (!code) return NextResponse.redirect(new URL('/sign-in', url.origin));
 
@@ -20,6 +20,6 @@ export async function GET(request: Request) {
 
   // `next` solo puede ser una ruta interna: sin esta comprobación, el enlace del correo
   // sería un redirector abierto hacia cualquier dominio.
-  const safe = next.startsWith('/') && !next.startsWith('//') ? next : '/games';
+  const safe = next.startsWith('/') && !next.startsWith('//') ? next : '/';
   return NextResponse.redirect(new URL(safe, url.origin));
 }

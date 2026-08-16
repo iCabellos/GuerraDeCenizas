@@ -96,9 +96,14 @@ principal: es mucho más fácil juntar a cinco conocidos que llenar una cola pú
 
 ### 3.2 Emparejamiento
 
+> **Actualizado por [ADR-026](DECISIONS.md#adr-026).** El emparejamiento es ahora el
+> **camino principal y único de la interfaz**: una vista, un botón, y la partida empieza
+> sola en cuanto se llena. El código de invitación sigue existiendo en la base de datos y
+> vuelve más adelante dentro de esa misma vista, no como pantalla aparte.
+
 v1.0 no tiene emparejamiento por habilidad. Solo:
 
-1. **Por código** — el modo principal.
+1. **Por código** — sin interfaz desde v0.3; ver ADR-026.
 2. **Cola pública** — primero en llegar. Si tras **10 minutos** faltan jugadores:
    - `playerCount = 5` con 4 humanos ⇒ se ofrece empezar con 1 Mando Automático;
    - con 3 o menos ⇒ se ofrece convertirla en partida de 3 o de 2.

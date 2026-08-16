@@ -113,5 +113,8 @@
   "lobby.back": "Back",
   "faction.yours": "Your faction",
   "gallery.title": "Asset gallery",
-  "gallery.intro": "Visual QA: silhouette, scale and coherence. Development only."
+  "gallery.intro": "Visual QA: silhouette, scale and coherence. Development only.",
+  "a11y.city": "Your city",
+  "a11y.searching": "Searching for a campaign",
+  "a11y.cancel": "Cancel search"
 }

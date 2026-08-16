@@ -137,7 +137,7 @@ export function GameBoard({
   useEffect(() => {
     if (sent || draft.moves.length === 0) return;
     const timer = setTimeout(() => {
-      void fetch(`/api/games/${gameId}/orders`, {
+      void fetch(`/api/g/${gameId}/orders`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orders: { turn: view.turn, moves: draft.moves }, submit: false }),
@@ -159,7 +159,7 @@ export function GameBoard({
     setSending(true);
     setError('');
     try {
-      const response = await fetch(`/api/games/${gameId}/orders`, {
+      const response = await fetch(`/api/g/${gameId}/orders`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orders: { turn: view.turn, moves: draft.moves }, submit: true }),

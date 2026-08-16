@@ -84,16 +84,33 @@ Sin Redux, sin Zustand. Tres piezas y ninguna más:
 
 ## Estado actual
 
-**v0.3 en curso.** El prototipo hot-seat de v0.2 sigue en `components/`, y ya existe la
-**capa de autoridad completa**: `lib/server/` (clientes de Supabase, resolución de turnos,
-ciclo de vida de partidas) y `app/api/` (crear, unirse, empezar, enviar órdenes, cron).
-26 tests la ejercitan contra un Postgres real. Faltan auth, la interfaz de partida real y
-el despliegue.
+**v0.3 en curso.** Capa de autoridad completa en `lib/server/` + `app/api/`, con 43 tests
+contra un Postgres real (resolución de turnos y emparejamiento). Interfaz: vista única con
+la ciudad, emparejamiento y tablero en red. El prototipo hot-seat de v0.2 sigue en
+`/prototype` porque es lo único jugable sin base de datos. Falta el despliegue.
 
 **La resolución recibe el transporte inyectado** (`Rpc`), no construye el cliente de
 Supabase. Es lo que permite que los tests ejecuten el código real de autoridad contra una
 base real: un test de concurrencia contra un doble no prueba nada, porque lo que se está
 probando es la base de datos.
+
+### Una sola vista
+
+`/` es **la** pantalla: tu ciudad en cenital y un botón ([ADR-026](../../docs/DECISIONS.md#adr-026)).
+Con campaña en curso, redirige a ella. No añadas pantallas intermedias: cada una es un
+peaje entre el jugador y el turno que quiere jugar, y en Blitz cuesta plazo de verdad.
+
+| Ruta | Qué es |
+|---|---|
+| `/` | La ciudad + buscar campaña |
+| `/g/:id` | La campaña. La misma vista con la cámara sobre el campo de batalla |
+| `/sign-in` | Enlace mágico. Lo único anterior a la ciudad |
+| `/dev/*` | QA visual. 404 en producción |
+
+**La interfaz no explica, enseña** ([ADR-027](../../docs/DECISIONS.md#adr-027)). Antes de
+escribir una frase visible, pregúntate si se puede dibujar. Y si la dibujas, ponle
+`aria-label`: prescindir de texto es una decisión visual, nunca una excusa para dejar
+fuera a quien no ve la pantalla.
 
 ### El registro visual
 

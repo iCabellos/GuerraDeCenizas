@@ -11,7 +11,7 @@ import { DICTIONARIES, translator } from '@/lib/i18n/index';
  * fugas, y esta cuenta solo guarda progresión — nada que justifique esa superficie.
  */
 export default async function Page() {
-  if (await currentViewer()) redirect('/games');
+  if (await currentViewer()) redirect('/');
 
   const locale = await guestLocale();
   const t = translator(locale);

@@ -109,6 +109,33 @@ aceptación de concurrencia, reproducibilidad, ausencias y retención.
   peligro. Los cazó la Galería en el panel de escala, que es exactamente para lo que está.
 - La caída de Ceniza iba por delante del texto y se leía como suciedad en la pantalla.
 
+**Una sola vista** — [ADR-026](docs/DECISIONS.md#adr-026)
+- Al abrir el juego se ve **tu ciudad en cenital** y un botón. Ni portada, ni lista de
+  partidas, ni sala de espera, ni formulario. De abrir a jugar: una pulsación.
+- Con una campaña en curso se entra directamente en ella.
+- `CityView`: planta ortogonal **determinista por cuenta** —la misma cuenta ve siempre la
+  misma ciudad—, con los distritos desbloqueados construidos y los demás como cimientos.
+  El hub de progresión de ADR-010, hecho imagen.
+- Rutas: `/` (la ciudad), `/g/:id` (la campaña) y `/sign-in`. Se retiran la lista de
+  partidas, la sala de espera y los endpoints de crear/unirse por código.
+
+**Emparejamiento** — `supabase/migrations/0008_matchmaking.sql`
+- Una cola por tamaño y cadencia. Al completarse el grupo la partida **empieza sola**.
+- `for update skip locked`: dos búsquedas simultáneas no pueden repartirse al mismo
+  jugador ni formar dos partidas de la misma cola.
+- Nadie se queda esperando indefinidamente — pasados unos minutos los asientos que falten
+  los ocupa el Mando Automático. La mitigación de DISCOVERY P1 pasa a estar en el camino
+  principal en vez de ser un plan.
+- 17 tests contra el Postgres real, incluidas las dos carreras.
+
+**La interfaz no explica: enseña** — [ADR-027](docs/DECISIONS.md#adr-027)
+- El tamaño de partida se elige **dibujando la simetría rotacional real del mapa**: dos
+  ciudades enfrentadas, tres en triángulo, cinco en pentágono. La elección enseña la regla.
+- La cadencia son marcas de ritmo; la Ceniza, un silo que se llena; un distrito bloqueado,
+  unos cimientos; y buscar partida **es ver llegar a las demás ciudades**.
+- Cero texto explicativo en la pantalla principal — y cada control con su `aria-label`
+  traducido: prescindir de texto es una decisión visual, no una excusa de accesibilidad.
+
 ### Pendiente de verificar
 
 La interfaz compila y pasa el typecheck, pero **no se ha ejecutado contra un Supabase

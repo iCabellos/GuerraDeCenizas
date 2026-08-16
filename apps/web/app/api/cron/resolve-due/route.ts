@@ -1,4 +1,5 @@
 import { resolveTurn } from '@/lib/server/resolve';
+import { BUCKETS, formMatch } from '@/lib/server/matchmaking';
 import { serviceRpc } from '@/lib/server/supabase';
 import { fail, internal, ok } from '@/lib/server/api';
 import { CRON_SECRET } from '@/lib/server/env';
@@ -35,7 +36,19 @@ export async function POST(request: Request) {
       results.push({ gameId: game.game_id, ...(await resolveTurn(rpc, game.game_id, now)) });
     }
 
-    return ok({ checked: due?.length ?? 0, resolved: results.filter((r) => r.resolved).length });
+    // Emparejamiento: forma los grupos que ya están completos y rellena con Mando
+    // Automático los que llevan esperando demasiado. Sin esto, un jugador solo en la cola
+    // esperaría indefinidamente a que alguien más pulsara el botón.
+    let matched = 0;
+    for (const bucket of BUCKETS) {
+      if (await formMatch(rpc, bucket.playerCount, bucket.cadence)) matched += 1;
+    }
+
+    return ok({
+      checked: due?.length ?? 0,
+      resolved: results.filter((r) => r.resolved).length,
+      matched,
+    });
   } catch (error) {
     return internal(error);
   }

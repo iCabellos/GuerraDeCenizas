@@ -4,7 +4,7 @@ import { fail, internal, ok, parseBody, requireProfile } from '@/lib/server/api'
 import { submitOrdersSchema } from '@/lib/schemas';
 
 /**
- * `POST /api/games/:id/orders` — guardar borrador o enviar el turno.
+ * `POST /api/g/:id/orders` — guardar borrador o enviar el turno.
  *
  * Es el único endpoint que un jugador usa durante una partida, y por tanto el único sitio
  * donde puede intentar algo. Tres cosas **no** salen de la petición:
@@ -40,8 +40,8 @@ export async function POST(
 
     if (!saved.ok) return fail(saved.code ?? 'bad_request');
 
-    // Si ya no falta nadie, se resuelve aquí mismo. `resolveTurn` es idempotente: que
-    // dos jugadores envíen a la vez y ambos disparen la resolución es lo normal.
+    // Si ya no falta nadie, se resuelve aquí mismo. `resolveTurn` es idempotente: que dos
+    // jugadores envíen a la vez y ambos disparen la resolución es lo normal.
     let resolved: number | undefined;
     if (body.data.submit && saved.pending === 0) {
       const outcome = await resolveTurn(rpc, id, new Date());

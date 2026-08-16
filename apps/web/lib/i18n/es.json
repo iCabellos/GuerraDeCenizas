@@ -113,5 +113,8 @@
   "lobby.back": "Volver",
   "faction.yours": "Tu facción",
   "gallery.title": "Galería de assets",
-  "gallery.intro": "QA visual: silueta, escala y coherencia. Solo en desarrollo."
+  "gallery.intro": "QA visual: silueta, escala y coherencia. Solo en desarrollo.",
+  "a11y.city": "Tu ciudad",
+  "a11y.searching": "Buscando campaña",
+  "a11y.cancel": "Cancelar búsqueda"
 }

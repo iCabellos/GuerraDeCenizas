@@ -61,6 +61,11 @@ export const joinGameSchema = z.strictObject({
   code: z.string().trim().length(6),
 });
 
+export const searchMatchSchema = z.strictObject({
+  playerCount: z.union([z.literal(2), z.literal(3), z.literal(5)]),
+  cadence: z.enum(['blitz', 'daily', 'relaxed']),
+});
+
 export const standingOrdersSchema = z.strictObject({
   posture: z.enum(['hold', 'screen']),
   production: z.enum(['none', 'line', 'repeat']),

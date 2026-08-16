@@ -666,6 +666,85 @@ resolución a la vez se computan cinco turnos para tirar cuatro).
 
 ---
 
+<a id="adr-026"></a>
+
+## ADR-026 — Una sola vista: la ciudad, y un botón
+**Estado:** aceptada · 2026-08-16 · sustituye el flujo de [ADR-015](#adr-015) para entrar en partida
+
+**Contexto.** El recorrido para empezar a jugar eran cuatro pantallas: portada, entrada,
+lista de partidas y sala de espera con código de invitación. Cada una es un peaje entre el
+jugador y el turno que quiere jugar, y en cadencia Blitz —tres minutos por turno— ese
+peaje se come un pedazo real del plazo. [MULTIPLAYER §3.2](MULTIPLAYER.md#32-emparejamiento)
+daba el código por flujo principal porque juntar a cinco conocidos parecía más fácil que
+llenar una cola; el coste de esa elección es que **la primera vez que alguien abre el
+juego solo, no puede jugar**.
+
+**Decisión.** Una vista. Al abrir el juego se ve **tu ciudad en cenital** y un botón.
+Pulsarlo busca campaña; si hay gente esperando, la partida se crea y **empieza sola**, sin
+sala intermedia. Si no la hay, se ve llegar a las demás ciudades, y pasados unos minutos
+los asientos que falten los ocupa el Mando Automático.
+
+**Consecuencias.**
+- ✅ De abrir la aplicación a jugar: **una pulsación**.
+- ✅ La ciudad deja de ser una pantalla que visitar y pasa a ser el marco de todo, que es
+  lo que [ADR-010](#adr-010) quería decir con «hub».
+- ✅ La espera cuenta la ficción del juego: las ciudades **son** teletransportadas al campo
+  de batalla, y buscar partida es verlas aparecer, cada una en su posición rotacional.
+- ✅ Un jugador solo nunca se queda sin partida — la mitigación de
+  [DISCOVERY P1](DISCOVERY.md#23-riesgos-de-producto) deja de ser un plan y pasa a estar
+  en el camino principal.
+- ⚠️ Se pierde el flujo de «juego privado con estos cinco conocidos». Las funciones SQL
+  (`join_game`, `invite_code`) siguen ahí; lo que desaparece es la interfaz. Vuelve más
+  adelante **dentro de la misma vista**, no como una pantalla aparte.
+- ⚠️ Una cola vacía degrada a partida contra bots. Es preferible a no poder jugar, pero
+  exige vigilar la proporción de partidas con bot en la beta.
+
+**Descartado.** Mantener las dos vías con un selector (vuelve a ser una pantalla de menú);
+emparejamiento por habilidad (no hay ELO en v1.0 — ver
+[METAPROGRESSION §7](METAPROGRESSION.md#7-lo-que-no-habrá)); sala de espera con «empezar»
+manual (el anfitrión decide cuándo juegan los demás, que es exactamente el peaje que se
+quería quitar).
+
+---
+
+<a id="adr-027"></a>
+
+## ADR-027 — La interfaz no explica: enseña
+**Estado:** aceptada · 2026-08-16
+
+**Contexto.** «Simple de aprender, difícil de dominar» no se consigue escribiendo mejores
+descripciones. Un juego que necesita un párrafo para explicar un botón ya perdió, y
+además cada frase visible es una cadena que traducir, revisar y mantener en dos idiomas.
+
+**Decisión.** Fuera el texto explicativo de la interfaz. Lo que hay que comunicar se
+comunica con **forma, posición, cantidad y movimiento**. Concretamente:
+
+| En vez de | Se dibuja |
+|---|---|
+| «2, 3 o 5 jugadores» | La disposición rotacional real del mapa: dos enfrentadas, tres en triángulo, cinco en pentágono |
+| «Blitz / Diaria / Relajada» | Marcas de ritmo: una, dos, tres. Más marcas, más lento |
+| «Distrito bloqueado» | El distrito dibujado como **cimientos** en vez de como edificios |
+| «Ceniza acumulada: 312» | Un silo que se llena, con la cifra al lado |
+| «Buscando partida… 3 de 5» | Las ciudades rivales llegando, cada una a su posición |
+
+**Consecuencias.**
+- ✅ La elección **enseña la regla**: quien elige «5» ya ha visto la simetría del mapa que
+  va a jugar. Eso es tutorial sin tutorial.
+- ✅ Menos cadenas que traducir, y ninguna que se quede desincronizada entre ES y EN.
+- ✅ Sirve igual a alguien que no lea el idioma de la interfaz.
+- ⚠️ **No exime de accesibilidad.** Cada control lleva `aria-label` traducido y cada
+  gráfico su descripción: prescindir de texto es una decisión visual, jamás una excusa
+  para dejar fuera a quien no ve la pantalla. Los rótulos siguen en `es.json`/`en.json` y
+  el test de paridad los cubre igual.
+- ⚠️ Un símbolo mal elegido es peor que una frase mala, porque no se puede leer. La
+  Galería (`/dev/gallery`) existe para cazarlos antes de que lleguen a nadie.
+
+**Descartado.** Tooltips (no existen en táctil); un tutorial de bienvenida (se salta y no
+resuelve el problema de fondo); iconos con etiqueta debajo (es texto explicativo con un
+adorno encima).
+
+---
+
 ## Plantilla para nuevas decisiones
 
 ```markdown

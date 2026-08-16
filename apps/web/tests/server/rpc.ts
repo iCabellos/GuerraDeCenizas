@@ -37,6 +37,13 @@ const SIGNATURES: Record<string, { args: readonly ArgSpec[]; returnsTable?: bool
     ],
   },
   join_game: { args: [['p_code', 'text'], ['p_profile', 'uuid']] },
+  enqueue: {
+    args: [['p_profile', 'uuid'], ['p_size', 'smallint'], ['p_cadence', 'text']],
+  },
+  dequeue: { args: [['p_profile', 'uuid']] },
+  queue_status: { args: [['p_profile', 'uuid']] },
+  claim_match: { args: [['p_size', 'smallint'], ['p_cadence', 'text']] },
+  seat_match: { args: [['p_game', 'uuid'], ['p_profiles', 'jsonb', 'json']] },
   lobby_state: { args: [['p_game', 'uuid']] },
   start_game: {
     args: [
