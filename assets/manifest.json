@@ -1,0 +1,268 @@
+{
+  "generated": [
+    {
+      "asset": "brand/faction-koldvik",
+      "role": "Koldvik — Yunque. Complejo industrial: la silueta del yunque",
+      "component": "FactionKoldvik",
+      "author": "Iván Cabellos",
+      "created": "2026-08-16",
+      "original": true,
+      "strokes": 2,
+      "bytes": 475,
+      "sha256": "d060a9d9329e08c0"
+    },
+    {
+      "asset": "brand/faction-meridia",
+      "role": "Meridia — Cuña. Metrópolis logística: cuña en movimiento",
+      "component": "FactionMeridia",
+      "author": "Iván Cabellos",
+      "created": "2026-08-16",
+      "original": true,
+      "strokes": 4,
+      "bytes": 494,
+      "sha256": "e0b7e5a56d70020a"
+    },
+    {
+      "asset": "brand/faction-oshara",
+      "role": "Oshara — Mortaja. Ciudad-delta que nadie ha cartografiado entera",
+      "component": "FactionOshara",
+      "author": "Iván Cabellos",
+      "created": "2026-08-16",
+      "original": true,
+      "strokes": 5,
+      "bytes": 543,
+      "sha256": "a440f9d3078fce13"
+    },
+    {
+      "asset": "brand/faction-saranth",
+      "role": "Saranth — Coro. Enclave de investigación: tres frentes de onda concéntricos",
+      "component": "FactionSaranth",
+      "author": "Iván Cabellos",
+      "created": "2026-08-16",
+      "original": true,
+      "strokes": 4,
+      "bytes": 550,
+      "sha256": "58cca7413d1e1516"
+    },
+    {
+      "asset": "brand/faction-tarn",
+      "role": "Tarn — Enjambre. Ciudad minera: la veta de Ceniza en racimo",
+      "component": "FactionTarn",
+      "author": "Iván Cabellos",
+      "created": "2026-08-16",
+      "original": true,
+      "strokes": 6,
+      "bytes": 590,
+      "sha256": "d12132da57a8b5f5"
+    },
+    {
+      "asset": "brand/faction-vantera",
+      "role": "Vantera — El Libro. Puerto mediador: dos platos en equilibrio sobre un eje",
+      "component": "FactionVantera",
+      "author": "Iván Cabellos",
+      "created": "2026-08-16",
+      "original": true,
+      "strokes": 5,
+      "bytes": 541,
+      "sha256": "c5c23cdce954a405"
+    },
+    {
+      "asset": "brand/mark",
+      "role": "emblema del juego: el Núcleo con simetría rotacional de orden 3",
+      "component": "Mark",
+      "author": "Iván Cabellos",
+      "created": "2026-08-16",
+      "original": true,
+      "strokes": 7,
+      "bytes": 848,
+      "sha256": "ad5837f043997f5e"
+    },
+    {
+      "asset": "resources/ash",
+      "role": "Ceniza — estrella de cuatro puntas con el único degradado del juego",
+      "component": "Ash",
+      "author": "Iván Cabellos",
+      "created": "2026-08-16",
+      "original": true,
+      "strokes": 1,
+      "bytes": 735,
+      "sha256": "af99a5226334b849"
+    },
+    {
+      "asset": "resources/industry",
+      "role": "Industria — hexágono con muesca",
+      "component": "Industry",
+      "author": "Iván Cabellos",
+      "created": "2026-08-16",
+      "original": true,
+      "strokes": 3,
+      "bytes": 461,
+      "sha256": "625667e1973ba02e"
+    },
+    {
+      "asset": "resources/intel",
+      "role": "Intel — rombo con punto central",
+      "component": "Intel",
+      "author": "Iván Cabellos",
+      "created": "2026-08-16",
+      "original": true,
+      "strokes": 2,
+      "bytes": 471,
+      "sha256": "3c8f0f3e47e72713"
+    },
+    {
+      "asset": "resources/supply",
+      "role": "Suministro — cuadrado con banda horizontal",
+      "component": "Supply",
+      "author": "Iván Cabellos",
+      "created": "2026-08-16",
+      "original": true,
+      "strokes": 3,
+      "bytes": 466,
+      "sha256": "0578a6cb19ad5bd4"
+    },
+    {
+      "asset": "states/absent",
+      "role": "Asiento ausente — recuadro vacío con diagonal",
+      "component": "Absent",
+      "author": "Iván Cabellos",
+      "created": "2026-08-16",
+      "original": true,
+      "strokes": 2,
+      "bytes": 466,
+      "sha256": "aa1902d201c05838"
+    },
+    {
+      "asset": "states/contested",
+      "role": "Región en disputa — aspas cruzadas",
+      "component": "Contested",
+      "author": "Iván Cabellos",
+      "created": "2026-08-16",
+      "original": true,
+      "strokes": 3,
+      "bytes": 463,
+      "sha256": "75ea03012f348abb"
+    },
+    {
+      "asset": "states/fortified",
+      "role": "Región fortificada — almena",
+      "component": "Fortified",
+      "author": "Iván Cabellos",
+      "created": "2026-08-16",
+      "original": true,
+      "strokes": 2,
+      "bytes": 432,
+      "sha256": "11ee7849e00f2ad9"
+    },
+    {
+      "asset": "states/submitted",
+      "role": "Turno enviado — marca de verificación cartográfica",
+      "component": "Submitted",
+      "author": "Iván Cabellos",
+      "created": "2026-08-16",
+      "original": true,
+      "strokes": 1,
+      "bytes": 419,
+      "sha256": "4507bd3a124c4faa"
+    },
+    {
+      "asset": "states/unsupplied",
+      "role": "Fuerza sin suministro — cadena rota",
+      "component": "Unsupplied",
+      "author": "Iván Cabellos",
+      "created": "2026-08-16",
+      "original": true,
+      "strokes": 3,
+      "bytes": 488,
+      "sha256": "2501985323fadaec"
+    },
+    {
+      "asset": "ui/back",
+      "role": "Volver — flecha a la izquierda",
+      "component": "Back",
+      "author": "Iván Cabellos",
+      "created": "2026-08-16",
+      "original": true,
+      "strokes": 2,
+      "bytes": 406,
+      "sha256": "281815798520c0a9"
+    },
+    {
+      "asset": "ui/close",
+      "role": "Cerrar",
+      "component": "Close",
+      "author": "Iván Cabellos",
+      "created": "2026-08-16",
+      "original": true,
+      "strokes": 2,
+      "bytes": 379,
+      "sha256": "e9270a3cb6e0cdec"
+    },
+    {
+      "asset": "ui/copy",
+      "role": "Copiar al portapapeles",
+      "component": "Copy",
+      "author": "Iván Cabellos",
+      "created": "2026-08-16",
+      "original": true,
+      "strokes": 2,
+      "bytes": 416,
+      "sha256": "a3aecd190bd81b1c"
+    },
+    {
+      "asset": "ui/seat",
+      "role": "Asiento de la partida",
+      "component": "Seat",
+      "author": "Iván Cabellos",
+      "created": "2026-08-16",
+      "original": true,
+      "strokes": 3,
+      "bytes": 451,
+      "sha256": "c61ee8f5aae3446b"
+    },
+    {
+      "asset": "units/fire",
+      "role": "Fuego — triángulo de base abierta",
+      "component": "Fire",
+      "author": "Iván Cabellos",
+      "created": "2026-08-16",
+      "original": true,
+      "strokes": 4,
+      "bytes": 457,
+      "sha256": "a6c90bbc0441ff60"
+    },
+    {
+      "asset": "units/line",
+      "role": "Línea — rectángulo con diagonal, la marca cartográfica de infantería",
+      "component": "Line",
+      "author": "Iván Cabellos",
+      "created": "2026-08-16",
+      "original": true,
+      "strokes": 2,
+      "bytes": 469,
+      "sha256": "7cc13abaf3a33154"
+    },
+    {
+      "asset": "units/shade",
+      "role": "Sombra — rombo hueco de línea discontinua",
+      "component": "Shade",
+      "author": "Iván Cabellos",
+      "created": "2026-08-16",
+      "original": true,
+      "strokes": 1,
+      "bytes": 431,
+      "sha256": "344dac72d7e04a35"
+    },
+    {
+      "asset": "units/sky",
+      "role": "Cielo — cuña delta",
+      "component": "Sky",
+      "author": "Iván Cabellos",
+      "created": "2026-08-16",
+      "original": true,
+      "strokes": 1,
+      "bytes": 383,
+      "sha256": "dd651fe74731aed7"
+    }
+  ]
+}

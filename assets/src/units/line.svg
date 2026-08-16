@@ -1,0 +1,16 @@
+<!--
+  asset: units/line
+  role: Línea — rectángulo con diagonal, la marca cartográfica de infantería
+  grid: 24
+  stroke: 2
+  colors: currentColor
+  author: Iván Cabellos
+  created: 2026-08-16
+  original: true
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+     stroke="currentColor" stroke-width="2" stroke-linecap="square"
+     stroke-linejoin="miter">
+  <rect x="2" y="6" width="20" height="12"/>
+  <path d="M2 6 22 18"/>
+</svg>

@@ -1,0 +1,18 @@
+<!--
+  asset: brand/faction-meridia
+  role: Meridia — Cuña. Metrópolis logística: cuña en movimiento
+  grid: 24
+  stroke: 2
+  colors: currentColor
+  author: Iván Cabellos
+  created: 2026-08-16
+  original: true
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+     stroke="currentColor" stroke-width="2" stroke-linecap="square"
+     stroke-linejoin="miter">
+  <path d="M8 3 22 12 8 21Z"/>
+  <path d="M2 8h3"/>
+  <path d="M2 12h3"/>
+  <path d="M2 16h3"/>
+</svg>

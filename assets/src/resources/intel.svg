@@ -1,0 +1,16 @@
+<!--
+  asset: resources/intel
+  role: Intel — rombo con punto central
+  grid: 24
+  stroke: 2
+  colors: currentColor
+  author: Iván Cabellos
+  created: 2026-08-16
+  original: true
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+     stroke="currentColor" stroke-width="2" stroke-linecap="square"
+     stroke-linejoin="miter">
+  <path d="M12 2 22 12 12 22 2 12Z"/>
+  <circle cx="12" cy="12" r="2.5" fill="currentColor" stroke="none"/>
+</svg>

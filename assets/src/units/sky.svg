@@ -1,0 +1,15 @@
+<!--
+  asset: units/sky
+  role: Cielo — cuña delta
+  grid: 24
+  stroke: 2
+  colors: currentColor
+  author: Iván Cabellos
+  created: 2026-08-16
+  original: true
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+     stroke="currentColor" stroke-width="2" stroke-linecap="square"
+     stroke-linejoin="miter">
+  <path d="M12 3 22 20 12 15 2 20Z"/>
+</svg>
