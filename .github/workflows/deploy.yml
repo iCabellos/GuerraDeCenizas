@@ -163,6 +163,21 @@ jobs:
           echo "  sitio    : $SITE_URL"
           echo "  callback : $SITE_URL/auth/callback"
 
+      # ── Enlazar el proyecto ──────────────────────────────────────────────────
+      #
+      # `db push` funciona con solo `--project-ref`, pero `db query` no: intenta una
+      # conexión directa a la base, que en Supabase es **IPv6**, y los runners de GitHub
+      # son solo IPv4. El propio CLI lo dice y sugiere la solución:
+      #
+      #     IPv6 is not supported on your current network
+      #     Run supabase link --project-ref … to setup IPv4 connection.
+      #
+      # `link` resuelve el pooler —que sí es IPv4— y lo deja escrito para el resto de
+      # comandos. Va antes que todo lo demás para que ningún paso dependa de si el que
+      # tiene delante enlazó o no.
+      - name: Enlazar el proyecto
+        run: supabase link --project-ref "$PROJECT_REF"
+
       # ── Migraciones ──────────────────────────────────────────────────────────
       # `--dry-run` primero: deja en el log exactamente qué se va a aplicar, que es la
       # única forma de reconstruir después qué cambió y cuándo.
@@ -184,7 +199,12 @@ jobs:
 
       - name: El reloj está programado
         run: |
-          supabase db query --project-ref "$PROJECT_REF" "
+          # `cmd | tee` esconde el estado de `cmd`: `bash -e` solo mira el del último de la
+          # tubería, y `tee` siempre va bien. Sin esto, un fallo del CLI se tragaba y el
+          # `grep` de abajo lo reportaba como «pg_cron no tiene programado gdc-resolve-due»
+          # — una causa inventada, que es peor que no informar. Los tres pasos lo llevan.
+          set -o pipefail
+          supabase db query --linked "
             select jobname, schedule, active from cron.job
              where jobname = 'gdc-resolve-due';
           " | tee /tmp/cron.txt
@@ -193,7 +213,8 @@ jobs:
 
       - name: El reloj tiene sus dos secretos
         run: |
-          supabase db query --project-ref "$PROJECT_REF" "
+          set -o pipefail
+          supabase db query --linked "
             select name from vault.decrypted_secrets
              where name in ('gdc_resolve_url','gdc_cron_secret') order by name;
           " | tee /tmp/vault.txt
@@ -209,11 +230,12 @@ jobs:
       # completo de la partida. Si esto falla, el despliegue se para.
       - name: game_states sigue siendo ilegible
         run: |
+          set -o pipefail
           # El veredicto lo decide SQL y sale como una cadena, en vez de devolver las
           # cifras y decidir aquí. Así la comprobación no depende de cómo formatee el CLI
           # su salida: si el formato cambiara, no aparece GDC_OK y el paso falla — que es
           # el lado correcto por el que equivocarse cuando lo que se comprueba es esto.
-          supabase db query --project-ref "$PROJECT_REF" "
+          supabase db query --linked "
             select case
                      when c.relrowsecurity
                       and (select count(*) from pg_policy p where p.polrelid = c.oid) = 0
