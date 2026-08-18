@@ -1078,6 +1078,69 @@ fallar no prueba nada— aplicada a un guardarraíl en vez de a un test.
 
 ---
 
+<a id="adr-034"></a>
+
+## ADR-034 — El relieve es WebGL; lo que se lee y se toca sigue siendo DOM
+**Estado:** aceptada · 2026-08-18
+
+**Contexto.** El diseño de las once vistas llega con un motor 2.5D propio: losas
+hexagonales extruidas, cámara isométrica, niebla de guerra y Ashfall. Contradice de frente
+una regla escrita de `apps/web`: **«El mapa es SVG. No Canvas, no WebGL»**, cuyo motivo no
+era estético sino concreto — cada región es un elemento del DOM enfocable y anunciable, y
+eso *no se recupera* migrando a un lienzo.
+
+Las dos cosas que la regla protegía son reales y no se negocian: que se pueda jugar con
+lector de pantalla y con teclado, y el presupuesto de 180 KB gzip de la ruta de partida
+(three.js pesa 132 KB gzip él solo, más que todo lo demás junto).
+
+**Decisión.** Entra WebGL **como telón, nunca como interfaz**. El reparto es estricto:
+
+| Capa | Qué es | Reglas |
+|---|---|---|
+| Mundo | `<gdc-world>` sobre three.js | `aria-hidden`. No recibe foco. No decide nada |
+| Rótulos | Elementos DOM con `data-tile` | Texto real, anunciable. El motor sólo los **coloca**, proyectando el mundo |
+| Respaldo | La vista plana de siempre | Lo que se ve sin WebGL o con `prefers-reduced-motion` |
+
+Es decir: el relieve se **añade** a la interfaz, no la sustituye. Si el mundo no se monta,
+no queda un hueco gris — queda `CityPlan`, con exactamente la misma información.
+
+**Cómo se sostiene el presupuesto.** El motor se carga con `import()` dentro de un efecto,
+así que sale en su propio *chunk* y no entra ni en el bundle base ni en el servidor. Se
+descarga cuando se monta el mundo y sólo entonces. La ruta de partida no lo paga.
+
+**Consecuencias.**
+- ✅ La accesibilidad no depende de una GPU. Sin WebGL, con movimiento reducido o con la
+  batería en las últimas, la interfaz sigue **completa**, no degradada.
+- ✅ Los rótulos son mejores que el `aria-label` que había: dicen qué distrito es y por qué
+  nivel va, en vez de «tu ciudad».
+- ✅ El motor es geometría procedural propia. Ni un binario de terceros — no toca la regla
+  de assets originales.
+- ⚠️ **Una dependencia nueva de verdad** (`three`, 132 KB gzip). Se justifica aquí porque
+  no hay forma de dar relieve sin ella y porque no la paga quien no la usa; si algún día
+  entra en el bundle base, esta decisión hay que revisarla, no ampliarla.
+- ⚠️ Hay dos representaciones de la ciudad que mantener en paralelo. Es el precio del
+  respaldo y se acepta a sabiendas: la alternativa era dejar sin jugar a quien no tiene
+  WebGL.
+
+**Un fallo que se cazó al portarlo.** El generador del campo repartía los sectores por
+ángulo (`atan2`), y las casillas justo sobre la línea de corte caían todas del mismo lado:
+**15 / 12 / 9** en vez de 12 / 12 / 12. Sobre un tablero decorativo parece inofensivo,
+pero dibujaba un mapa desigual cuando la premisa del juego es que el reparto es justo. Se
+cambió a repartir por **rotación**: cada casilla pertenece a una órbita de tres bajo giros
+de 120°, y su sector es cuántos giros la separan de su representante canónico. Ahora los
+tres territorios son idénticos por construcción, y hay un test que lo exige.
+
+**Descartado.**
+- *Mantener SVG y renunciar al relieve.* Habría sido decidir por el diseño sin coste real:
+  el conflicto se resuelve separando capas, no eligiendo bando.
+- *Sustituir el SVG por el mundo y poner `aria-label` al lienzo.* Es exactamente lo que la
+  regla original advertía que no se puede recuperar: un rótulo sobre un lienzo no da ni
+  foco, ni navegación por teclado, ni orden de lectura.
+- *Cargar three.js desde un CDN,* como hacía el mockup. Rompe el despliegue reproducible y
+  mete un tercero en la ruta crítica.
+
+---
+
 ## Plantilla para nuevas decisiones
 
 ```markdown

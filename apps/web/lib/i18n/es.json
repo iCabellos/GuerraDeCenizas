@@ -121,5 +121,12 @@
   "auth.guestEntering": "Entrando…",
   "auth.guestWarning": "Tu progreso se queda en este dispositivo. Sin correo no hay forma de recuperarlo en otro.",
   "error.guest_unavailable": "Ahora mismo no se puede entrar sin cuenta.",
-  "error.link_expired": "Ese enlace ya no vale. Pide otro."
+  "error.link_expired": "Ese enlace ya no vale. Pide otro.",
+  "district.archive": "Archivo",
+  "district.foundry": "Fundición",
+  "district.antenna": "Antena",
+  "district.chamber": "Cámara",
+  "district.reliquary": "Reliquiario",
+  "district.hall": "Salón",
+  "district.empty": "Solar libre"
 }

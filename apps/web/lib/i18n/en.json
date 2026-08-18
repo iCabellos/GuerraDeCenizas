@@ -121,5 +121,12 @@
   "auth.guestEntering": "Entering…",
   "auth.guestWarning": "Your progress stays on this device. With no email there is no way to get it back on another one.",
   "error.guest_unavailable": "Playing without an account is unavailable right now.",
-  "error.link_expired": "That link is no longer valid. Ask for a new one."
+  "error.link_expired": "That link is no longer valid. Ask for a new one.",
+  "district.archive": "Archive",
+  "district.foundry": "Foundry",
+  "district.antenna": "Antenna",
+  "district.chamber": "Chamber",
+  "district.reliquary": "Reliquary",
+  "district.hall": "Hall",
+  "district.empty": "Empty plot"
 }

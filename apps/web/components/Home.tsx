@@ -202,23 +202,13 @@ export function Home({
   }
 
   return (
-    <div className="relative flex h-dvh flex-col overflow-hidden bg-void">
-      <div className="chart-grid pointer-events-none absolute inset-0 opacity-40" />
-      <div className="ashfall" />
-
-      {/* Barra superior: emblema y Ceniza. Dos datos, ni una etiqueta. */}
-      <header className="relative z-10 flex items-center justify-between px-4 pt-4">
-        <Mark size={26} className="text-rust" title={t('app.name')} />
-        <span className="flex items-center gap-2">
-          <Ash size={18} className="text-ash" title={t('resource.ash')} />
-          <span className="type-figure text-lg text-ink">{ash}</span>
-        </span>
-      </header>
-
-      {/* La ciudad ocupa todo lo que sobra. Es el sujeto de la pantalla. */}
-      <div className="relative z-10 flex flex-1 items-center justify-center px-4">
+    <div className="relative h-dvh overflow-hidden bg-void">
+      {/* La ciudad va a sangre: es el sujeto de la pantalla, no una ilustración dentro
+          de un hueco. Todo lo demás flota encima. */}
+      <div className="absolute inset-0">
         <CityView
-          className="h-full max-h-[min(72vh,460px)] w-full"
+          className="h-full w-full"
+          messages={messages}
           label={searching ? t('a11y.searching') : t('a11y.city')}
           factionId={factionId}
           profileId={profileId}
@@ -229,7 +219,26 @@ export function Home({
         />
       </div>
 
-      <footer className="relative z-10 flex flex-col gap-2 px-4 pb-5">
+      <div className="chart-grid pointer-events-none absolute inset-0 opacity-40" />
+      <div className="ashfall" />
+
+      {/* Velo superior. Sin él, el emblema y la Ceniza compiten con los edificios.
+          `pointer-events-none`: nada que flote sobre la ciudad intercepta un gesto. */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-52
+        bg-gradient-to-b from-void/95 via-void/45 to-transparent" />
+
+      {/* Barra superior: emblema y Ceniza. Dos datos, ni una etiqueta. */}
+      <header className="pointer-events-none relative z-10 flex items-center
+        justify-between px-4 pt-4">
+        <Mark size={26} className="text-rust" title={t('app.name')} />
+        <span className="flex items-center gap-2">
+          <Ash size={18} className="text-ash" title={t('resource.ash')} />
+          <span className="type-figure text-lg text-ink">{ash}</span>
+        </span>
+      </header>
+
+      <footer className="absolute inset-x-0 bottom-0 z-10 flex flex-col gap-2 px-4 pb-5
+        pt-20 bg-gradient-to-b from-transparent via-void/95 to-void">
         {!searching && (
           <>
             <div className="flex gap-2">

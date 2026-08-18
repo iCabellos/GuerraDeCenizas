@@ -12,7 +12,42 @@ Este proyecto sigue [SemVer](https://semver.org/lang/es/).
 
 ## [Sin publicar] — v0.3 en curso
 
+### Añadido
+
+- **La ciudad tiene relieve.** Entra el mundo 2.5D del diseño
+  (`apps/web/components/world/`): losas hexagonales extruidas, cámara isométrica que
+  encuadra por radio, sombras suaves y Ashfall. Geometría **100 % procedural y propia** —
+  ni un binario de terceros.
+
+  El relieve es **telón, no interfaz** ([ADR-034](docs/DECISIONS.md#adr-034)). El lienzo va
+  `aria-hidden` y no recibe foco; lo que hay que leer son rótulos DOM de verdad que el
+  motor se limita a colocar proyectando el mundo. Sin WebGL o con `prefers-reduced-motion`
+  no queda un hueco gris: queda la planta de siempre, con la misma información. La regla
+  de que la accesibilidad no dependa de una GPU sigue en pie, y ahora está escrita.
+
+  three.js se carga con `import()` dentro de un efecto, así que sale en su propio *chunk*
+  de 132 KB gzip y **no entra en el bundle base**: el presupuesto de 180 KB de la ruta de
+  partida no lo paga quien no ve el mundo.
+
+- **Los distritos se anuncian por su nombre.** Seis claves nuevas por idioma
+  (`district.*`). Antes la ciudad entera era un `aria-label` que decía «tu ciudad»; ahora
+  cada distrito dice cuál es y por qué nivel va.
+
 ### Corregido
+
+- **El campo de batalla repartía 15 / 12 / 9 casillas en vez de 12 / 12 / 12.** El
+  generador cortaba los tres sectores por ángulo (`atan2`) y las casillas que caen justo
+  sobre una línea de corte se iban todas al mismo lado. Sobre un tablero decorativo suena
+  inofensivo; lo que hacía era **dibujar un mapa desigual** cuando la premisa entera del
+  juego es que el reparto es justo y por eso la diplomacia es aritmética.
+
+  Ahora el sector se calcula por **rotación**, no por ángulo: cada casilla pertenece a una
+  órbita de tres bajo giros de 120° y su sector es cuántos giros la separan de su
+  representante canónico. Los tres territorios son idénticos **por construcción**. Lo cazó
+  un test que comprueba la intención de diseño —«los tres sectores son el mismo territorio
+  girado»— y no las constantes del generador; uno que fijara la tabla de terrenos habría
+  bendecido el reparto desigual sin inmutarse.
+
 
 - **Un carácter invisible en un secreto se diagnosticaba como contraseña equivocada.** El
   recorte de extremos no ve un espacio duro (`U+00A0`) ni uno de ancho cero (`U+200B`) —no

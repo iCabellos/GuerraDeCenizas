@@ -31,6 +31,7 @@ export default async function Page({
         <div className="ashfall" />
         <CityView
           className="relative z-10 h-full max-h-[min(80vh,520px)] w-full"
+          messages={DICTIONARIES.es}
           label="Buscando campaña"
           factionId="koldvik"
           profileId="00000000-0000-4000-8000-0000000000de"
