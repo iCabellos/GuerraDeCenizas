@@ -44,14 +44,33 @@ reglas distintas ni información distinta.
 
 Checklist completa en [`docs/UX_MOBILE.md §11`](../../docs/UX_MOBILE.md#11-checklist-de-qa-móvil).
 
-## El mapa es SVG
+## La interfaz es SVG y DOM. El relieve es aparte
 
-No Canvas, no WebGL. Cada región es un elemento del DOM **enfocable y anunciable por
-lector de pantalla** — la accesibilidad sale gratis y no se puede recuperar si migras a
-Canvas.
+Cada región es un elemento del DOM **enfocable y anunciable por lector de pantalla** — la
+accesibilidad sale gratis y no se puede recuperar si la metes en un lienzo.
 
 Zoom y desplazamiento por `transform` sobre el `<g>` raíz, manipulado por ref. **No hagas
 re-render de React durante un gesto.**
+
+Desde [ADR-034](../../docs/DECISIONS.md#adr-034) hay además un mundo 2.5D en WebGL
+(`components/world/`), y el reparto es **estricto**:
+
+| Capa | Qué es | Reglas |
+|---|---|---|
+| Mundo | `<gdc-world>`, three.js | `aria-hidden`. Sin foco. **No decide nada** |
+| Rótulos | DOM con `data-tile` | Texto real. El motor sólo los coloca |
+| Respaldo | La vista plana de siempre | Sin WebGL o con `prefers-reduced-motion` |
+
+Tres cosas que no puedes hacer aquí:
+
+1. **Poner información sólo en el mundo.** Si no está en el DOM, para media clase de
+   jugadores no existe. El lienzo es telón.
+2. **Importar `./world/engine` de forma estática.** Va con `import()` dentro de un efecto
+   o three.js entra en el bundle base y se lleva por delante el presupuesto de 180 KB.
+3. **Dejar una vista sin `fallback`.** Un hueco gris no es un respaldo; la vista plana sí.
+
+`components/world/board.ts` es geometría pura y **sin DOM** justamente para poder testearla:
+`engine.ts` hace `extends HTMLElement` y no se puede ni importar fuera de un navegador.
 
 ## Estado del cliente
 

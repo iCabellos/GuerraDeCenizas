@@ -3,6 +3,7 @@
 import { useMemo } from 'react';
 import { makeRng, type FactionId } from '@gdc/core';
 import { FactionEmblem } from '@/components/GameChrome';
+import World from '@/components/world/World';
 
 /**
  * Tu ciudad, en cenital.
@@ -68,10 +69,7 @@ function blocksFor(level: number, seed: number): Block[] {
   return blocks;
 }
 
-export function CityView({
-  factionId, profileId, districts = {}, ash = 0, arrivals = 0, arrivalTotal = 0, className,
-  label,
-}: {
+export interface CityProps {
   factionId: FactionId;
   profileId: string;
   districts?: DistrictLevels;
@@ -82,7 +80,21 @@ export function CityView({
   className?: string;
   /** Descripción para lector de pantalla. Llega traducida desde i18n. */
   label?: string;
-}) {
+}
+
+/**
+ * La planta de la ciudad, en cenital y sin perspectiva.
+ *
+ * Dejó de ser la vista principal cuando entró el relieve ([ADR-034](../../../docs/DECISIONS.md#adr-034)),
+ * pero **no es código muerto ni un adorno degradado**: es lo que se ve sin WebGL o con
+ * `prefers-reduced-motion`, y muestra exactamente la misma información. Por eso sigue
+ * siendo determinista a partir del perfil: la misma cuenta ve siempre la misma ciudad,
+ * la vea en relieve o en planta.
+ */
+export function CityPlan({
+  factionId, profileId, districts = {}, ash = 0, arrivals = 0, arrivalTotal = 0, className,
+  label,
+}: CityProps) {
   // Semilla estable por cuenta: mismo perfil, misma ciudad, siempre.
   const seed = useMemo(() => {
     let hash = 2166136261;
@@ -297,5 +309,70 @@ export function CityView({
           );
         })}
     </svg>
+  );
+}
+
+/** Nivel en cifra romana: se lee de un vistazo y no se confunde con una cantidad. */
+const ROMAN = ['', 'I', 'II', 'III'] as const;
+
+/**
+ * Cuánto se aleja la cámara. El motor encuadra **por radio**, así que el multiplicador
+ * depende de la proporción del hueco: el diseño usaba 0,82 sobre un lienzo de 430×932 y
+ * una pantalla de móvil real es más ancha en proporción, luego hay que alejarse un poco
+ * más para que la muralla entera siga entrando.
+ */
+const CITY_ZOOM = 1.05;
+
+/**
+ * Tu ciudad. **Es la pantalla** ([ADR-026](../../../docs/DECISIONS.md#adr-026)).
+ *
+ * Dos capas con un reparto de trabajo estricto:
+ *
+ * - El **relieve** lo pone el mundo 2.5D, que es decorado y va `aria-hidden`.
+ * - Lo que hay que **leer** —qué distrito es cada uno y por qué nivel va— son rótulos
+ *   DOM de verdad, anunciables, que el motor se limita a colocar proyectando el mundo.
+ *
+ * Así la ciudad gana volumen sin que la accesibilidad dependa de una GPU: quien no
+ * pueda o no quiera ver el relieve recibe `CityPlan` con la misma información.
+ */
+export function CityView({ className, messages, ...city }: CityProps & {
+  /** Diccionario ya resuelto por el servidor, como en el resto de la interfaz. */
+  messages?: Readonly<Record<string, string>>;
+}) {
+  const t = (key: string): string => messages?.[key] ?? key;
+  const levels = DISTRICTS.map((district) => city.districts?.[district] ?? 0);
+
+  return (
+    <div role="group" aria-label={city.label} className={className} style={{ position: 'relative' }}>
+      <World
+        scene="city"
+        districts={levels}
+        arrivals={city.arrivals}
+        arrivalTotal={city.arrivalTotal}
+        ash={(city.ash ?? 0) > 0}
+        zoom={CITY_ZOOM}
+        elevation={0.6}
+        azimuth={-0.5}
+        fallback={<CityPlan {...city} className="h-full w-full" />}
+      >
+        {DISTRICTS.map((district, index) => {
+          const level = levels[index] ?? 0;
+          return (
+            <span
+              key={district}
+              data-tile={`d${index}`}
+              data-lift={level > 0 ? '1.5' : '0.8'}
+              className={`type-label pointer-events-none whitespace-nowrap rounded-sharp border px-2 py-1 text-[10px] ${
+                level > 0
+                  ? 'border-ink/20 bg-void/85 text-ink'
+                  : 'border-dashed border-ink/25 bg-void/70 text-muted'
+              }`}
+            >
+              {level > 0 ? `${t(`district.${district}`)} ${ROMAN[level] ?? ''}` : t('district.empty')}
+            </span>
+          );
+        })}
+      </World>
+    </div>
   );
 }
