@@ -82,6 +82,7 @@ export async function formMatch(
   const claim = (await rpc('claim_match', {
     p_size: playerCount,
     p_cadence: cadence,
+    p_bot_fill_after: botFillAfter(),
   })) as { ok: boolean; code?: string; profiles?: string[]; bots?: number };
 
   if (!claim?.ok || !claim.profiles?.length) return null;
@@ -105,6 +106,28 @@ export async function formMatch(
   if (!started.ok) return null;
 
   return created.game_id;
+}
+
+/** Espera por defecto antes de rellenar con bots. La que trae la base de datos. */
+export const BOT_FILL_DEFAULT_SECONDS = 180;
+
+/**
+ * Cuánto se espera a que aparezcan humanos antes de sentar rivales artificiales.
+ *
+ * `BOT_FILL_SECONDS=0` sienta bots **al instante**, que es lo que hace falta mientras el
+ * juego no está desplegado: sin nadie más en la cola, esperar tres minutos es esperar a
+ * nadie. Pero es una variable, no el valor por defecto, y la diferencia importa — con
+ * cero **dos humanos no se emparejan nunca**, porque el primero que busca se lleva una
+ * mesa de bots antes de que el segundo llegue. Al abrir el juego se quita la variable y
+ * la cola vuelve a funcionar, sin tocar una migración.
+ *
+ * El intervalo se compone a partir de un entero ya validado; nunca se interpola texto
+ * que venga de fuera.
+ */
+function botFillAfter(): string {
+  const raw = Number(process.env['BOT_FILL_SECONDS'] ?? BOT_FILL_DEFAULT_SECONDS);
+  const seconds = Number.isFinite(raw) && raw >= 0 ? Math.floor(raw) : BOT_FILL_DEFAULT_SECONDS;
+  return `${seconds} seconds`;
 }
 
 /** Todas las combinaciones que el cron recorre buscando grupos listos o vencidos. */

@@ -14,6 +14,27 @@ Este proyecto sigue [SemVer](https://semver.org/lang/es/).
 
 ### Añadido
 
+- **Rivales artificiales para poder jugar solo.** Cuatro perfiles —temerario, sensato,
+  astuto e implacable— repartidos por asiento **a partir de la semilla** de la partida, así
+  que una mesa de cinco trae dificultades distintas y una repetición reproduce sus
+  decisiones ([ADR-036](docs/DECISIONS.md#adr-036)).
+
+  Deciden desde su `PlayerView`, no desde el estado: **no ven a través de la niebla**, y
+  evalúan los combates con `previewAttack`, la misma función que pinta la previsualización
+  del jugador. Un rival que viera el estado entero no sería un rival sino un tramposo.
+
+  No comparten código con el Mando Automático y no deben: ese existe para que la ausencia
+  de alguien no dañe a un tercero, y por eso no ataca por iniciativa propia.
+
+- **Los rivales parecen una mesa.** Nombre y facción propios, estables por partida, en vez
+  de tres asientos etiquetados «Mando Automático».
+
+- **`BOT_FILL_SECONDS`**: con `0` la campaña empieza al instante contra bots, que es lo que
+  hace falta mientras el juego no está abierto. Sin la variable siguen siendo los 180
+  segundos de siempre — con cero, **dos humanos no se emparejan nunca**.
+
+### Añadido
+
 - **La pantalla de campaña adopta la composición del diseño.** El mapa pasa a ir **a
   sangre** y el chrome flota encima: cabecera translúcida, **raíl de fases**
   (Parlamento · Guerra · Resuelta) y una **hoja de órdenes** inferior que ya no dice

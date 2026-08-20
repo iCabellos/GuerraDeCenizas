@@ -50,3 +50,4 @@ export {
   DEFAULT_STANDING, AUTOCOMMAND_AFTER, type StandingConfig,
 } from './rules/standing';
 export { total } from './rules/movement';
+export { botOrders, botProfile, BOT_TIERS, type BotProfile, type BotTier } from './rules/bot';
