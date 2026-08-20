@@ -7,6 +7,7 @@ import {
   type Posture, type RegionId,
 } from '@gdc/core';
 import { MapView } from '@/components/MapView';
+import { OrderSheet, PhaseRail, type OrderRow } from '@/components/OrderSheet';
 import { CombatPreview } from '@/components/CombatPreview';
 import { CommandHeader, OrderBar, OrderCommit } from '@/components/GameChrome';
 import { browserClient } from '@/lib/supabase-browser';
@@ -116,6 +117,40 @@ export function GameBoard({
     return map;
   }, [draft.moves, ownForces]);
 
+  /**
+   * Las órdenes del borrador, ya resueltas a texto.
+   *
+   * El arma que se enseña es la dominante de la fuerza: en una pantalla de 360 px no
+   * caben tres cifras por fila, y la que decide el carácter del movimiento es la mayor.
+   * El destino se nombra por su terreno porque las regiones **no tienen nombre** en el
+   * motor — el mockup se los inventaba.
+   */
+  const orderRows = useMemo<OrderRow[]>(() => {
+    const rows: OrderRow[] = [];
+    for (const move of draft.moves) {
+      const force = ownForces.find((f) => f.id === move.forceId);
+      if (!force || move.to === undefined) continue;
+      const region = view.map.regions[move.to];
+      if (!region) continue;
+      // La vista tipa las cifras como anulables porque de una fuerza ajena puede no
+      // saberse la composición. Éstas son propias, así que el `?? 0` no oculta nada:
+      // es lo que hay que pintar si el motor alguna vez devolviera un hueco.
+      const arms = [
+        { arm: 'line' as const, count: force.line ?? 0 },
+        { arm: 'fire' as const, count: force.fire ?? 0 },
+        { arm: 'sky' as const, count: force.sky ?? 0 },
+      ].sort((a, b) => b.count - a.count);
+      const top = arms[0] ?? { arm: 'line' as const, count: 0 };
+      rows.push({
+        forceId: force.id,
+        arm: top.arm,
+        count: top.count,
+        to: `${t(`terrain.${region.kind}`)} ${region.id}`,
+      });
+    }
+    return rows;
+  }, [draft.moves, ownForces, t, view.map.regions]);
+
   // ── Realtime: el turno nuevo llega empujado, nunca sondeado ──────────────────
   useEffect(() => {
     const supabase = browserClient();
@@ -187,20 +222,9 @@ export function GameBoard({
   }
 
   return (
-    <div className="flex h-dvh flex-col">
-      <CommandHeader
-        seat={view.seat}
-        name={view.self.name}
-        factionId={view.self.factionId}
-        doctrine={deadlineAt ? new Date(deadlineAt).toLocaleTimeString() : ''}
-        phase={t(`game.${view.phase}`)}
-        turn={t('game.turn', { turn: view.turn })}
-        regions={view.control.filter((owner) => owner === view.seat).length}
-        regionsLabel=""
-        resources={view.self.resources}
-      />
-
-      <div className="relative flex-1 overflow-hidden">
+    <div className="relative h-dvh overflow-hidden">
+      {/* El mapa va a sangre y todo lo demás flota encima, como en el diseño. */}
+      <div className="absolute inset-0">
         <MapView
           view={view}
           selected={selected}
@@ -208,43 +232,71 @@ export function GameBoard({
           ordered={ordered}
           onSelect={choose}
         />
-
-        {/* Panel flotante: `pointer-events-none` en el contenedor y `auto` solo en los
-            controles. Hacerlo más pequeño no resuelve nada — siempre queda una región
-            tocable debajo, y eso ya hizo imposible mover a un destino en v0.1. */}
-        {preview && (
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 px-3 pb-3">
-            <div className="pointer-events-auto">
-              <CombatPreview
-                preview={preview}
-                seat={view.seat}
-                onConfirm={() => setSelected(null)}
-                onCancel={() => {
-                  if (selectedForce) dispatch({ type: 'cancel', forceId: selectedForce.id });
-                  setSelected(null);
-                }}
-              />
-            </div>
-          </div>
-        )}
       </div>
 
+      {/* Velo superior: sin él la cabecera compite con las regiones de arriba. */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-44
+        bg-gradient-to-b from-void/90 to-transparent" />
+
+      <div className="absolute inset-x-0 top-0">
+        <CommandHeader
+          floating
+          seat={view.seat}
+          name={view.self.name}
+          factionId={view.self.factionId}
+          doctrine={deadlineAt ? new Date(deadlineAt).toLocaleTimeString() : ''}
+          phase={t(`game.${view.phase}`)}
+          turn={t('game.turn', { turn: view.turn })}
+          regions={view.control.filter((owner) => owner === view.seat).length}
+          regionsLabel=""
+          resources={view.self.resources}
+        />
+      </div>
+
+      {/* Raíl de fases. No intercepta gestos: es un indicador, no un control. */}
+      <div className="absolute left-3 top-32">
+        <PhaseRail phase={view.phase} label={t('a11y.phase')} t={t} />
+      </div>
+
+      {/* Un solo panel abierto a la vez: la previsualización de combate sustituye a la
+          hoja de órdenes en vez de apilarse encima (UX_MOBILE §11). */}
+      {preview ? (
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 px-3 pb-3">
+          <div className="pointer-events-auto">
+            <CombatPreview
+              preview={preview}
+              seat={view.seat}
+              onConfirm={() => setSelected(null)}
+              onCancel={() => {
+                if (selectedForce) dispatch({ type: 'cancel', forceId: selectedForce.id });
+                setSelected(null);
+              }}
+            />
+          </div>
+        </div>
+      ) : (
+        <OrderSheet
+          orders={orderRows}
+          onRemove={(forceId) => dispatch({ type: 'cancel', forceId })}
+          onClear={() => dispatch({ type: 'clear' })}
+          t={t}
+          primary={
+            <OrderCommit onClick={submit} disabled={sending || sent}>
+              {sent ? t('game.submitted') : sending ? t('game.submitting') : t('game.submit')}
+            </OrderCommit>
+          }
+        />
+      )}
+
       {error && (
-        <p className="border-t border-danger/60 bg-danger/10 px-4 py-2 text-sm" role="alert">
+        <p
+          role="alert"
+          className="absolute inset-x-0 top-24 mx-3 rounded-sharp border border-danger/60
+            bg-danger/15 px-3 py-2 text-sm backdrop-blur-sm"
+        >
           {error}
         </p>
       )}
-      <OrderBar
-        status={draft.moves.length > 0
-          ? t('game.pending', { count: draft.moves.length })
-          : t('game.parley')}
-        phase={t(`game.${view.phase}`)}
-        primary={
-          <OrderCommit onClick={submit} disabled={sending || sent}>
-            {sent ? t('game.submitted') : sending ? t('game.submitting') : t('game.submit')}
-          </OrderCommit>
-        }
-      />
     </div>
   );
 }

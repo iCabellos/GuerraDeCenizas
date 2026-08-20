@@ -14,6 +14,37 @@ Este proyecto sigue [SemVer](https://semver.org/lang/es/).
 
 ### Añadido
 
+- **La pantalla de campaña adopta la composición del diseño.** El mapa pasa a ir **a
+  sangre** y el chrome flota encima: cabecera translúcida, **raíl de fases**
+  (Parlamento · Guerra · Resuelta) y una **hoja de órdenes** inferior que ya no dice
+  «faltan 3» sino que **enseña las tres**: arma dominante, cantidad y destino
+  («Línea 20 → Elevación 10»), cada una con su botón de quitar, más «Vaciar» y el botón
+  de confirmar a todo el ancho.
+
+  Todo sale del borrador real y de `PlayerView`. Los destinos se nombran por terreno e
+  identificador porque **las regiones no tienen nombre en el motor** — el mockup se los
+  inventaba.
+
+- **`/dev/board`**: vista previa de la campaña sin base de datos, con una partida de tres
+  montada con el motor de verdad (`createGame` + `projectViews`). `?orders=0` la monta con
+  el borrador vacío. 404 en producción, como el resto de `/dev/*`.
+
+- **Claves i18n de terreno**, y tests que exigen que **todo** terreno, arma y fase del
+  motor tenga nombre en los dos idiomas. Es un hueco que ningún typecheck ve —las claves
+  son cadenas— y que se le enseñaría crudo al jugador en mitad de una orden.
+
+### Decidido
+
+- **El mapa de campaña se queda en SVG** ([ADR-035](docs/DECISIONS.md#adr-035)). Al ir a
+  llevar el mundo 2.5D a la vista «Mapa · Guerra» aparecieron dos hechos que el mockup no
+  podía ver: el tablero del motor son 37 losas hexagonales con terreno fijo por anillo,
+  mientras el mapa real es un grafo en polares con adyacencia por aristas explícitas —
+  pintarlo sería enseñar un mapa que no se está jugando—; y un mapa real tiene **45, 55 o
+  96 regiones** según los asientos, así que una capa de objetivos tocables de 44 px sobre
+  360 px de ancho no cabe. El relieve se queda donde representa lo que dibuja: la Ciudad.
+
+### Añadido
+
 - **La ciudad tiene relieve.** Entra el mundo 2.5D del diseño
   (`apps/web/components/world/`): losas hexagonales extruidas, cámara isométrica que
   encuadra por radio, sombras suaves y Ashfall. Geometría **100 % procedural y propia** —

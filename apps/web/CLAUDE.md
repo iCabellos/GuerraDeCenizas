@@ -126,6 +126,14 @@ peaje entre el jugador y el turno que quiere jugar, y en Blitz cuesta plazo de v
 | `/sign-in` | Enlace mágico **o entrar sin cuenta**. Lo único anterior a la ciudad |
 | `/dev/*` | QA visual. 404 en producción |
 
+`/dev/city` y `/dev/board` montan las dos pantallas **sin base de datos** — la de campaña
+con una partida real de `createGame` + `projectViews`. Si tocas una de las dos, mírala ahí
+antes de darla por hecha: sin credenciales no hay otra forma de verlas.
+
+**El mapa de campaña es SVG y se queda en SVG** ([ADR-035](../../docs/DECISIONS.md#adr-035)).
+El mundo 2.5D no lo puede representar: su tablero son 37 losas fijas y el mapa real es un
+grafo en polares de 45 a 96 regiones. No lo intentes otra vez sin leer el ADR.
+
 **No hay estado «con sesión pero sin perfil».** El perfil lo crea un trigger sobre
 `auth.users` ([ADR-030](../../docs/DECISIONS.md#adr-030)), no la API. No añadas una ruta de
 alta: la que había —ninguna— dejaba la cuenta rebotando entre `/` y `/sign-in` para

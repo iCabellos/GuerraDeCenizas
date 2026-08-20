@@ -128,5 +128,18 @@
   "district.chamber": "Chamber",
   "district.reliquary": "Reliquary",
   "district.hall": "Hall",
-  "district.empty": "Empty plot"
+  "district.empty": "Empty plot",
+  "orders.title": "Orders",
+  "orders.clear": "Clear",
+  "orders.remove": "Remove order",
+  "orders.empty": "No orders yet",
+  "a11y.phase": "Campaign phase",
+  "terrain.plain": "Plain",
+  "terrain.urban": "Urban",
+  "terrain.high": "Highland",
+  "terrain.forest": "Forest",
+  "terrain.water": "Water",
+  "terrain.seam": "Seam",
+  "terrain.bastion": "Bastion",
+  "terrain.core": "Core"
 }

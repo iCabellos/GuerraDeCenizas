@@ -1141,6 +1141,54 @@ tres territorios son idénticos por construcción, y hay un test que lo exige.
 
 ---
 
+<a id="adr-035"></a>
+
+## ADR-035 — El mapa de campaña se queda en SVG; el relieve es para la Ciudad
+**Estado:** aceptada · 2026-08-18
+
+**Contexto.** El proyecto de diseño trae una vista «Mapa · Guerra» montada sobre el mismo
+motor 2.5D que la Ciudad (`<gdc-world scene="map">`). Al ir a implementarla aparecieron
+dos hechos que el mockup no podía ver:
+
+1. **El tablero del mockup no es el mapa del juego.** El motor teje 37 losas hexagonales
+   con el terreno fijado por anillo. El mapa real lo genera `mapgen` en **polares**
+   (`x = cos(θ)·r`), la adyacencia son **aristas explícitas** y no dos losas que se tocan,
+   y el reparto de terreno sale de la bolsa del sector. Pintar el tablero decorativo bajo
+   una partida real sería enseñar un mapa que no es el que se está jugando.
+2. **El tamaño.** `SECTOR_SPEC` da **45 regiones** a 2 jugadores, **55** a 3 y **96** a 5.
+   La vista del mockup flota tres rótulos sobre el mundo; la pantalla real necesita que
+   *cada* región sea un objetivo tocable y enfocable. 96 objetivos de 44 px no caben en
+   360 px de ancho — no es una cuestión de ajustar tamaños, no hay superficie.
+
+**Decisión.** El mapa de campaña sigue siendo **SVG**, con cada región como
+`<g role="button" tabindex="0">`, tal y como fijó [ADR-012](#adr-012). El relieve de
+[ADR-034](#adr-034) se queda donde sí representa lo que dibuja y donde el número de
+elementos es fijo y pequeño: **la Ciudad** (seis distritos).
+
+Del diseño de la vista 05 se implementa lo que **sí** es compatible: la composición. Mapa
+a sangre, cabecera translúcida encima, raíl de fases y hoja de órdenes inferior con el
+borrador real y el botón de confirmar.
+
+**Consecuencias.**
+- ✅ El mapa nunca miente sobre el estado: lo que se ve son las regiones que hay, con la
+  adyacencia que hay.
+- ✅ La pantalla de campaña gana la composición del diseño sin perder ni la navegación por
+  teclado, ni el zoom y desplazamiento por gesto, ni los objetivos táctiles.
+- ⚠️ La partida no tiene relieve. Es deliberado, no una tarea pendiente: para tenerlo
+  habría que construir un mundo **derivado de `PlayerView`** —losa por región en su `x/y`,
+  aristas dibujadas— y resolver antes cómo se toca una región de 96 sin una capa de
+  botones. Mientras eso no exista, el SVG es mejor mapa.
+
+**Descartado.**
+- *Poner el tablero decorativo de fondo, detrás del SVG.* Se verían hexágonos que no
+  corresponden a los nodos de delante. Ruido que además contradice el mapa.
+- *Sustituir los botones por selección con raycasting sobre el lienzo.* Devuelve el
+  problema que [ADR-034](#adr-034) evita: sin foco, sin teclado y sin orden de lectura.
+- *Nombrar las regiones como el mockup («Vado de Ceniza»).* El motor no da nombres; se
+  usa el terreno y el identificador, que es lo que existe de verdad.
+
+---
+
 ## Plantilla para nuevas decisiones
 
 ```markdown

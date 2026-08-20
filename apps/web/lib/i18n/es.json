@@ -128,5 +128,18 @@
   "district.chamber": "Cámara",
   "district.reliquary": "Reliquiario",
   "district.hall": "Salón",
-  "district.empty": "Solar libre"
+  "district.empty": "Solar libre",
+  "orders.title": "Órdenes",
+  "orders.clear": "Vaciar",
+  "orders.remove": "Quitar la orden",
+  "orders.empty": "Ninguna orden todavía",
+  "a11y.phase": "Fase de la campaña",
+  "terrain.plain": "Llanura",
+  "terrain.urban": "Urbana",
+  "terrain.high": "Elevación",
+  "terrain.forest": "Bosque",
+  "terrain.water": "Agua",
+  "terrain.seam": "Yacimiento",
+  "terrain.bastion": "Bastión",
+  "terrain.core": "Núcleo"
 }
