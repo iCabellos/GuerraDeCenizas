@@ -12,6 +12,31 @@ Este proyecto sigue [SemVer](https://semver.org/lang/es/).
 
 ## [Sin publicar] — v0.3 en curso
 
+### Añadido
+
+- **La ciudad levanta edificios de verdad.** El motor 2.5D se actualiza a la versión nueva
+  del proyecto de diseño (785 → 1621 líneas de origen): biblioteca `buildingAsset` con
+  granero, fundición, atalaya, silo de Ceniza, cerco y monumento, tropas rehechas a militar
+  contemporáneo y vitrinas de asset (`scene="unit" | "asset" | "tile" | "hero"`) con modo
+  `still`, que pinta un fotograma y suelta el contexto WebGL — un navegador no aguanta
+  veintitrés contextos vivos y el resto de las tarjetas saldría en negro.
+
+  Los seis solares dejan de ser cajas genéricas: `districts` acepta `"granary:3,foundry:2,…"`
+  y cada distrito construye lo suyo.
+
+### Cambiado
+
+- **El motor ya no escribe en el documento.** El original resolvía la escaramuza pintando
+  directamente en `document.querySelectorAll('[data-sk]')`. Eso vale en una maqueta de una
+  sola página, pero aquí el DOM es de React y un elemento que escribe en todo el documento
+  se sale de su recuadro. Ahora emite `gdc-skirmish` con el estado completo y lo pinta
+  quien lo escuche, igual que `_markers()` hace con los rótulos.
+
+- **Cada distrito sabe qué edificio es suyo.** Las dos listas se diseñaron por separado y
+  no se corresponden —los distritos del repo son desbloqueos de metaprogresión, los del
+  motor son siluetas—, así que hay una tabla explícita en `CityView`. Sin ella el rótulo
+  decía «Archivo» sobre un granero, que es peor que no poner nada.
+
 ### Cambiado
 
 - **El mapa se dibuja en hexágonos** ([ADR-037](docs/DECISIONS.md#adr-037)). Las regiones

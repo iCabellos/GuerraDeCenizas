@@ -312,6 +312,27 @@ export function CityPlan({
   );
 }
 
+/**
+ * Qué edificio levanta cada distrito.
+ *
+ * Las dos listas se diseñaron por separado y no se corresponden: los distritos del repo
+ * son **desbloqueos de metaprogresión** ([METAPROGRESSION §4.4](../../../docs/METAPROGRESSION.md#44-distritos-de-la-ciudad-6--3-niveles))
+ * y los edificios del motor son **siluetas**. Sin este mapa, el rótulo diría «Archivo»
+ * sobre un granero, que es peor que no poner nada.
+ *
+ * El criterio es la silueta que hace creíble la función: el Archivo almacena, la Antena
+ * es un mástil que mira, el Reliquiario guarda algo precioso, el Salón es ceremonial.
+ * Es una lectura, no una verdad: cambiarla es cambiar esta tabla y nada más.
+ */
+const DISTRICT_BUILDING: Record<District, string> = {
+  archive: 'granary',
+  foundry: 'foundry',
+  antenna: 'watchtower',
+  chamber: 'wall',
+  reliquary: 'silo',
+  hall: 'monument',
+};
+
 /** Nivel en cifra romana: se lee de un vistazo y no se confunde con una cantidad. */
 const ROMAN = ['', 'I', 'II', 'III'] as const;
 
@@ -321,7 +342,7 @@ const ROMAN = ['', 'I', 'II', 'III'] as const;
  * una pantalla de móvil real es más ancha en proporción, luego hay que alejarse un poco
  * más para que la muralla entera siga entrando.
  */
-const CITY_ZOOM = 1.05;
+const CITY_ZOOM = 1.2;
 
 /**
  * Tu ciudad. **Es la pantalla** ([ADR-026](../../../docs/DECISIONS.md#adr-026)).
@@ -341,12 +362,16 @@ export function CityView({ className, messages, ...city }: CityProps & {
 }) {
   const t = (key: string): string => messages?.[key] ?? key;
   const levels = DISTRICTS.map((district) => city.districts?.[district] ?? 0);
+  // «granary:3» — cada solar levanta su edificio en vez de una caja genérica.
+  const plots = DISTRICTS.map(
+    (district, index) => `${DISTRICT_BUILDING[district]}:${levels[index] ?? 0}`,
+  );
 
   return (
     <div role="group" aria-label={city.label} className={className} style={{ position: 'relative' }}>
       <World
         scene="city"
-        districts={levels}
+        districts={plots}
         arrivals={city.arrivals}
         arrivalTotal={city.arrivalTotal}
         ash={(city.ash ?? 0) > 0}

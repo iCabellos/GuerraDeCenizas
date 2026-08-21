@@ -68,6 +68,9 @@ Tres cosas que no puedes hacer aquí:
 2. **Importar `./world/engine` de forma estática.** Va con `import()` dentro de un efecto
    o three.js entra en el bundle base y se lleva por delante el presupuesto de 180 KB.
 3. **Dejar una vista sin `fallback`.** Un hueco gris no es un respaldo; la vista plana sí.
+4. **Escribir en el documento desde el motor.** El original del diseño pintaba la
+   escaramuza con `document.querySelectorAll('[data-sk]')`. Aquí el DOM es de React: el
+   motor **emite** (`gdc-skirmish`) y lo pinta quien escuche.
 
 `components/world/board.ts` es geometría pura y **sin DOM** justamente para poder testearla:
 `engine.ts` hace `extends HTMLElement` y no se puede ni importar fuera de un navegador.
