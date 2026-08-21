@@ -12,6 +12,23 @@ Este proyecto sigue [SemVer](https://semver.org/lang/es/).
 
 ## [Sin publicar] — v0.3 en curso
 
+### Cambiado
+
+- **El mapa se dibuja en hexágonos** ([ADR-037](docs/DECISIONS.md#adr-037)). Las regiones
+  pasan de círculos a losas hexagonales de punta arriba, la misma orientación que usa el
+  mundo 2.5D, para que el mapa plano y el de relieve enseñen la misma pieza.
+
+  **No tejen un panal, y es deliberado.** Una retícula hexagonal no admite simetría de
+  orden 5 —la restricción cristalográfica: solo existen las de orden 1, 2, 3, 4 y 6— y el
+  mapa se apoya en «n sectores idénticos por rotación C_n» para que el reparto sea exacto.
+  Hoy eso sale gratis porque `mapgen` coloca las regiones en polares, donde el ángulo es
+  continuo. Tejer el panal habría costado la equidad de todas las mesas de cinco, que es
+  la premisa del juego. Así que son fichas hexagonales con junta entre ellas, y la
+  adyacencia sigue siendo la lista de aristas.
+
+  Las 55 regiones de una partida de tres siguen siendo elementos enfocables y anunciables:
+  la conversión no costó ni un objetivo táctil.
+
 ### Añadido
 
 - **Rivales artificiales para poder jugar solo.** Cuatro perfiles —temerario, sensato,

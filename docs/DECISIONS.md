@@ -1256,6 +1256,63 @@ Un test contra el territorio habría declarado peor al que convierte mejor.
 
 ---
 
+<a id="adr-037"></a>
+
+## ADR-037 — El mapa se dibuja en hexágonos, pero no teje un panal
+**Estado:** aceptada · 2026-08-21
+
+**Contexto.** El diseño quiere un mapa hexagonal, y con razón: es lo que dibujan los
+mockups y lo que permite que el mundo 2.5D represente el mapa de verdad en vez de un
+tablero decorativo ([ADR-035](#adr-035)).
+
+Al ir a tejer una retícula hexagonal apareció un impedimento que no es de implementación
+sino de geometría. El mapa es «1 Núcleo + n sectores **idénticos por rotación C_n**», y de
+ahí sale la premisa del juego entero: *ganar exige pagar más Ceniza de la que da el reparto
+justo de un jugador*. Si el reparto no es exacto, la frase no significa nada.
+
+Girando cada nodo de una retícula hexagonal y comprobando si cae sobre otro nodo:
+
+```
+orden 2: 60/60 nodos caen sobre la retícula   ← posible
+orden 3: 60/60                                ← posible
+orden 4:  0/60                                ← imposible
+orden 5:  0/60                                ← IMPOSIBLE
+orden 6: 60/60                                ← posible
+```
+
+Una retícula periódica solo admite simetrías de orden 1, 2, 3, 4 y 6 — la restricción
+cristalográfica. **El orden 5 no existe en ninguna.** El juego se juega a 2, 3 y 5, así que
+tejer el panal costaría la equidad exacta de todas las mesas de cinco.
+
+Hoy esa simetría sale gratis porque `mapgen` **no** usa una retícula: coloca las regiones
+en polares (`x = cos(θ)·r`), y con ángulos continuos C₅ es tan fácil como C₃.
+
+**Decisión.** Las regiones se **dibujan** como hexágonos de punta arriba —la misma
+orientación que el mundo 2.5D— sobre las posiciones polares de siempre. La adyacencia
+sigue siendo la lista de aristas, no dos losas que se tocan.
+
+Es decir: **fichas hexagonales sobre un tablero, con junta entre ellas**, no un panal
+continuo. La junta es visible y es el precio consciente de conservar C₅.
+
+**Consecuencias.**
+- ✅ El mapa se ve como el diseño y la equidad de las mesas de cinco no se toca.
+- ✅ Cada región sigue siendo un `<path>` enfocable y anunciable: [ADR-012](#adr-012) y
+  [ADR-034](#adr-034) siguen en pie, y la conversión no costó ni un objetivo táctil.
+- ✅ Abre la puerta a que el mundo 2.5D pinte el mapa **real** —una losa por región en su
+  `x/y`— que es lo que [ADR-035](#adr-035) daba por imposible con el tablero decorativo.
+  Eso es trabajo aparte y ese ADR sigue vigente hasta que se haga.
+- ⚠️ No hay vecindad implícita: dos hexágonos pueden verse próximos y no ser adyacentes.
+  El mapa dibuja las aristas precisamente por eso, y hay que seguir dibujándolas.
+
+**Descartado.**
+- *Retícula real, y las mesas de cinco se quedan radiales.* Dos sistemas de mapa que
+  mantener y una partida de cinco que se ve distinta a las demás.
+- *Retícula real para todos, cambiando qué significa «equitativo» en cinco.* Pasar de «la
+  misma forma girada» a «el mismo reparto» degrada una garantía **por construcción** a una
+  comprobada por test, y encima en el modo con más jugadores.
+
+---
+
 ## Plantilla para nuevas decisiones
 
 ```markdown

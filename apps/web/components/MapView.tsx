@@ -18,6 +18,31 @@ const RADIUS: Partial<Record<TerrainKind, number>> = {
 
 const radiusOf = (kind: TerrainKind) => RADIUS[kind] ?? NODE_R;
 
+/**
+ * Una región, dibujada como hexágono.
+ *
+ * Punta arriba, la misma orientación que usa el mundo 2.5D, para que el mapa plano y el
+ * de relieve enseñen la misma pieza ([ADR-037](../../../docs/DECISIONS.md#adr-037)).
+ *
+ * **No tejen un panal.** Las regiones viven en coordenadas polares —`mapgen` las coloca
+ * con `cos(θ)·r`— y la adyacencia son aristas explícitas, no losas que se tocan. Son
+ * fichas hexagonales sobre un tablero, con junta entre ellas, y eso es deliberado: una
+ * retícula hexagonal de verdad **no admite simetría de orden 5**, así que tejer el panal
+ * costaría la equidad de las mesas de cinco, que es la premisa del juego entero.
+ *
+ * `radius` es el circunradio: la distancia del centro a cada vértice.
+ */
+function hexPath(cx: number, cy: number, radius: number): string {
+  let path = '';
+  for (let corner = 0; corner < 6; corner += 1) {
+    const angle = Math.PI / 6 + (corner * Math.PI) / 3;
+    const x = cx + Math.cos(angle) * radius;
+    const y = cy + Math.sin(angle) * radius;
+    path += `${corner === 0 ? 'M' : 'L'}${x.toFixed(2)} ${y.toFixed(2)}`;
+  }
+  return `${path}Z`;
+}
+
 interface Props {
   view: PlayerView;
   selected: RegionId | null;
@@ -241,16 +266,17 @@ export function MapView({ view, selected, reachable, ordered, onSelect }: Props)
                 }
               }}
             >
-              <circle
+              <path
                 className="region-shape"
-                cx={region.x} cy={region.y} r={radiusOf(region.kind)}
+                d={hexPath(region.x, region.y, radiusOf(region.kind))}
                 fill={TERRAIN_FILL[region.kind]}
                 stroke={owner === null ? 'var(--color-line)' : seatColor(owner)}
                 strokeWidth={owner === null ? 2 : 5}
+                strokeLinejoin="miter"
               />
               {owner !== null && (
-                <circle
-                  cx={region.x} cy={region.y} r={radiusOf(region.kind)}
+                <path
+                  d={hexPath(region.x, region.y, radiusOf(region.kind))}
                   fill={`url(#pat-${SEAT_PATTERN[owner]})`}
                   opacity={0.28}
                   pointerEvents="none"
@@ -259,25 +285,25 @@ export function MapView({ view, selected, reachable, ordered, onSelect }: Props)
               {/* Anillo de registro del Núcleo. Es el objetivo de la campaña: se ve desde
                   cualquier parte del mapa sin tener que buscarlo. */}
               {region.kind === 'core' && (
-                <circle
-                  cx={region.x} cy={region.y} r={radiusOf(region.kind) + 7}
+                <path
+                  d={hexPath(region.x, region.y, radiusOf(region.kind) + 7)}
                   fill="none" stroke="var(--color-ash)" strokeWidth={1.5}
                   strokeDasharray="10 7" opacity={0.75} pointerEvents="none"
                 />
               )}
 
               {isReachable && (
-                <circle
-                  cx={region.x} cy={region.y} r={radiusOf(region.kind) + 8}
+                <path
+                  d={hexPath(region.x, region.y, radiusOf(region.kind) + 8)}
                   fill="none" stroke="var(--color-ash-glow)" strokeWidth={3}
                   strokeDasharray="8 6" opacity={0.9} pointerEvents="none"
                 />
               )}
               {isSelected && (
-                <circle
-                  cx={region.x} cy={region.y} r={radiusOf(region.kind) + 12}
+                <path
+                  d={hexPath(region.x, region.y, radiusOf(region.kind) + 12)}
                   fill="none" stroke="var(--color-rust)" strokeWidth={5}
-                  pointerEvents="none"
+                  strokeLinejoin="miter" pointerEvents="none"
                 />
               )}
 
