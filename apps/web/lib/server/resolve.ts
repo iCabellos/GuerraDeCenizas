@@ -16,7 +16,7 @@
 
 import {
   AUTOCOMMAND_AFTER, ENGINE_VERSION, autocommandOrders, botOrders, botProfile,
-  buildAdjacency, parseStanding, projectViews, reduce, standingOrders,
+  buildAdjacency, claimStandings, parseStanding, projectViews, reduce, standingOrders,
   type GameState, type Orders, type OrdersBySeat, type Seat,
 } from '@gdc/core';
 import { ordersSchema } from '../schemas';
@@ -112,6 +112,21 @@ export async function resolveTurn(
     p_phase: finished ? 'resolved' : result.state.meta.phase,
     p_status: finished ? 'finished' : 'active',
   })) as { ok: boolean; code?: string; turn?: number };
+
+  /**
+   * El resultado de la campaña.
+   *
+   * Se escribe **después** de confirmar la resolución, nunca antes: una tabla de
+   * resultados de una partida que no llegó a cerrarse es peor que ninguna.
+   *
+   * La clasificación la calcula el motor ([GDD §13.5](../../../../docs/GAME_DESIGN.md#135-si-nadie-consagra-reclamación-menor)),
+   * no el servidor ni SQL — son reglas, y si las compusiera la base de datos el simulador
+   * no podría reproducir el final de una partida. Mientras la Consagración no exista,
+   * toda campaña acaba en Reclamación Menor.
+   */
+  if (finished && committed?.ok) {
+    await rpc('record_results', { p_game: gameId, p_rows: claimStandings(result.state) });
+  }
 
   if (!committed?.ok) return { resolved: false, skipped: committed?.code ?? 'unknown' };
   return { resolved: true, turn: committed.turn };

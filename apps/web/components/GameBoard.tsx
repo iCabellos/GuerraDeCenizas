@@ -3,11 +3,14 @@
 import { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  buildAdjacency, previewAttack, type MoveOrder, type Orders, type PlayerView,
-  type Posture, type RegionId,
+  BALANCE, buildAdjacency, canProduceInView, previewAttack,
+  type Buildable, type MoveOrder, type Orders, type PlayerView, type Posture,
+  type ProductionOrder, type RegionId,
 } from '@gdc/core';
 import { MapView } from '@/components/MapView';
-import { OrderSheet, PhaseRail, type OrderRow } from '@/components/OrderSheet';
+import {
+  OrderSheet, PhaseRail, type BuildOption, type BuildRow, type OrderRow,
+} from '@/components/OrderSheet';
 import { CombatPreview } from '@/components/CombatPreview';
 import { CommandHeader, OrderBar, OrderCommit } from '@/components/GameChrome';
 import { browserClient } from '@/lib/supabase-browser';
@@ -32,19 +35,43 @@ type Messages = Record<string, string>;
 
 interface Draft {
   moves: MoveOrder[];
+  /**
+   * Lo que se construye este turno. Sin esto el jugador podía mover pero **nunca gastar
+   * Industria**, mientras los bots sí producían: doce turnos de asimetría creciente.
+   */
+  production: ProductionOrder[];
 }
 
 type DraftAction =
   | { type: 'order'; forceId: string; to?: RegionId; posture: Posture }
   | { type: 'cancel'; forceId: string }
-  | { type: 'load'; moves: MoveOrder[] }
+  | { type: 'produce'; regionId: RegionId; item: Buildable }
+  | { type: 'unproduce'; index: number }
+  | { type: 'load'; moves: MoveOrder[]; production: ProductionOrder[] }
   | { type: 'clear' };
+
+/** Las órdenes de producción, agrupadas y en orden estable. */
+function tidy(orders: readonly ProductionOrder[]): ProductionOrder[] {
+  const byKey = new Map<string, ProductionOrder>();
+  for (const order of orders) {
+    const key = `${order.regionId}:${order.item}`;
+    const found = byKey.get(key);
+    if (found) found.qty += order.qty;
+    else byKey.set(key, { ...order });
+  }
+  // Mismo borrador, mismo JSON: así el guardado automático no reescribe la fila por un
+  // simple cambio de orden.
+  return [...byKey.values()].sort(
+    (a, b) => a.regionId - b.regionId || (a.item < b.item ? -1 : a.item > b.item ? 1 : 0),
+  );
+}
 
 function draftReducer(draft: Draft, action: DraftAction): Draft {
   switch (action.type) {
     case 'order': {
       const rest = draft.moves.filter((move) => move.forceId !== action.forceId);
       return {
+        ...draft,
         moves: [...rest, { forceId: action.forceId, to: action.to, posture: action.posture }]
           // Ordenadas por identificador: el mismo borrador produce el mismo JSON, y así
           // el guardado automático no reescribe la fila por un simple cambio de orden.
@@ -52,11 +79,26 @@ function draftReducer(draft: Draft, action: DraftAction): Draft {
       };
     }
     case 'cancel':
-      return { moves: draft.moves.filter((move) => move.forceId !== action.forceId) };
+      return { ...draft, moves: draft.moves.filter((move) => move.forceId !== action.forceId) };
+    case 'produce':
+      return {
+        ...draft,
+        production: tidy([...draft.production, { regionId: action.regionId, item: action.item, qty: 1 }]),
+      };
+    case 'unproduce': {
+      const target = draft.production[action.index];
+      if (!target) return draft;
+      const next = draft.production.map((order, i) =>
+        i === action.index ? { ...order, qty: order.qty - 1 } : order);
+      return { ...draft, production: next.filter((order) => order.qty > 0) };
+    }
     case 'load':
-      return { moves: [...action.moves].sort((a, b) => (a.forceId < b.forceId ? -1 : 1)) };
+      return {
+        moves: [...action.moves].sort((a, b) => (a.forceId < b.forceId ? -1 : 1)),
+        production: tidy(action.production),
+      };
     case 'clear':
-      return { moves: [] };
+      return { moves: [], production: [] };
   }
 }
 
@@ -88,7 +130,10 @@ export function GameBoard({
 
   const initial = useMemo<Draft>(() => {
     const parsed = savedDraft as Orders | null;
-    return { moves: Array.isArray(parsed?.moves) ? parsed.moves : [] };
+    return {
+      moves: Array.isArray(parsed?.moves) ? parsed.moves : [],
+      production: Array.isArray(parsed?.production) ? tidy(parsed.production) : [],
+    };
   }, [savedDraft]);
 
   const [draft, dispatch] = useReducer(draftReducer, initial);
@@ -116,6 +161,13 @@ export function GameBoard({
     }
     return map;
   }, [draft.moves, ownForces]);
+
+  /** Cómo se llama una región: por su terreno y su número, que es lo que existe. */
+  const placeOf = useCallback(
+    (regionId: RegionId): string =>
+      `${t(`terrain.${view.map.regions[regionId]?.kind ?? 'plain'}`)} ${regionId}`,
+    [t, view.map.regions],
+  );
 
   /**
    * Las órdenes del borrador, ya resueltas a texto.
@@ -145,11 +197,35 @@ export function GameBoard({
         forceId: force.id,
         arm: top.arm,
         count: top.count,
-        to: `${t(`terrain.${region.kind}`)} ${region.id}`,
+        to: placeOf(region.id),
       });
     }
     return rows;
-  }, [draft.moves, ownForces, t, view.map.regions]);
+  }, [draft.moves, ownForces, placeOf]);
+
+  /**
+   * Qué se puede construir en la región seleccionada.
+   *
+   * Dónde se produce lo decide `@gdc/core`, no esta pantalla: si el cliente lo
+   * reimplementara, el servidor y el simulador tendrían que mantener la misma condición
+   * en tres sitios y el día que cambie solo se acordarán dos.
+   */
+  const options = useMemo<BuildOption[]>(() => {
+    if (selected === null || !canProduceInView(view, selected)) return [];
+    const industry = view.self.resources.industry;
+    return (['line', 'fire', 'sky', 'fort', 'bridge'] as Buildable[]).map((item) => ({
+      item,
+      industry: BALANCE.production[item].industry,
+      affordable: industry >= BALANCE.production[item].industry,
+    }));
+  }, [selected, view]);
+
+  const builds = useMemo<BuildRow[]>(
+    () => draft.production.map((order) => ({
+      item: order.item, qty: order.qty, where: placeOf(order.regionId),
+    })),
+    [draft.production, placeOf],
+  );
 
   // ── Realtime: el turno nuevo llega empujado, nunca sondeado ──────────────────
   useEffect(() => {
@@ -170,16 +246,19 @@ export function GameBoard({
 
   // ── Borrador con retardo: cerrar la pestaña no puede costar el trabajo hecho ──
   useEffect(() => {
-    if (sent || draft.moves.length === 0) return;
+    if (sent || (draft.moves.length === 0 && draft.production.length === 0)) return;
     const timer = setTimeout(() => {
       void fetch(`/api/g/${gameId}/orders`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orders: { turn: view.turn, moves: draft.moves }, submit: false }),
+        body: JSON.stringify({
+          orders: { turn: view.turn, moves: draft.moves, production: draft.production },
+          submit: false,
+        }),
       }).catch(() => { /* un borrador perdido se reintenta al siguiente cambio */ });
     }, 2000);
     return () => clearTimeout(timer);
-  }, [draft.moves, gameId, sent, view.turn]);
+  }, [draft.moves, draft.production, gameId, sent, view.turn]);
 
   const preview = useMemo(() => {
     if (!selectedForce || selected === null) return null;
@@ -197,7 +276,10 @@ export function GameBoard({
       const response = await fetch(`/api/g/${gameId}/orders`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orders: { turn: view.turn, moves: draft.moves }, submit: true }),
+        body: JSON.stringify({
+          orders: { turn: view.turn, moves: draft.moves, production: draft.production },
+          submit: true,
+        }),
       });
       const payload = (await response.json()) as {
         ok: boolean; code?: string; pending?: number; resolvedTurn?: number | null;
@@ -277,8 +359,16 @@ export function GameBoard({
       ) : (
         <OrderSheet
           orders={orderRows}
+          builds={builds}
+          options={options}
           onRemove={(forceId) => dispatch({ type: 'cancel', forceId })}
           onClear={() => dispatch({ type: 'clear' })}
+          onProduce={(item) => {
+            if (selected !== null) {
+              dispatch({ type: 'produce', regionId: selected, item: item as Buildable });
+            }
+          }}
+          onUnproduce={(index) => dispatch({ type: 'unproduce', index })}
           t={t}
           primary={
             <OrderCommit onClick={submit} disabled={sending || sent}>

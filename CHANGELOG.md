@@ -12,6 +12,43 @@ Este proyecto sigue [SemVer](https://semver.org/lang/es/).
 
 ## [Sin publicar] — v0.3 en curso
 
+### Corregido
+
+- **Ninguna partida con bots podía resolver el primer turno.** Al añadir `source: 'bot'` a
+  las órdenes no se actualizó la restricción `orders_source_check`, que solo admitía
+  `player`, `standing` y `autocommand`. La resolución fallaba entera —y con ella el turno
+  de los demás— con un error de integridad. No lo cazaba ningún test porque ninguno tenía
+  un asiento de bot resolviendo de verdad; ahora sí, y se juega una campaña completa.
+
+  El origen de una orden se guarda distinto a propósito: si un bot se registrara como
+  `autocommand` no habría forma de saber, mirando una partida terminada, si ese asiento lo
+  jugó una máquina o una persona que se fue. Son cosas distintas.
+
+### Añadido
+
+- **La campaña termina en algo.** `match_results` existía desde la migración 0005 y nadie
+  escribía en ella: al cerrar el T12 la partida pasaba a `finished` y la ruta te devolvía a
+  la portada sin decir nada. Doce turnos de aritmética y ni una cifra al final, que es lo
+  contrario de un juego cuya premisa es que las cuentas se verifican.
+
+  Ahora la autoridad calcula la **Reclamación Menor** con el motor
+  ([GDD §13.5](docs/GAME_DESIGN.md)) —`4 × yacimientos + 2 × ceniza + regiones + 3 × Núcleo`,
+  con empate declarado y sin desempate al azar—, reparte la Ceniza según §13.6 (55 % al
+  vencedor, 35 % al superviviente, 20 % al reducido), la ingresa en la Ciudad de cada
+  jugador y `/g/:id` enseña la clasificación en vez de redirigir.
+
+- **Se puede producir en red.** El borrador ya llevaba movimientos pero no producción, así
+  que se podía mover y **nunca gastar Industria** — mientras los bots sí producían: doce
+  turnos de asimetría creciente. Seleccionar un Bastión o una región urbana propia ofrece
+  las cinco construcciones con su coste.
+
+  Dónde se puede producir lo decide `@gdc/core` (`canProduceInView`), no la pantalla: la
+  regla vive en un sitio y no en tres.
+
+- **Un test que juega una campaña entera en solitario**, de la búsqueda al resultado, por
+  la capa de autoridad y contra el Postgres real. Es la prueba de producto, no de unidad:
+  si esa se rompe da igual que pasen las otras 330.
+
 ### Añadido
 
 - **La ciudad levanta edificios de verdad.** El motor 2.5D se actualiza a la versión nueva

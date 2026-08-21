@@ -123,3 +123,68 @@ $$;
 revoke all on function public.lobby_state(uuid) from public, anon, authenticated;
 revoke all on function public.seat_match(uuid, jsonb) from public, anon, authenticated;
 revoke all on function public.bot_display_name(uuid, smallint) from public, anon, authenticated;
+
+-- ────────────────────────── De dónde salió cada orden ────────────────────────
+--
+-- `orders.source` admitía tres valores: enviadas por la persona, Órdenes Permanentes y
+-- Mando Automático. Un rival artificial es un cuarto origen y **tiene que distinguirse**:
+-- si se guardara como 'autocommand' no habría forma de saber, mirando una partida
+-- terminada, si ese asiento lo jugó un bot o un humano que se fue. Son cosas distintas y
+-- el registro de la partida es lo único que queda para contarlo.
+--
+-- Sin esto, la primera resolución de cualquier partida con bots falla entera: la
+-- restricción rechaza la fila y se cae el turno de los demás con ella.
+
+alter table public.orders drop constraint if exists orders_source_check;
+alter table public.orders
+  add constraint orders_source_check
+  check (source in ('player', 'standing', 'autocommand', 'bot'));
+
+-- ─────────────────────────── El resultado de la campaña ──────────────────────
+--
+-- `match_results` existía desde la migración 0005 y **nadie escribía en ella**: una
+-- partida terminaba, el estado pasaba a 'finished' y no quedaba constancia de cómo fue.
+-- Sin esto no hay pantalla final que enseñar ni Ceniza que llevar a la Ciudad.
+--
+-- La clasificación la calcula el motor (`claimStandings`, GDD §13.5) porque son reglas:
+-- si la compusiera SQL, el simulador no podría reproducir el final de una partida.
+
+create or replace function public.record_results(p_game uuid, p_rows jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_written integer;
+begin
+  insert into public.match_results
+    (game_id, seat, profile_id, outcome, seams, ash, regions, ash_awarded)
+  select p_game,
+         (r->>'seat')::smallint,
+         gp.profile_id,
+         r->>'outcome',
+         (r->>'seams')::smallint,
+         (r->>'ash')::integer,
+         (r->>'regions')::smallint,
+         (r->>'ashAwarded')::integer
+    from jsonb_array_elements(p_rows) r
+    left join public.game_players gp
+      on gp.game_id = p_game and gp.seat = (r->>'seat')::smallint
+  on conflict (game_id, seat) do update
+    set outcome = excluded.outcome, seams = excluded.seams, ash = excluded.ash,
+        regions = excluded.regions, ash_awarded = excluded.ash_awarded;
+
+  get diagnostics v_written = row_count;
+
+  -- La Ceniza ganada va a la Ciudad de quien la jugó. Los bots no tienen ciudad.
+  update public.cities c
+     set ash_bank = c.ash_bank + m.ash_awarded, updated_at = now()
+    from public.match_results m
+   where m.game_id = p_game and m.profile_id = c.profile_id and m.ash_awarded > 0;
+
+  return jsonb_build_object('ok', true, 'written', v_written);
+end;
+$$;
+
+revoke all on function public.record_results(uuid, jsonb) from public, anon, authenticated;

@@ -50,6 +50,7 @@ const SIGNATURES: Record<string, { args: readonly ArgSpec[]; returnsTable?: bool
   },
   seat_match: { args: [['p_game', 'uuid'], ['p_profiles', 'jsonb', 'json']] },
   lobby_state: { args: [['p_game', 'uuid']] },
+  record_results: { args: [['p_game', 'uuid'], ['p_rows', 'jsonb', 'json']] },
   start_game: {
     args: [
       ['p_game', 'uuid'], ['p_profile', 'uuid'], ['p_state', 'jsonb', 'json'],
