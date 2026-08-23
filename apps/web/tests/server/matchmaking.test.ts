@@ -7,7 +7,7 @@
  * ejecutando la base de datos de verdad.
  */
 
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { cancel, formMatch, search, status } from '../../lib/server/matchmaking';
 import { rpc, scalar } from './rpc';
 
@@ -204,5 +204,60 @@ describe('lo que el jugador ve mientras espera', () => {
 
   it('quien no está en cola lo sabe y ya', async () => {
     expect(await status(rpc, PROFILES[4]!)).toEqual({ ok: true, queued: false });
+  });
+});
+
+/**
+ * Rivales artificiales.
+ *
+ * Antes del despliegue no hay nadie más en la cola, así que el relleno con bots no es un
+ * caso raro: **es el caso**. Lo que se comprueba es que un jugador solo entra en campaña
+ * al instante y que la mesa que se encuentra parece una mesa — rivales con nombre y con
+ * facción, no tres asientos etiquetados «Mando Automático».
+ */
+describe('rivales artificiales', () => {
+  // `BOT_FILL_SECONDS=0` es lo que se despliega mientras el juego no está abierto. Se
+  // activa aquí y solo aquí: con cero, la cola de humanos deja de tener sentido, y los
+  // tests de más arriba cubren justamente eso para cuando se quite.
+  beforeEach(() => { process.env['BOT_FILL_SECONDS'] = '0'; });
+  afterEach(() => { delete process.env['BOT_FILL_SECONDS']; });
+
+  it('quien busca solo entra en campaña al instante, sin esperar a nadie', async () => {
+    const outcome = await search(rpc, PROFILES[0]!, { playerCount: 3, cadence: 'blitz' });
+    expect(outcome.gameId, 'debería haber empezado ya').toBeDefined();
+  });
+
+  it('los asientos que sobran son bots con nombre y facción propios', async () => {
+    const outcome = await search(rpc, PROFILES[0]!, { playerCount: 3, cadence: 'blitz' });
+    const game = outcome.gameId!;
+
+    const bots = sql(`select count(*) from public.game_players
+                       where game_id = '${game}' and is_bot`);
+    expect(Number(bots), 'dos asientos deberían ser bots').toBe(2);
+
+    const anonymous = sql(`select count(*) from public.game_players
+                            where game_id = '${game}' and is_bot
+                              and (bot_name is null or faction_id is null)`);
+    expect(Number(anonymous), 'ningún bot puede quedarse sin nombre ni facción').toBe(0);
+  });
+
+  it('el nombre del bot llega al estado de la partida, no la etiqueta del sistema', async () => {
+    const outcome = await search(rpc, PROFILES[0]!, { playerCount: 3, cadence: 'blitz' });
+    const names = sql(`select string_agg(coalesce(p.display_name, gp.bot_name), ',' order by gp.seat)
+                         from public.game_players gp
+                         left join public.profiles p on p.id = gp.profile_id
+                        where gp.game_id = '${outcome.gameId}'`);
+
+    expect(names).not.toContain('Mando Automático');
+    expect(names.split(',')).toHaveLength(3);
+  });
+
+  it('es estable: la misma partida da siempre los mismos rivales', async () => {
+    const outcome = await search(rpc, PROFILES[0]!, { playerCount: 3, cadence: 'blitz' });
+    const game = outcome.gameId!;
+    const once = sql(`select public.bot_display_name('${game}'::uuid, 1::smallint)`);
+    const twice = sql(`select public.bot_display_name('${game}'::uuid, 1::smallint)`);
+    expect(once).toBe(twice);
+    expect(once.length).toBeGreaterThan(0);
   });
 });

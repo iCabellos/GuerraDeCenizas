@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DICTIONARIES, LOCALES, isLocale, localeFromHeader, translate, translator,
 } from '../lib/i18n/index';
-import { ALL_ANOMALIES, FACTION_IDS } from '@gdc/core';
+import { ALL_ANOMALIES, FACTION_IDS, type Phase, type TerrainKind } from '@gdc/core';
 
 const keys = Object.fromEntries(
   LOCALES.map((locale) => [locale, Object.keys(DICTIONARIES[locale]).sort()]),
@@ -48,6 +48,38 @@ describe('diccionarios', () => {
     for (const faction of FACTION_IDS) {
       for (const locale of LOCALES) {
         expect(keys[locale]).toContain(`faction.${faction}`);
+      }
+    }
+  });
+
+  /*
+   * Los tres conjuntos que la interfaz recorre por enumeración.
+   *
+   * La hoja de órdenes escribe «Línea 20 → Elevación 10» buscando `arm.line` y
+   * `terrain.high`, y el raíl de fases recorre las fases del motor. Si el motor gana un
+   * terreno o una fase y aquí no se añade la clave, el jugador ve `terrain.marsh` crudo
+   * en mitad de una orden. No lo caza ningún typecheck: las claves son cadenas.
+   */
+  it('cada terreno tiene nombre en los dos idiomas', () => {
+    const terrains: TerrainKind[] = [
+      'plain', 'urban', 'high', 'forest', 'water', 'seam', 'bastion', 'core',
+    ];
+    for (const kind of terrains) {
+      for (const locale of LOCALES) {
+        expect(keys[locale], `falta terrain.${kind} en ${locale}`).toContain(`terrain.${kind}`);
+      }
+    }
+  });
+
+  it('cada arma y cada fase tienen nombre en los dos idiomas', () => {
+    const arms = ['line', 'fire', 'sky'];
+    const phases: Phase[] = ['parley', 'war', 'resolved'];
+    for (const locale of LOCALES) {
+      for (const arm of arms) {
+        expect(keys[locale], `falta arm.${arm} en ${locale}`).toContain(`arm.${arm}`);
+      }
+      for (const phase of phases) {
+        expect(keys[locale], `falta game.${phase} en ${locale}`).toContain(`game.${phase}`);
       }
     }
   });

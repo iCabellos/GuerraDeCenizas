@@ -48,6 +48,7 @@ export const RESOURCE_ORDER: readonly ResourceKey[] = ['supply', 'industry', 'in
  */
 export function CommandHeader({
   seat, name, factionId, doctrine, phase, turn, regions, regionsLabel, resources,
+  floating = false,
 }: {
   seat: Seat;
   name: string;
@@ -58,11 +59,17 @@ export function CommandHeader({
   regions: number;
   regionsLabel: string;
   resources: Resources;
+  /** Sobre el mapa la cabecera se translucida en vez de cortar la pantalla en dos. */
+  floating?: boolean;
 }) {
   const Emblem = FACTION_EMBLEM[factionId] ?? FactionVantera;
 
   return (
-    <header className="shrink-0 border-b border-line bg-panel">
+    <header
+      className={`shrink-0 ${
+        floating ? 'bg-panel/80 backdrop-blur-sm' : 'border-b border-line bg-panel'
+      }`}
+    >
       <div className="flex items-center gap-3 px-3 py-2">
         <span
           className="h-9 w-1"

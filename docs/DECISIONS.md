@@ -1141,6 +1141,178 @@ tres territorios son idénticos por construcción, y hay un test que lo exige.
 
 ---
 
+<a id="adr-035"></a>
+
+## ADR-035 — El mapa de campaña se queda en SVG; el relieve es para la Ciudad
+**Estado:** aceptada · 2026-08-18
+
+**Contexto.** El proyecto de diseño trae una vista «Mapa · Guerra» montada sobre el mismo
+motor 2.5D que la Ciudad (`<gdc-world scene="map">`). Al ir a implementarla aparecieron
+dos hechos que el mockup no podía ver:
+
+1. **El tablero del mockup no es el mapa del juego.** El motor teje 37 losas hexagonales
+   con el terreno fijado por anillo. El mapa real lo genera `mapgen` en **polares**
+   (`x = cos(θ)·r`), la adyacencia son **aristas explícitas** y no dos losas que se tocan,
+   y el reparto de terreno sale de la bolsa del sector. Pintar el tablero decorativo bajo
+   una partida real sería enseñar un mapa que no es el que se está jugando.
+2. **El tamaño.** `SECTOR_SPEC` da **45 regiones** a 2 jugadores, **55** a 3 y **96** a 5.
+   La vista del mockup flota tres rótulos sobre el mundo; la pantalla real necesita que
+   *cada* región sea un objetivo tocable y enfocable. 96 objetivos de 44 px no caben en
+   360 px de ancho — no es una cuestión de ajustar tamaños, no hay superficie.
+
+**Decisión.** El mapa de campaña sigue siendo **SVG**, con cada región como
+`<g role="button" tabindex="0">`, tal y como fijó [ADR-012](#adr-012). El relieve de
+[ADR-034](#adr-034) se queda donde sí representa lo que dibuja y donde el número de
+elementos es fijo y pequeño: **la Ciudad** (seis distritos).
+
+Del diseño de la vista 05 se implementa lo que **sí** es compatible: la composición. Mapa
+a sangre, cabecera translúcida encima, raíl de fases y hoja de órdenes inferior con el
+borrador real y el botón de confirmar.
+
+**Consecuencias.**
+- ✅ El mapa nunca miente sobre el estado: lo que se ve son las regiones que hay, con la
+  adyacencia que hay.
+- ✅ La pantalla de campaña gana la composición del diseño sin perder ni la navegación por
+  teclado, ni el zoom y desplazamiento por gesto, ni los objetivos táctiles.
+- ⚠️ La partida no tiene relieve. Es deliberado, no una tarea pendiente: para tenerlo
+  habría que construir un mundo **derivado de `PlayerView`** —losa por región en su `x/y`,
+  aristas dibujadas— y resolver antes cómo se toca una región de 96 sin una capa de
+  botones. Mientras eso no exista, el SVG es mejor mapa.
+
+**Descartado.**
+- *Poner el tablero decorativo de fondo, detrás del SVG.* Se verían hexágonos que no
+  corresponden a los nodos de delante. Ruido que además contradice el mapa.
+- *Sustituir los botones por selección con raycasting sobre el lienzo.* Devuelve el
+  problema que [ADR-034](#adr-034) evita: sin foco, sin teclado y sin orden de lectura.
+- *Nombrar las regiones como el mockup («Vado de Ceniza»).* El motor no da nombres; se
+  usa el terreno y el identificador, que es lo que existe de verdad.
+
+---
+
+<a id="adr-036"></a>
+
+## ADR-036 — Un bot no es un humano ausente, y por eso no comparten código
+**Estado:** aceptada · 2026-08-20
+
+**Contexto.** Hacen falta rivales para poder probar el juego sin reunir a cinco personas.
+Ya existía algo que rellenaba asientos vacíos —el **Mando Automático**— y la tentación
+evidente era subirle el nivel y llamarlo bot.
+
+Es exactamente lo que **no** se puede hacer. El Mando Automático cubre a un humano que se
+ha ido, y su regla de diseño es *la ausencia nunca daña a un tercero*: no ataca por
+iniciativa propia, no rompe Sellos y no consagra. Si se le enseñara a jugar para ganar,
+quien se desconecta se convertiría en una ficha que mover en las negociaciones de los
+demás, y eso no lo ha elegido.
+
+**Decisión.** Dos módulos, dos reglas:
+
+| | `rules/standing.ts` | `rules/bot.ts` |
+|---|---|---|
+| Cubre | un humano **ausente** | un asiento que nunca tuvo humano |
+| Regla | la ausencia no daña a un tercero | juega para ganar |
+| Ataca | solo para recuperar lo suyo | cuando le sale la cuenta |
+
+`standing.ts` no se toca. La resolución elige por `is_bot` **antes** de mirar los turnos
+perdidos, así que un humano ausente nunca cae en el código del bot.
+
+**Tres propiedades que el bot no puede perder.**
+
+1. **Decide con la misma información que un humano.** La entrada es una `PlayerView`, no
+   el `GameState`, y evalúa los combates con `previewAttack` — la misma función que pinta
+   la previsualización del jugador. Un rival que viera a través de la niebla no sería un
+   rival sino un tramposo, y las pruebas de juego contra él no valdrían nada.
+2. **Es determinista.** El azar sale de la semilla de la partida, nunca de
+   `Math.random()`. Si el bot tirara un dado propio, «la partida rejugada desde (semilla,
+   órdenes) da el mismo checksum» dejaría de ser cierto y el simulador quedaría inútil.
+   El perfil de cada asiento también se **deriva** de la semilla: la misma campaña tiene
+   siempre los mismos rivales.
+3. **Se equivoca como una persona, no como un dado.** Un rival flojo no juega al azar:
+   baja un escalón en su propia lista de jugadas. Jugar al azar se detecta en dos turnos
+   y no enseña nada sobre las mecánicas.
+
+**Lo que costó entender la dificultad.** El primer modelo daba a los rivales buenos un
+umbral de combate **alto** (atacar solo con mucho margen) y salió al revés: el temerario
+terminaba con 375 regiones y el implacable con 237. Ser prudente no es jugar mejor —
+rechazar un combate que ganarías es tan malo como entrar en uno que pierdes. El umbral se
+recolocó alrededor de 1,0, que es *exactamente empatar*: el malo entra por debajo, el
+bueno no rechaza por encima.
+
+Y la métrica del test pasó a ser la **Ceniza**, no el territorio. Se gana consagrando el
+Núcleo y eso se paga en Ceniza; medido en regiones la escalera no sale ordenada, porque el
+perfil más codicioso toma menos regiones pero más ricas — que es justo lo que se le pide.
+Un test contra el territorio habría declarado peor al que convierte mejor.
+
+**Consecuencias.**
+- ✅ Se puede jugar y medir el equilibrio en solitario, que era el objetivo.
+- ✅ El bot es código del motor, así que el simulador puede reproducir una partida con
+  bots dentro.
+- ⚠️ `is_bot` **sigue siendo público**. Los rivales tienen nombre y facción para que la
+  mesa parezca una mesa, pero no se oculta que son artificiales: que haya un bot cambia el
+  cálculo diplomático de todos, y esconderlo contradiría esa decisión. Si algún día se
+  quiere ocultar, es otro ADR, no un ajuste.
+- ⚠️ `BOT_FILL_SECONDS=0` sienta bots al instante, y con eso **dos humanos no se emparejan
+  nunca**. Es la configuración de antes del despliegue y va en una variable de entorno
+  justamente para poder quitarla sin migrar nada.
+
+---
+
+<a id="adr-037"></a>
+
+## ADR-037 — El mapa se dibuja en hexágonos, pero no teje un panal
+**Estado:** aceptada · 2026-08-21
+
+**Contexto.** El diseño quiere un mapa hexagonal, y con razón: es lo que dibujan los
+mockups y lo que permite que el mundo 2.5D represente el mapa de verdad en vez de un
+tablero decorativo ([ADR-035](#adr-035)).
+
+Al ir a tejer una retícula hexagonal apareció un impedimento que no es de implementación
+sino de geometría. El mapa es «1 Núcleo + n sectores **idénticos por rotación C_n**», y de
+ahí sale la premisa del juego entero: *ganar exige pagar más Ceniza de la que da el reparto
+justo de un jugador*. Si el reparto no es exacto, la frase no significa nada.
+
+Girando cada nodo de una retícula hexagonal y comprobando si cae sobre otro nodo:
+
+```
+orden 2: 60/60 nodos caen sobre la retícula   ← posible
+orden 3: 60/60                                ← posible
+orden 4:  0/60                                ← imposible
+orden 5:  0/60                                ← IMPOSIBLE
+orden 6: 60/60                                ← posible
+```
+
+Una retícula periódica solo admite simetrías de orden 1, 2, 3, 4 y 6 — la restricción
+cristalográfica. **El orden 5 no existe en ninguna.** El juego se juega a 2, 3 y 5, así que
+tejer el panal costaría la equidad exacta de todas las mesas de cinco.
+
+Hoy esa simetría sale gratis porque `mapgen` **no** usa una retícula: coloca las regiones
+en polares (`x = cos(θ)·r`), y con ángulos continuos C₅ es tan fácil como C₃.
+
+**Decisión.** Las regiones se **dibujan** como hexágonos de punta arriba —la misma
+orientación que el mundo 2.5D— sobre las posiciones polares de siempre. La adyacencia
+sigue siendo la lista de aristas, no dos losas que se tocan.
+
+Es decir: **fichas hexagonales sobre un tablero, con junta entre ellas**, no un panal
+continuo. La junta es visible y es el precio consciente de conservar C₅.
+
+**Consecuencias.**
+- ✅ El mapa se ve como el diseño y la equidad de las mesas de cinco no se toca.
+- ✅ Cada región sigue siendo un `<path>` enfocable y anunciable: [ADR-012](#adr-012) y
+  [ADR-034](#adr-034) siguen en pie, y la conversión no costó ni un objetivo táctil.
+- ✅ Abre la puerta a que el mundo 2.5D pinte el mapa **real** —una losa por región en su
+  `x/y`— que es lo que [ADR-035](#adr-035) daba por imposible con el tablero decorativo.
+  Eso es trabajo aparte y ese ADR sigue vigente hasta que se haga.
+- ⚠️ No hay vecindad implícita: dos hexágonos pueden verse próximos y no ser adyacentes.
+  El mapa dibuja las aristas precisamente por eso, y hay que seguir dibujándolas.
+
+**Descartado.**
+- *Retícula real, y las mesas de cinco se quedan radiales.* Dos sistemas de mapa que
+  mantener y una partida de cinco que se ve distinta a las demás.
+- *Retícula real para todos, cambiando qué significa «equitativo» en cinco.* Pasar de «la
+  misma forma girada» a «el mismo reparto» degrada una garantía **por construcción** a una
+  comprobada por test, y encima en el modo con más jugadores.
+
+---
+
 ## Plantilla para nuevas decisiones
 
 ```markdown

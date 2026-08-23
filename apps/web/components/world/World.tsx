@@ -17,12 +17,22 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
  *    nada y queda el telón plano. La interfaz sigue completa: sólo pierde el relieve.
  */
 
-export type WorldScene = 'city' | 'map' | 'skirmish';
+/**
+ * Los mundos del motor. `map`, `city` y `skirmish` son juego; `unit`, `asset`, `tile` y
+ * `hero` son **vitrinas** de la biblioteca de assets, y solo se usan en `/dev`.
+ */
+export type WorldScene =
+  | 'map' | 'city' | 'skirmish'
+  | 'unit' | 'asset' | 'tile' | 'hero';
 
 export type WorldProps = {
   scene: WorldScene;
-  /** Niveles de los seis distritos de la ciudad, 0–3. */
-  districts?: readonly number[];
+  /**
+   * Los seis distritos de la ciudad. Admite el nivel suelto (`[3, 2, 2, 1, 0, 0]`) o el
+   * distrito con nombre (`['granary:3', 'foundry:2', …]`), que es lo que hace que cada
+   * solar levante su edificio y no una caja genérica.
+   */
+  districts?: readonly (number | string)[];
   /** Asiento desde el que se mira. Decide qué tapa la niebla. */
   seat?: number;
   seats?: number;
@@ -35,6 +45,22 @@ export type WorldProps = {
   radius?: number;
   arrivals?: number;
   arrivalTotal?: number;
+  /** Vitrinas: qué pieza se enseña. */
+  arm?: 'line' | 'fire' | 'sky' | 'shade';
+  kind?: string;
+  level?: number;
+  owned?: boolean;
+  mode?: 'solid' | 'wire' | 'zones';
+  /**
+   * Pinta un solo fotograma y suelta el contexto WebGL.
+   *
+   * Un navegador aguanta un puñado de contextos vivos a la vez; un catálogo de veintitrés
+   * tarjetas los agota y deja el resto en negro. Con esto la tarjeta se congela en una
+   * imagen y libera la GPU.
+   */
+  still?: boolean;
+  /** No anima: útil cuando el mundo es un telón y no queremos gasto continuo. */
+  static?: boolean;
   className?: string;
   /** Rótulos anclados al mundo. Cada uno con `data-tile`. */
   children?: ReactNode;
@@ -65,6 +91,7 @@ function useWantsWorld(): boolean {
 export default function World({
   scene, districts, seat, seats, fog, ash, focus,
   zoom, elevation, azimuth, radius, arrivals, arrivalTotal,
+  arm, kind, level, owned, mode, still, static: noAnim,
   className, children, fallback,
 }: WorldProps) {
   const host = useRef<HTMLDivElement>(null);
@@ -102,14 +129,24 @@ export default function World({
     attr('radius', radius);
     attr('arrivals', arrivals);
     attr('arrival-total', arrivalTotal);
+    attr('arm', arm);
+    attr('kind', kind);
+    attr('level', level);
+    attr('mode', mode);
     if (fog !== undefined) world.setAttribute('fog', fog ? 'true' : 'false');
     if (ash) world.setAttribute('ash', '');
+    if (owned) world.setAttribute('owned', '');
+    if (still) world.setAttribute('still', '');
+    if (noAnim) world.setAttribute('static', '');
 
     // El mundo va detrás; los rótulos son hermanos suyos y siguen siendo de React.
     // El motor los localiza subiendo al contenedor común (`_markers`).
     el.prepend(world);
     return () => { world.remove(); };
-  }, [ready, scene, plan, seat, seats, fog, ash, focus, zoom, elevation, azimuth, radius, arrivals, arrivalTotal]);
+  }, [
+    ready, scene, plan, seat, seats, fog, ash, focus, zoom, elevation, azimuth, radius,
+    arrivals, arrivalTotal, arm, kind, level, owned, mode, still, noAnim,
+  ]);
 
   return (
     <div ref={host} className={className} style={{ position: 'absolute', inset: 0 }}>

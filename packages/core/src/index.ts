@@ -40,7 +40,7 @@ export {
 } from './rules/combat';
 export { applyBattles } from './rules/battle';
 export {
-  grossIncome, diminishingFactor, supplyUpkeep, canProduceAt,
+  grossIncome, diminishingFactor, supplyUpkeep, canProduceAt, canProduceInView,
 } from './rules/economy';
 export {
   createGame, type CreateGameOptions, type CreatedGame, type SeatSetup,
@@ -50,3 +50,5 @@ export {
   DEFAULT_STANDING, AUTOCOMMAND_AFTER, type StandingConfig,
 } from './rules/standing';
 export { total } from './rules/movement';
+export { botOrders, botProfile, BOT_TIERS, type BotProfile, type BotTier } from './rules/bot';
+export { claimStandings, type Outcome, type SeatStanding } from './rules/outcome';

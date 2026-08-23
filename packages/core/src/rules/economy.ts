@@ -11,7 +11,8 @@
  */
 
 import type {
-  Adjacency, Force, GameState, ProductionOrder, RegionId, Resources, Seat,
+  Adjacency, Force, GameState, PlayerView, ProductionOrder, RegionId, Resources, Seat,
+  TerrainKind,
 } from '../types/index';
 import { BALANCE, TERRAIN_YIELD } from '../balance/constants';
 import { bfsDistances } from '../mapgen/skeleton';
@@ -163,7 +164,23 @@ export interface ProductionResult {
 /** Una región produce si es Bastión propio o Urbana propia. */
 export function canProduceAt(state: GameState, seat: Seat, regionId: RegionId): boolean {
   if (state.control[regionId] !== seat) return false;
-  const kind = state.map.regions[regionId]?.kind;
+  return producesHere(state.map.regions[regionId]?.kind);
+}
+
+/**
+ * Lo mismo, desde la vista de un jugador.
+ *
+ * Existe para que la interfaz **no reimplemente la regla**. Si el cliente decidiera por su
+ * cuenta dónde se puede producir, el servidor y el simulador tendrían que mantener la
+ * misma condición en tres sitios, y el día que cambie solo se acordarán dos.
+ */
+export function canProduceInView(view: PlayerView, regionId: RegionId): boolean {
+  if (view.control[regionId] !== view.seat) return false;
+  return producesHere(view.map.regions[regionId]?.kind);
+}
+
+/** Dónde hay con qué construir: el Bastión y las regiones urbanas. */
+function producesHere(kind: TerrainKind | undefined): boolean {
   return kind === 'bastion' || kind === 'urban';
 }
 

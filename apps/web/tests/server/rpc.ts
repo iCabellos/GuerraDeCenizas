@@ -42,9 +42,15 @@ const SIGNATURES: Record<string, { args: readonly ArgSpec[]; returnsTable?: bool
   },
   dequeue: { args: [['p_profile', 'uuid']] },
   queue_status: { args: [['p_profile', 'uuid']] },
-  claim_match: { args: [['p_size', 'smallint'], ['p_cadence', 'text']] },
+  // El tercer parámetro no es opcional aquí a propósito: el shim reproduce la firma
+  // REAL. Declararla corta delataba «un jugador solo espera» como verdad cuando la
+  // capa de autoridad ya pasaba un intervalo de cero (lección 8 del CLAUDE.md).
+  claim_match: {
+    args: [['p_size', 'smallint'], ['p_cadence', 'text'], ['p_bot_fill_after', 'interval']],
+  },
   seat_match: { args: [['p_game', 'uuid'], ['p_profiles', 'jsonb', 'json']] },
   lobby_state: { args: [['p_game', 'uuid']] },
+  record_results: { args: [['p_game', 'uuid'], ['p_rows', 'jsonb', 'json']] },
   start_game: {
     args: [
       ['p_game', 'uuid'], ['p_profile', 'uuid'], ['p_state', 'jsonb', 'json'],

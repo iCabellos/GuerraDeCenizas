@@ -12,6 +12,137 @@ Este proyecto sigue [SemVer](https://semver.org/lang/es/).
 
 ## [Sin publicar] — v0.3 en curso
 
+### Corregido
+
+- **Ninguna partida con bots podía resolver el primer turno.** Al añadir `source: 'bot'` a
+  las órdenes no se actualizó la restricción `orders_source_check`, que solo admitía
+  `player`, `standing` y `autocommand`. La resolución fallaba entera —y con ella el turno
+  de los demás— con un error de integridad. No lo cazaba ningún test porque ninguno tenía
+  un asiento de bot resolviendo de verdad; ahora sí, y se juega una campaña completa.
+
+  El origen de una orden se guarda distinto a propósito: si un bot se registrara como
+  `autocommand` no habría forma de saber, mirando una partida terminada, si ese asiento lo
+  jugó una máquina o una persona que se fue. Son cosas distintas.
+
+### Añadido
+
+- **La campaña termina en algo.** `match_results` existía desde la migración 0005 y nadie
+  escribía en ella: al cerrar el T12 la partida pasaba a `finished` y la ruta te devolvía a
+  la portada sin decir nada. Doce turnos de aritmética y ni una cifra al final, que es lo
+  contrario de un juego cuya premisa es que las cuentas se verifican.
+
+  Ahora la autoridad calcula la **Reclamación Menor** con el motor
+  ([GDD §13.5](docs/GAME_DESIGN.md)) —`4 × yacimientos + 2 × ceniza + regiones + 3 × Núcleo`,
+  con empate declarado y sin desempate al azar—, reparte la Ceniza según §13.6 (55 % al
+  vencedor, 35 % al superviviente, 20 % al reducido), la ingresa en la Ciudad de cada
+  jugador y `/g/:id` enseña la clasificación en vez de redirigir.
+
+- **Se puede producir en red.** El borrador ya llevaba movimientos pero no producción, así
+  que se podía mover y **nunca gastar Industria** — mientras los bots sí producían: doce
+  turnos de asimetría creciente. Seleccionar un Bastión o una región urbana propia ofrece
+  las cinco construcciones con su coste.
+
+  Dónde se puede producir lo decide `@gdc/core` (`canProduceInView`), no la pantalla: la
+  regla vive en un sitio y no en tres.
+
+- **Un test que juega una campaña entera en solitario**, de la búsqueda al resultado, por
+  la capa de autoridad y contra el Postgres real. Es la prueba de producto, no de unidad:
+  si esa se rompe da igual que pasen las otras 330.
+
+### Añadido
+
+- **La ciudad levanta edificios de verdad.** El motor 2.5D se actualiza a la versión nueva
+  del proyecto de diseño (785 → 1621 líneas de origen): biblioteca `buildingAsset` con
+  granero, fundición, atalaya, silo de Ceniza, cerco y monumento, tropas rehechas a militar
+  contemporáneo y vitrinas de asset (`scene="unit" | "asset" | "tile" | "hero"`) con modo
+  `still`, que pinta un fotograma y suelta el contexto WebGL — un navegador no aguanta
+  veintitrés contextos vivos y el resto de las tarjetas saldría en negro.
+
+  Los seis solares dejan de ser cajas genéricas: `districts` acepta `"granary:3,foundry:2,…"`
+  y cada distrito construye lo suyo.
+
+### Cambiado
+
+- **El motor ya no escribe en el documento.** El original resolvía la escaramuza pintando
+  directamente en `document.querySelectorAll('[data-sk]')`. Eso vale en una maqueta de una
+  sola página, pero aquí el DOM es de React y un elemento que escribe en todo el documento
+  se sale de su recuadro. Ahora emite `gdc-skirmish` con el estado completo y lo pinta
+  quien lo escuche, igual que `_markers()` hace con los rótulos.
+
+- **Cada distrito sabe qué edificio es suyo.** Las dos listas se diseñaron por separado y
+  no se corresponden —los distritos del repo son desbloqueos de metaprogresión, los del
+  motor son siluetas—, así que hay una tabla explícita en `CityView`. Sin ella el rótulo
+  decía «Archivo» sobre un granero, que es peor que no poner nada.
+
+### Cambiado
+
+- **El mapa se dibuja en hexágonos** ([ADR-037](docs/DECISIONS.md#adr-037)). Las regiones
+  pasan de círculos a losas hexagonales de punta arriba, la misma orientación que usa el
+  mundo 2.5D, para que el mapa plano y el de relieve enseñen la misma pieza.
+
+  **No tejen un panal, y es deliberado.** Una retícula hexagonal no admite simetría de
+  orden 5 —la restricción cristalográfica: solo existen las de orden 1, 2, 3, 4 y 6— y el
+  mapa se apoya en «n sectores idénticos por rotación C_n» para que el reparto sea exacto.
+  Hoy eso sale gratis porque `mapgen` coloca las regiones en polares, donde el ángulo es
+  continuo. Tejer el panal habría costado la equidad de todas las mesas de cinco, que es
+  la premisa del juego. Así que son fichas hexagonales con junta entre ellas, y la
+  adyacencia sigue siendo la lista de aristas.
+
+  Las 55 regiones de una partida de tres siguen siendo elementos enfocables y anunciables:
+  la conversión no costó ni un objetivo táctil.
+
+### Añadido
+
+- **Rivales artificiales para poder jugar solo.** Cuatro perfiles —temerario, sensato,
+  astuto e implacable— repartidos por asiento **a partir de la semilla** de la partida, así
+  que una mesa de cinco trae dificultades distintas y una repetición reproduce sus
+  decisiones ([ADR-036](docs/DECISIONS.md#adr-036)).
+
+  Deciden desde su `PlayerView`, no desde el estado: **no ven a través de la niebla**, y
+  evalúan los combates con `previewAttack`, la misma función que pinta la previsualización
+  del jugador. Un rival que viera el estado entero no sería un rival sino un tramposo.
+
+  No comparten código con el Mando Automático y no deben: ese existe para que la ausencia
+  de alguien no dañe a un tercero, y por eso no ataca por iniciativa propia.
+
+- **Los rivales parecen una mesa.** Nombre y facción propios, estables por partida, en vez
+  de tres asientos etiquetados «Mando Automático».
+
+- **`BOT_FILL_SECONDS`**: con `0` la campaña empieza al instante contra bots, que es lo que
+  hace falta mientras el juego no está abierto. Sin la variable siguen siendo los 180
+  segundos de siempre — con cero, **dos humanos no se emparejan nunca**.
+
+### Añadido
+
+- **La pantalla de campaña adopta la composición del diseño.** El mapa pasa a ir **a
+  sangre** y el chrome flota encima: cabecera translúcida, **raíl de fases**
+  (Parlamento · Guerra · Resuelta) y una **hoja de órdenes** inferior que ya no dice
+  «faltan 3» sino que **enseña las tres**: arma dominante, cantidad y destino
+  («Línea 20 → Elevación 10»), cada una con su botón de quitar, más «Vaciar» y el botón
+  de confirmar a todo el ancho.
+
+  Todo sale del borrador real y de `PlayerView`. Los destinos se nombran por terreno e
+  identificador porque **las regiones no tienen nombre en el motor** — el mockup se los
+  inventaba.
+
+- **`/dev/board`**: vista previa de la campaña sin base de datos, con una partida de tres
+  montada con el motor de verdad (`createGame` + `projectViews`). `?orders=0` la monta con
+  el borrador vacío. 404 en producción, como el resto de `/dev/*`.
+
+- **Claves i18n de terreno**, y tests que exigen que **todo** terreno, arma y fase del
+  motor tenga nombre en los dos idiomas. Es un hueco que ningún typecheck ve —las claves
+  son cadenas— y que se le enseñaría crudo al jugador en mitad de una orden.
+
+### Decidido
+
+- **El mapa de campaña se queda en SVG** ([ADR-035](docs/DECISIONS.md#adr-035)). Al ir a
+  llevar el mundo 2.5D a la vista «Mapa · Guerra» aparecieron dos hechos que el mockup no
+  podía ver: el tablero del motor son 37 losas hexagonales con terreno fijo por anillo,
+  mientras el mapa real es un grafo en polares con adyacencia por aristas explícitas —
+  pintarlo sería enseñar un mapa que no se está jugando—; y un mapa real tiene **45, 55 o
+  96 regiones** según los asientos, así que una capa de objetivos tocables de 44 px sobre
+  360 px de ancho no cabe. El relieve se queda donde representa lo que dibuja: la Ciudad.
+
 ### Añadido
 
 - **La ciudad tiene relieve.** Entra el mundo 2.5D del diseño

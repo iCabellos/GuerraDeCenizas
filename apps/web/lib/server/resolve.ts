@@ -15,8 +15,8 @@
  */
 
 import {
-  AUTOCOMMAND_AFTER, ENGINE_VERSION, autocommandOrders, buildAdjacency, parseStanding,
-  reduce, standingOrders,
+  AUTOCOMMAND_AFTER, ENGINE_VERSION, autocommandOrders, botOrders, botProfile,
+  buildAdjacency, claimStandings, parseStanding, projectViews, reduce, standingOrders,
   type GameState, type Orders, type OrdersBySeat, type Seat,
 } from '@gdc/core';
 import { ordersSchema } from '../schemas';
@@ -60,6 +60,14 @@ export async function resolveTurn(
 
   const state = begun.state;
   const adjacency = buildAdjacency(state.map.regions.length, state.map.edges);
+  /**
+   * Las vistas del turno, proyectadas una sola vez.
+   *
+   * Un bot decide desde su `PlayerView`, igual que un humano: no ve a través de la
+   * niebla. Un rival que leyera el estado entero no sería un rival sino un tramposo, y
+   * las pruebas de juego que se hicieran contra él no valdrían para nada.
+   */
+  const views = projectViews(state);
   const submitted: number[] = [];
   const ordersBySeat: OrdersBySeat = {};
   const applied: { seat: number; payload: Orders; applied: Orders; source: string }[] = [];
@@ -67,7 +75,7 @@ export async function resolveTurn(
   for (const seatRow of begun.seats) {
     const seat = seatRow.seat as Seat;
     const sent = begun.orders.find((row) => row.seat === seat);
-    const orders = ordersFor(begun, state, adjacency, seatRow, sent);
+    const orders = ordersFor(begun, state, adjacency, views, seatRow, sent);
 
     if (orders.source === 'player') submitted.push(seat);
     ordersBySeat[seat] = orders.orders;
@@ -105,6 +113,21 @@ export async function resolveTurn(
     p_status: finished ? 'finished' : 'active',
   })) as { ok: boolean; code?: string; turn?: number };
 
+  /**
+   * El resultado de la campaña.
+   *
+   * Se escribe **después** de confirmar la resolución, nunca antes: una tabla de
+   * resultados de una partida que no llegó a cerrarse es peor que ninguna.
+   *
+   * La clasificación la calcula el motor ([GDD §13.5](../../../../docs/GAME_DESIGN.md#135-si-nadie-consagra-reclamación-menor)),
+   * no el servidor ni SQL — son reglas, y si las compusiera la base de datos el simulador
+   * no podría reproducir el final de una partida. Mientras la Consagración no exista,
+   * toda campaña acaba en Reclamación Menor.
+   */
+  if (finished && committed?.ok) {
+    await rpc('record_results', { p_game: gameId, p_rows: claimStandings(result.state) });
+  }
+
   if (!committed?.ok) return { resolved: false, skipped: committed?.code ?? 'unknown' };
   return { resolved: true, turn: committed.turn };
 }
@@ -121,6 +144,7 @@ function ordersFor(
   begun: BeginPayload,
   state: GameState,
   adjacency: ReturnType<typeof buildAdjacency>,
+  views: ReturnType<typeof projectViews>,
   seatRow: BeginPayload['seats'][number],
   sent: BeginPayload['orders'][number] | undefined,
 ): { orders: Orders; source: string } {
@@ -133,6 +157,21 @@ function ordersFor(
     if (parsed.success && parsed.data.turn === begun.turn) {
       return { orders: parsed.data as Orders, source: 'player' };
     }
+  }
+
+  /**
+   * Un bot **no** es un humano ausente, y por eso no comparten código.
+   *
+   * El Mando Automático existe para que la ausencia de alguien no dañe a un tercero, así
+   * que no ataca por iniciativa propia. Un asiento de bot nunca tuvo humano detrás: juega
+   * para ganar, con el perfil que le tocó por la semilla de la partida.
+   */
+  const view = views[seat];
+  if (seatRow.is_bot && view) {
+    return {
+      orders: botOrders(view, adjacency, botProfile(state.meta.seed, seat), state.meta.seed),
+      source: 'bot',
+    };
   }
 
   if (seatRow.is_bot || seatRow.missed_turns >= AUTOCOMMAND_AFTER) {
