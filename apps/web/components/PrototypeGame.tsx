@@ -323,6 +323,7 @@ function Board({
           selected={selected}
           reachable={reachable}
           ordered={orderedArrows}
+          label="Mapa de la campaña"
           onSelect={handleSelect}
         />
 

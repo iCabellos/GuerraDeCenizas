@@ -12,6 +12,68 @@ Este proyecto sigue [SemVer](https://semver.org/lang/es/).
 
 ## [Sin publicar] — v0.3 en curso
 
+### Cambiado
+
+- **La campaña se juega tocando el mapa** ([ADR-040](docs/DECISIONS.md#adr-040)). La
+  pantalla tenía el mapa a sangre y la hoja de órdenes flotando encima con un degradado
+  que a media pantalla ya era opaco: el mapa dejaba de verse justo en el tercio donde mira
+  el pulgar, y con la producción abierta más de la mitad era panel.
+
+  Ahora el mapa se queda con todo el espacio que sobra y **los paneles ocupan sitio de
+  verdad**; lo único que flota es el cromo que no intercepta gestos. Un destino resaltado
+  no puede volver a quedar debajo de una hoja, que era el mismo fallo que ya obligó en v0.2
+  a encuadrar el vecindario: el encuadre centraba en el viewport, no en la parte del
+  viewport que se ve.
+
+  Y se ordena en el mapa: tocar una región abre su ficha y arma el apuntado, tocar un
+  destino resaltado da la orden, y el pronóstico de combate se lee ahí mismo. Mover,
+  Atacar, Firme, Apoyar, Fortificar y Producir son botones con nombre dentro de la ficha.
+
+### Añadido
+
+- **Apoyo de Fuego y postura Firme se pueden ordenar.** Las dos existían en el motor desde
+  v0.2 y no había forma de darlas desde la interfaz: se podía mover o no mover, y nada más.
+
+- **Un botón que devuelve la cámara a tu ciudad**, más otro al Núcleo y el zoom por
+  botones. En un mapa de hasta 96 regiones, perder de vista tu Bastión y tener que buscarlo
+  arrastrando es la forma más rápida de que la partida deje de parecer un juego. La cámara
+  vuela suave y por `transform`: cero renders de React.
+
+- **La pizarra enseña una casilla por fuerza, tenga orden o no.** Las vacías son la
+  pregunta que el juego te está haciendo este turno; antes la pantalla decía «Ninguna orden
+  todavía» y no había forma de saber cuántas decisiones quedaban. Tocar una casilla vacía
+  lleva la cámara a esa fuerza.
+
+- **El reparto**: una fila por asiento con sus regiones, sus yacimientos, si tiene el
+  Núcleo y cuántas de sus regiones tocan las tuyas — todo público en el motor. Tocarla
+  enciende ese territorio en el mapa y lleva la cámara a su Bastión. La Ceniza ajena no
+  está porque no se ve, y estimarla sería peor que no darla.
+
+  **No es diplomacia todavía**: enseña el reparto, no permite negociarlo. Los Sellos, las
+  Rupturas y las ofertas son v0.4.
+
+- `apps/web/lib/board.ts`: las cuentas de la pantalla —quién manda en qué, dónde está el
+  enemigo, qué se puede hacer en una región— salen de tres componentes de React y pasan a
+  ser funciones puras con test (17 tests). Antes solo se podían comprobar mirando.
+
+### Corregido
+
+- **Un arrastre podía acabar seleccionando una región.** No había umbral entre desplazar el
+  mapa y tocarlo, así que navegar abría fichas sin querer. Ahora un gesto que recorre más
+  de 8 px no selecciona.
+
+- **El mapa se podía perder arrastrando** hasta dejar el tablero fuera de pantalla, sin más
+  salida que recargar. La cámara está acotada al mapa.
+
+- **Las rutas tejían una telaraña.** Dibujadas al mismo peso que las regiones, las aristas
+  competían con el mapa en vez de explicarlo. Bajan de peso; a cambio el territorio se tiñe
+  del color y la trama de quien lo controla, que es lo que hay que leer de un vistazo.
+
+- **`/dev/board` no se podía abrir sin credenciales de Supabase**, que es exactamente lo
+  contrario de para lo que existe: la suscripción a Realtime lanzaba en el montaje. Además
+  montaba el T0, la única fase en la que no se puede mover, así que se revisaba un tablero
+  donde ninguna orden era posible. Ahora juega turnos con bots antes de pintar.
+
 ### Añadido
 
 - **El Juramento** ([ADR-039](docs/DECISIONS.md#adr-039)). Faltaba lo más básico: nadie

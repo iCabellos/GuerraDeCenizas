@@ -1,0 +1,17 @@
+<!--
+  asset: ui/city
+  role: Tu ciudad — el Bastión propio, destino de la cámara
+  grid: 24
+  stroke: 2
+  colors: currentColor
+  author: Iván Cabellos
+  created: 2026-08-23
+  original: true
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+     stroke="currentColor" stroke-width="2" stroke-linecap="square"
+     stroke-linejoin="miter">
+  <path d="M3 21V11h5v10"/>
+  <path d="M8 21V4h8v17"/>
+  <path d="M16 21v-7h5v7"/>
+</svg>
