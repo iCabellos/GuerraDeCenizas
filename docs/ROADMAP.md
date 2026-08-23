@@ -201,6 +201,11 @@ motor   juego   online  diplo   Núcleo   meta   anom.  balance  móvil    beta 
 
 ## v0.4 — Diplomacia
 
+> **Ya construido en v0.3:** el **reparto** ([ADR-040](DECISIONS.md#adr-040)) enseña
+> regiones, yacimientos, Núcleo y frontera de cada asiento —todo público en el motor— y
+> enciende su territorio en el mapa. Es el sitio donde entran los Sellos: lo que falta es
+> poder **negociar** el reparto, no verlo.
+
 **Alcance**
 - Las 3 primitivas: Sello (5 tipos), Transferencia con depósito, base de Coalición.
 - Compositor de ofertas por plantillas (móvil).

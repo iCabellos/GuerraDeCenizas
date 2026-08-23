@@ -1,18 +1,17 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  BALANCE, buildAdjacency, canProduceInView, previewAttack,
+  BALANCE, buildAdjacency, previewAttack,
   type Buildable, type MoveOrder, type Orders, type PlayerView, type Posture,
-  type ProductionOrder, type RegionId,
+  type ProductionOrder, type RegionId, type Seat,
 } from '@gdc/core';
-import { MapView } from '@/components/MapView';
-import {
-  OrderSheet, PhaseRail, type BuildOption, type BuildRow, type OrderRow,
-} from '@/components/OrderSheet';
-import { CombatPreview } from '@/components/CombatPreview';
-import { CommandHeader, OrderBar, OrderCommit } from '@/components/GameChrome';
+import { MapView, type MapHandle } from '@/components/MapView';
+import { CampaignHeader, MapControls, PhaseRail, RivalLedger } from '@/components/BoardHud';
+import { RegionSheet, type BuildChoice } from '@/components/RegionSheet';
+import { CommitBar, OrderSlate, type BuildRow, type OrderKind, type SlateRow } from '@/components/OrderSlate';
+import { briefOf, dominantArm, ledger, ownForces, sizeOf, threatened } from '@/lib/board';
 import { browserClient } from '@/lib/supabase-browser';
 
 type Messages = Record<string, string>;
@@ -20,17 +19,22 @@ type Messages = Record<string, string>;
 /**
  * El tablero en red.
  *
- * Tres piezas de estado y ninguna más, como manda `apps/web/CLAUDE.md`:
+ * **Todo se hace tocando el mapa.** Tocas una región, sale su ficha, y lo que se puede
+ * hacer allí son botones con nombre; tocas un destino resaltado y la orden queda dada. No
+ * hay menús de modo, no hay formularios paralelos y ningún panel tapa el mapa: la pizarra
+ * de órdenes es el índice de lo que ya decidiste, no el sitio donde se decide.
+ *
+ * Tres piezas de estado de juego y ninguna más, como manda `apps/web/CLAUDE.md`:
  *
  *   1. La vista del servidor — llega por props, se refresca por Realtime.
  *   2. El borrador de órdenes — un `useReducer`, y su forma es **exactamente** la que se
  *      envía a la API, sin transformación intermedia.
- *   3. Preferencias de interfaz — nada de esto se persiste como estado de juego.
+ *   3. Preferencias de interfaz —selección, apuntado, foco, pestaña— que no se persisten.
  *
- * **Este componente no decide nada.** Calcula una previsualización de combate con el
- * mismo `reduce()` que el servidor, pero ese resultado no se envía ni se guarda: solo se
- * pinta. Lo que viaja son identificadores de fuerza, destino y postura; las cantidades,
- * la legalidad y el resultado los pone el servidor contra el estado autoritativo.
+ * **Este componente no decide nada.** Calcula un pronóstico de combate con el mismo
+ * `reduce()` que el servidor, pero ese resultado no se envía ni se guarda: solo se pinta.
+ * Lo que viaja son identificadores de fuerza, destino y postura; las cantidades, la
+ * legalidad y el resultado los pone el servidor contra el estado autoritativo.
  */
 
 interface Draft {
@@ -43,7 +47,7 @@ interface Draft {
 }
 
 type DraftAction =
-  | { type: 'order'; forceId: string; to?: RegionId; posture: Posture }
+  | { type: 'order'; forceId: string; to?: RegionId; posture: Posture; fireSupport?: RegionId }
   | { type: 'cancel'; forceId: string }
   | { type: 'produce'; regionId: RegionId; item: Buildable }
   | { type: 'unproduce'; index: number }
@@ -70,12 +74,14 @@ function draftReducer(draft: Draft, action: DraftAction): Draft {
   switch (action.type) {
     case 'order': {
       const rest = draft.moves.filter((move) => move.forceId !== action.forceId);
+      const order: MoveOrder = { forceId: action.forceId, posture: action.posture };
+      if (action.to !== undefined) order.to = action.to;
+      if (action.fireSupport !== undefined) order.fireSupport = action.fireSupport;
       return {
         ...draft,
-        moves: [...rest, { forceId: action.forceId, to: action.to, posture: action.posture }]
-          // Ordenadas por identificador: el mismo borrador produce el mismo JSON, y así
-          // el guardado automático no reescribe la fila por un simple cambio de orden.
-          .sort((a, b) => (a.forceId < b.forceId ? -1 : 1)),
+        // Ordenadas por identificador: el mismo borrador produce el mismo JSON, y así
+        // el guardado automático no reescribe la fila por un simple cambio de orden.
+        moves: [...rest, order].sort((a, b) => (a.forceId < b.forceId ? -1 : 1)),
       };
     }
     case 'cancel':
@@ -102,6 +108,13 @@ function draftReducer(draft: Draft, action: DraftAction): Draft {
   }
 }
 
+/** Con qué fuerza se está apuntando, y a qué. */
+interface Aim {
+  forceId: string;
+  from: RegionId;
+  kind: 'move' | 'support';
+}
+
 export function GameBoard({
   messages, gameId, view, draft: savedDraft, submitted, deadlineAt,
 }: {
@@ -123,7 +136,11 @@ export function GameBoard({
   );
 
   const router = useRouter();
+  const map = useRef<MapHandle | null>(null);
   const [selected, setSelected] = useState<RegionId | null>(null);
+  const [aim, setAim] = useState<Aim | null>(null);
+  const [spotlight, setSpotlight] = useState<Seat | null>(null);
+  const [tab, setTab] = useState<'orders' | 'ledger'>(view.phase === 'parley' ? 'ledger' : 'orders');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
   const [sent, setSent] = useState(submitted);
@@ -143,24 +160,16 @@ export function GameBoard({
     [view.map.edges, view.map.regions.length],
   );
 
-  const ownForces = useMemo(() => view.forces.filter((force) => force.own), [view.forces]);
-  const selectedForce = useMemo(
-    () => ownForces.find((force) => force.regionId === selected) ?? null,
-    [ownForces, selected],
-  );
+  const forces = useMemo(() => ownForces(view), [view]);
+  const rows = useMemo(() => ledger(view, adjacency), [adjacency, view]);
+  const threats = useMemo(() => threatened(view, adjacency), [adjacency, view]);
 
   // En el Parlamento no hay combate, así que tampoco hay a dónde ir.
   const isParley = view.phase === 'parley';
-  const reachable = selectedForce && !isParley ? (adjacency[selectedForce.regionId] ?? []) : [];
-
-  const ordered = useMemo(() => {
-    const map = new Map<RegionId, RegionId>();
-    for (const move of draft.moves) {
-      const force = ownForces.find((f) => f.id === move.forceId);
-      if (force && move.to !== undefined) map.set(force.regionId, move.to);
-    }
-    return map;
-  }, [draft.moves, ownForces]);
+  const reachable = useMemo(
+    () => (aim && !isParley ? (adjacency[aim.from] ?? []) : []),
+    [adjacency, aim, isParley],
+  );
 
   /** Cómo se llama una región: por su terreno y su número, que es lo que existe. */
   const placeOf = useCallback(
@@ -169,56 +178,64 @@ export function GameBoard({
     [t, view.map.regions],
   );
 
-  /**
-   * Las órdenes del borrador, ya resueltas a texto.
-   *
-   * El arma que se enseña es la dominante de la fuerza: en una pantalla de 360 px no
-   * caben tres cifras por fila, y la que decide el carácter del movimiento es la mayor.
-   * El destino se nombra por su terreno porque las regiones **no tienen nombre** en el
-   * motor — el mockup se los inventaba.
-   */
-  const orderRows = useMemo<OrderRow[]>(() => {
-    const rows: OrderRow[] = [];
+  const enemiesAt = useCallback(
+    (regionId: RegionId) => view.forces.some((force) => !force.own && force.regionId === regionId),
+    [view.forces],
+  );
+
+  /** Adónde va cada fuerza que se mueve. Lo pinta el mapa como flecha. */
+  const ordered = useMemo(() => {
+    const byRegion = new Map<RegionId, RegionId>();
     for (const move of draft.moves) {
-      const force = ownForces.find((f) => f.id === move.forceId);
-      if (!force || move.to === undefined) continue;
-      const region = view.map.regions[move.to];
-      if (!region) continue;
-      // La vista tipa las cifras como anulables porque de una fuerza ajena puede no
-      // saberse la composición. Éstas son propias, así que el `?? 0` no oculta nada:
-      // es lo que hay que pintar si el motor alguna vez devolviera un hueco.
-      const arms = [
-        { arm: 'line' as const, count: force.line ?? 0 },
-        { arm: 'fire' as const, count: force.fire ?? 0 },
-        { arm: 'sky' as const, count: force.sky ?? 0 },
-      ].sort((a, b) => b.count - a.count);
-      const top = arms[0] ?? { arm: 'line' as const, count: 0 };
-      rows.push({
-        forceId: force.id,
-        arm: top.arm,
-        count: top.count,
-        to: placeOf(region.id),
-      });
+      const force = forces.find((f) => f.id === move.forceId);
+      if (force && move.to !== undefined) byRegion.set(force.regionId, move.to);
     }
-    return rows;
-  }, [draft.moves, ownForces, placeOf]);
+    return byRegion;
+  }, [draft.moves, forces]);
+
+  /** Qué región apoya cada fuerza que se queda firme. Trazo discontinuo en el mapa. */
+  const supports = useMemo(() => {
+    const byRegion = new Map<RegionId, RegionId>();
+    for (const move of draft.moves) {
+      const force = forces.find((f) => f.id === move.forceId);
+      if (force && move.fireSupport !== undefined) byRegion.set(force.regionId, move.fireSupport);
+    }
+    return byRegion;
+  }, [draft.moves, forces]);
 
   /**
-   * Qué se puede construir en la región seleccionada.
+   * La pizarra: **una casilla por fuerza**, con orden o sin ella.
    *
-   * Dónde se produce lo decide `@gdc/core`, no esta pantalla: si el cliente lo
-   * reimplementara, el servidor y el simulador tendrían que mantener la misma condición
-   * en tres sitios y el día que cambie solo se acordarán dos.
+   * El arma que se enseña es la dominante: en una pantalla de 360 px no caben tres cifras
+   * por fila, y la que decide el carácter de la fuerza es la mayor. Los destinos se nombran
+   * por su terreno porque las regiones **no tienen nombre** en el motor.
    */
-  const options = useMemo<BuildOption[]>(() => {
-    if (selected === null || !canProduceInView(view, selected)) return [];
-    const industry = view.self.resources.industry;
-    return (['line', 'fire', 'sky', 'fort', 'bridge'] as Buildable[]).map((item) => ({
-      item,
-      industry: BALANCE.production[item].industry,
-      affordable: industry >= BALANCE.production[item].industry,
-    }));
-  }, [selected, view]);
+  const slate = useMemo<SlateRow[]>(() => forces.map((force) => {
+    const move = draft.moves.find((m) => m.forceId === force.id);
+    let kind: OrderKind | null = null;
+    let order: string | null = null;
+
+    if (move?.to !== undefined) {
+      kind = enemiesAt(move.to) ? 'attack' : 'move';
+      order = t(kind === 'attack' ? 'order.attack' : 'order.move', { place: placeOf(move.to) });
+    } else if (move?.fireSupport !== undefined) {
+      kind = 'support';
+      order = t('order.support', { place: placeOf(move.fireSupport) });
+    } else if (move) {
+      kind = 'hold';
+      order = t('order.hold');
+    }
+
+    return {
+      forceId: force.id,
+      regionId: force.regionId,
+      arm: dominantArm(force),
+      size: sizeOf(force),
+      where: placeOf(force.regionId),
+      order,
+      kind,
+    };
+  }), [draft.moves, enemiesAt, forces, placeOf, t]);
 
   const builds = useMemo<BuildRow[]>(
     () => draft.production.map((order) => ({
@@ -227,9 +244,54 @@ export function GameBoard({
     [draft.production, placeOf],
   );
 
+  const brief = useMemo(
+    () => (selected === null ? null : briefOf(view, selected)),
+    [selected, view],
+  );
+
+  /**
+   * Qué se puede construir en la región seleccionada.
+   *
+   * Dónde se produce lo decide `@gdc/core`, no esta pantalla: si el cliente lo
+   * reimplementara, el servidor y el simulador tendrían que mantener la misma condición
+   * en tres sitios y el día que cambie solo se acordarán dos.
+   */
+  const choices = useMemo<BuildChoice[]>(() => {
+    if (!brief?.canProduce) return [];
+    const industry = view.self.resources.industry;
+    return (['line', 'fire', 'sky', 'fort', 'bridge'] as Buildable[]).map((item) => ({
+      item,
+      industry: BALANCE.production[item].industry,
+      affordable: industry >= BALANCE.production[item].industry,
+    }));
+  }, [brief, view.self.resources.industry]);
+
+  /**
+   * El pronóstico de un ataque ya ordenado sobre la región que se está mirando.
+   *
+   * Sale del mismo `reduce()` que resuelve el turno, así que no puede mentir sobre las
+   * reglas — pero **no se envía nunca**: es exclusivamente para pintar.
+   */
+  const forecast = useMemo(() => {
+    if (selected === null) return null;
+    const move = draft.moves.find((m) => m.to === selected);
+    if (!move) return null;
+    const region = view.map.regions[selected];
+    if (!region || !enemiesAt(selected)) return null;
+    return previewAttack(view, move.forceId, selected, adjacency, region.kind);
+  }, [adjacency, draft.moves, enemiesAt, selected, view]);
+
   // ── Realtime: el turno nuevo llega empujado, nunca sondeado ──────────────────
   useEffect(() => {
-    const supabase = browserClient();
+    // Sin credenciales no hay canal. Pasa en `/dev/board`, que monta esta misma pantalla
+    // sin base de datos: una pantalla que no se puede mirar no se puede revisar.
+    let supabase;
+    try {
+      supabase = browserClient();
+    } catch {
+      return;
+    }
+
     const channel = supabase
       .channel(`game:${gameId}`)
       .on(
@@ -237,7 +299,13 @@ export function GameBoard({
         { event: 'INSERT', schema: 'public', table: 'player_views', filter: `game_id=eq.${gameId}` },
         // RLS filtra el asiento aunque el filtro sea por partida: la seguridad no
         // depende de lo que pida el cliente.
-        () => { dispatch({ type: 'clear' }); setSent(false); router.refresh(); },
+        () => {
+          dispatch({ type: 'clear' });
+          setSent(false);
+          setSelected(null);
+          setAim(null);
+          router.refresh();
+        },
       )
       .subscribe();
 
@@ -259,15 +327,6 @@ export function GameBoard({
     }, 2000);
     return () => clearTimeout(timer);
   }, [draft.moves, draft.production, gameId, sent, view.turn]);
-
-  const preview = useMemo(() => {
-    if (!selectedForce || selected === null) return null;
-    const move = draft.moves.find((m) => m.forceId === selectedForce.id);
-    if (!move?.to) return null;
-    const region = view.map.regions[move.to];
-    if (!region) return null;
-    return previewAttack(view, selectedForce.id, move.to, adjacency, region.kind);
-  }, [adjacency, draft.moves, selected, selectedForce, view]);
 
   async function submit() {
     setSending(true);
@@ -294,99 +353,228 @@ export function GameBoard({
     }
   }
 
+  /** Selecciona una región y, si hay fuerza propia, arma el apuntado de movimiento. */
+  const inspect = useCallback((regionId: RegionId) => {
+    setSelected(regionId);
+    const force = forces.find((f) => f.regionId === regionId);
+    setAim(force && !isParley ? { forceId: force.id, from: regionId, kind: 'move' } : null);
+  }, [forces, isParley]);
+
+  /**
+   * Un tap en el mapa. Es **la** interacción del juego.
+   *
+   * Si se estaba apuntando y el destino es alcanzable, la orden queda dada ahí mismo: dos
+   * taps desde ver la fuerza hasta tenerla en marcha. Si no, se inspecciona la región.
+   */
   function choose(regionId: RegionId) {
-    if (selectedForce && reachable.includes(regionId)) {
-      dispatch({ type: 'order', forceId: selectedForce.id, to: regionId, posture: 'assault' });
+    if (aim && reachable.includes(regionId)) {
+      dispatch(aim.kind === 'move'
+        ? { type: 'order', forceId: aim.forceId, to: regionId, posture: 'assault' }
+        // El apoyo de Fuego exige postura Firme y no moverse (GDD §7.5).
+        : { type: 'order', forceId: aim.forceId, posture: 'hold', fireSupport: regionId });
+      setAim(null);
       setSelected(regionId);
+      setSpotlight(null);
       return;
     }
-    setSelected(regionId === selected ? null : regionId);
+    if (regionId === selected) { setSelected(null); setAim(null); return; }
+    inspect(regionId);
   }
 
+  /** Lleva la cámara a una fuerza desde la pizarra y la deja lista para ordenar. */
+  function pick(regionId: RegionId) {
+    inspect(regionId);
+    map.current?.focus(regionId);
+  }
+
+  function spot(seat: Seat | null) {
+    setSpotlight(seat);
+    const row = rows.find((r) => r.seat === seat);
+    if (row?.bastion !== undefined) map.current?.focus(row.bastion, { bias: 0.25 });
+  }
+
+  const given = slate.filter((row) => row.order !== null).length;
+  const home = view.map.bastions[view.seat];
+
   return (
-    <div className="relative h-dvh overflow-hidden">
-      {/* El mapa va a sangre y todo lo demás flota encima, como en el diseño. */}
-      <div className="absolute inset-0">
+    <div className="flex h-dvh flex-col overflow-hidden">
+      {/*
+        El mapa se queda con todo lo que sobra y **los paneles ocupan sitio de verdad**.
+        Flotando encima del mapa entero, un destino resaltado podía quedar debajo de la
+        hoja: se le ofrecía al jugador una casilla que no podía tocar, que es peor que no
+        ofrecérsela (ROADMAP v0.2, hallazgo 3). Lo único que flota es el cromo que no
+        intercepta gestos.
+      */}
+      <div className="relative min-h-0 flex-1">
         <MapView
+          ref={map}
           view={view}
           selected={selected}
           reachable={reachable}
           ordered={ordered}
+          supports={supports}
+          spotlight={spotlight}
+          threats={threats}
+          label={t('a11y.map')}
           onSelect={choose}
         />
-      </div>
 
-      {/* Velo superior: sin él la cabecera compite con las regiones de arriba. */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-44
-        bg-gradient-to-b from-void/90 to-transparent" />
-
-      <div className="absolute inset-x-0 top-0">
-        <CommandHeader
-          floating
-          seat={view.seat}
-          name={view.self.name}
-          factionId={view.self.factionId}
-          doctrine={deadlineAt ? new Date(deadlineAt).toLocaleTimeString() : ''}
-          phase={t(`game.${view.phase}`)}
-          turn={t('game.turn', { turn: view.turn })}
-          regions={view.control.filter((owner) => owner === view.seat).length}
-          regionsLabel=""
-          resources={view.self.resources}
-        />
-      </div>
-
-      {/* Raíl de fases. No intercepta gestos: es un indicador, no un control. */}
-      <div className="absolute left-3 top-32">
-        <PhaseRail phase={view.phase} label={t('a11y.phase')} t={t} />
-      </div>
-
-      {/* Un solo panel abierto a la vez: la previsualización de combate sustituye a la
-          hoja de órdenes en vez de apilarse encima (UX_MOBILE §11). */}
-      {preview ? (
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 px-3 pb-3">
-          <div className="pointer-events-auto">
-            <CombatPreview
-              preview={preview}
-              seat={view.seat}
-              onConfirm={() => setSelected(null)}
-              onCancel={() => {
-                if (selectedForce) dispatch({ type: 'cancel', forceId: selectedForce.id });
-                setSelected(null);
-              }}
-            />
-          </div>
+        <div className="pointer-events-none absolute inset-x-0 top-0">
+          <CampaignHeader
+            seat={view.seat}
+            name={view.self.name}
+            factionId={view.self.factionId}
+            phase={view.phase}
+            turn={view.turn}
+            deadlineAt={deadlineAt}
+            resources={view.self.resources}
+            t={t}
+          />
         </div>
-      ) : (
-        <OrderSheet
-          orders={orderRows}
-          builds={builds}
-          options={options}
-          onRemove={(forceId) => dispatch({ type: 'cancel', forceId })}
-          onClear={() => dispatch({ type: 'clear' })}
-          onProduce={(item) => {
-            if (selected !== null) {
-              dispatch({ type: 'produce', regionId: selected, item: item as Buildable });
-            }
-          }}
-          onUnproduce={(index) => dispatch({ type: 'unproduce', index })}
-          t={t}
-          primary={
-            <OrderCommit onClick={submit} disabled={sending || sent}>
-              {sent ? t('game.submitted') : sending ? t('game.submitting') : t('game.submit')}
-            </OrderCommit>
-          }
-        />
-      )}
 
-      {error && (
-        <p
-          role="alert"
-          className="absolute inset-x-0 top-24 mx-3 rounded-sharp border border-danger/60
-            bg-danger/15 px-3 py-2 text-sm backdrop-blur-sm"
+        <div className="pointer-events-none absolute inset-x-0 top-24 flex items-start
+          justify-between px-3"
         >
-          {error}
-        </p>
-      )}
+          <PhaseRail phase={view.phase} label={t('a11y.phase')} t={t} />
+          <MapControls
+            onHome={() => { if (home !== undefined) map.current?.focus(home, { bias: 0.42 }); }}
+            onCore={() => map.current?.focus(view.map.coreId)}
+            onZoomIn={() => map.current?.zoomBy(1.3)}
+            onZoomOut={() => map.current?.zoomBy(0.77)}
+            t={t}
+          />
+        </div>
+
+        {error && (
+          <p
+            role="alert"
+            className="absolute inset-x-3 bottom-3 border border-danger/60 bg-danger/90 px-3
+              py-2 text-sm"
+          >
+            {error}
+          </p>
+        )}
+      </div>
+
+      {/* Un solo panel abierto a la vez (UX_MOBILE §11): la ficha de región sustituye a la
+          pizarra en vez de apilarse encima. La barra de confirmar no se va nunca. */}
+      <div className="flex shrink-0 flex-col">
+        {brief ? (
+          <RegionSheet
+            brief={brief}
+            place={placeOf(brief.id)}
+            seat={view.seat}
+            aiming={aim && aim.from === brief.id ? aim.kind : null}
+            // La orden de la fuerza que está aquí o, si no hay, la que viene hacia aquí:
+            // al tocar un destino lo primero que hay que poder leer es qué le ordenaste.
+            orderText={
+              slate.find((row) => row.regionId === brief.id)?.order
+              ?? slate.find((row) => draft.moves.some(
+                (m) => m.forceId === row.forceId
+                  && (m.to === brief.id || m.fireSupport === brief.id),
+              ))?.order
+              ?? null
+            }
+            canOrder={brief.mine.length > 0 && !isParley}
+            onMove={() => {
+              const force = brief.mine[0];
+              if (force) setAim({ forceId: force.id, from: brief.id, kind: 'move' });
+            }}
+            onHold={() => {
+              const force = brief.mine[0];
+              if (force) {
+                dispatch({ type: 'order', forceId: force.id, posture: 'hold' });
+                setAim(null);
+              }
+            }}
+            onSupport={() => {
+              const force = brief.mine[0];
+              if (force) setAim({ forceId: force.id, from: brief.id, kind: 'support' });
+            }}
+            onCancel={() => {
+              const force = brief.mine[0];
+              if (force) dispatch({ type: 'cancel', forceId: force.id });
+              setAim(null);
+            }}
+            builds={choices}
+            onBuild={(item) => dispatch({ type: 'produce', regionId: brief.id, item })}
+            forecast={forecast}
+            onClose={() => { setSelected(null); setAim(null); }}
+            t={t}
+          />
+        ) : (
+          <>
+            <Tabs tab={tab} onTab={setTab} given={given} total={slate.length} t={t} />
+            {tab === 'orders' ? (
+              <OrderSlate
+                rows={slate}
+                builds={builds}
+                seat={view.seat}
+                onPick={pick}
+                onRemove={(forceId) => dispatch({ type: 'cancel', forceId })}
+                onUnbuild={(index) => dispatch({ type: 'unproduce', index })}
+                t={t}
+              />
+            ) : (
+              <div className="max-h-[28dvh] overflow-y-auto bg-panel px-3 pb-2 pt-2">
+                <RivalLedger rows={rows} spotlight={spotlight} onSpotlight={spot} t={t} />
+              </div>
+            )}
+          </>
+        )}
+
+        <CommitBar
+          canClear={given > 0 || builds.length > 0}
+          onClear={() => { dispatch({ type: 'clear' }); setAim(null); }}
+          onSubmit={submit}
+          disabled={sending || sent}
+          label={sent ? t('game.submitted') : sending ? t('game.submitting') : t('game.submit')}
+          t={t}
+        />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Órdenes o reparto.
+ *
+ * El reparto no está escondido en un menú porque **es la mitad del juego**: quién va
+ * delante decide con quién se habla. Y en el Parlamento entra abierto, que es el turno en
+ * el que no se puede mover y sí se puede negociar.
+ */
+function Tabs({
+  tab, onTab, given, total, t,
+}: {
+  tab: 'orders' | 'ledger';
+  onTab: (tab: 'orders' | 'ledger') => void;
+  /** Cuántas fuerzas tienen orden, de cuántas. Va en la pestaña: se lee sin abrirla. */
+  given: number;
+  total: number;
+  t: (key: string) => string;
+}) {
+  return (
+    <div role="tablist" className="flex border-t border-line bg-panel">
+      {(['orders', 'ledger'] as const).map((key) => (
+        <button
+          key={key}
+          type="button"
+          role="tab"
+          aria-selected={tab === key}
+          onClick={() => onTab(key)}
+          className={`type-label flex min-h-11 flex-1 items-center justify-center gap-2 border-b-2 ${
+            tab === key ? 'border-b-rust !text-rust' : 'border-b-transparent'
+          }`}
+        >
+          {t(key === 'orders' ? 'orders.title' : 'ledger.title')}
+          {key === 'orders' && (
+            <span className="type-figure text-xs">
+              <span className={given === total ? 'text-success' : 'text-ink'}>{given}</span>
+              <span className="text-faint">/{total}</span>
+            </span>
+          )}
+        </button>
+      ))}
     </div>
   );
 }

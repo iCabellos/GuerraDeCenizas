@@ -1,0 +1,16 @@
+<!--
+  asset: diplomacy/seal
+  role: Sello — el pacto verificable del Parlamento
+  grid: 24
+  stroke: 2
+  colors: currentColor
+  author: Iván Cabellos
+  created: 2026-08-23
+  original: true
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+     stroke="currentColor" stroke-width="2" stroke-linecap="square"
+     stroke-linejoin="miter">
+  <path d="M12 3l7 4v10l-7 4-7-4V7Z"/>
+  <path d="M12 8l3.5 2v4L12 16l-3.5-2v-4Z"/>
+</svg>

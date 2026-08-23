@@ -227,7 +227,16 @@ No las repitas. Cada una salió de un fallo real de este repositorio:
    tocar `orders_source_check` hacía fallar la resolución **entera** de cualquier partida
    con bots, en su primer turno. No lo cazó ningún test porque ninguno tenía un bot
    resolviendo de verdad: el test que faltaba no era unitario, era jugar una partida.
-14. **Un valor por defecto no distingue «elegido» de «nunca preguntado».**
+14. **`pointer-events: none` resuelve los taps, no la visibilidad.** La hoja de órdenes
+   flotaba sobre el mapa con un degradado que a media pantalla ya era opaco: los gestos
+   pasaban, pero el mapa no se veía y un destino resaltado podía quedar **debajo** de la
+   hoja. La solución no era otro ajuste de la capa: era que el mapa tuviera su propia caja
+   y los paneles ocuparan sitio de verdad ([ADR-040](docs/DECISIONS.md#adr-040)).
+15. **Una pantalla de QA que no se puede abrir no es una pantalla de QA.** `/dev/board`
+   existe para mirar la campaña sin base de datos y se caía en el montaje al suscribirse a
+   Realtime; además montaba el T0, la única fase en la que no se puede mover, así que
+   enseñaba un tablero donde ninguna orden era posible.
+16. **Un valor por defecto no distingue «elegido» de «nunca preguntado».**
    `faction_id not null default 'vantera'` hacía que toda cuenta fuera de Vantera sin
    haberlo decidido. Hizo falta una columna aparte (`sworn_at`) para poder saberlo
    ([ADR-039](docs/DECISIONS.md#adr-039)).

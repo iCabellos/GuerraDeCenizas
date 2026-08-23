@@ -1,5 +1,8 @@
 import { notFound } from 'next/navigation';
-import { buildAdjacency, createGame, projectViews, type MoveOrder } from '@gdc/core';
+import {
+  ENGINE_VERSION, botOrders, botProfile, buildAdjacency, createGame, projectViews, reduce,
+  type MoveOrder, type OrdersBySeat, type Seat,
+} from '@gdc/core';
 import { GameBoard } from '@/components/GameBoard';
 import { DICTIONARIES } from '@/lib/i18n/index';
 
@@ -8,25 +11,32 @@ import { DICTIONARIES } from '@/lib/i18n/index';
  *
  * `/g/:id` necesita sesión, partida y Supabase, así que sin credenciales no hay forma de
  * mirarla — y una pantalla que no se puede mirar no se puede revisar. Esto monta una
- * partida de tres con el motor de verdad (`createGame` + `projectViews`), así que el mapa,
- * las fuerzas y la niebla son los que produce el juego, no un decorado.
+ * partida de tres con el motor de verdad (`createGame` + `reduce` + `projectViews`), así
+ * que el mapa, las fuerzas, la niebla y el frente son los que produce el juego.
  *
- * `?orders=0` la monta con el borrador vacío, que es el otro estado que hay que revisar.
+ * **Se juegan tres turnos antes de pintar** y los rivales los juegan bots. Sin eso la
+ * pantalla salía en el Parlamento del T0, que es la única fase en la que no se puede
+ * mover: se revisaba un tablero donde ninguna orden era posible y el 90 % de la interfaz
+ * no llegaba a aparecer.
+ *
+ * `?turns=n` cambia cuántos se juegan; `?orders=0` la monta con el borrador vacío, que es
+ * el otro estado que hay que revisar.
  *
  * Solo en desarrollo.
  */
 export default async function Page({
   searchParams,
 }: {
-  searchParams: Promise<{ orders?: string }>;
+  searchParams: Promise<{ orders?: string; turns?: string }>;
 }) {
   if (process.env.NODE_ENV === 'production') notFound();
 
-  const { orders } = await searchParams;
+  const { orders, turns } = await searchParams;
+  const seed = 424242;
 
-  const { state } = createGame({
+  const created = createGame({
     gameId: '00000000-0000-4000-8000-0000000000b0',
-    seed: 424242,
+    seed,
     players: 3,
     seats: [
       { name: 'Kael', factionId: 'vantera' },
@@ -34,6 +44,23 @@ export default async function Page({
       { name: 'Ysolde', factionId: 'saranth' },
     ],
   });
+
+  let state = created.state;
+  const played = Math.min(8, Math.max(0, Number(turns ?? '3') || 0));
+  for (let round = 0; round < played; round += 1) {
+    const adjacency = buildAdjacency(state.map.regions.length, state.map.edges);
+    const views = projectViews(state);
+    const bySeat: OrdersBySeat = {};
+    // Los tres asientos los juega el bot: lo que se revisa aquí es la pantalla, no la
+    // estrategia. Que el asiento 0 también juegue solo evita un frente artificialmente
+    // quieto justo donde mira la cámara.
+    for (const seat of [0, 1, 2] as Seat[]) {
+      const view = views[seat];
+      if (view) bySeat[seat] = botOrders(view, adjacency, botProfile(seed, seat), seed);
+    }
+    state = reduce(state, bySeat, { engineVersion: ENGINE_VERSION, now: 0 }).state;
+  }
+
   const view = projectViews(state)[0];
   if (!view) notFound();
 
@@ -41,7 +68,7 @@ export default async function Page({
   const adjacency = buildAdjacency(state.map.regions.length, state.map.edges);
   const moves: MoveOrder[] = [];
   if (orders !== '0') {
-    for (const force of state.forces.filter((f) => f.seat === 0).slice(0, 3)) {
+    for (const force of state.forces.filter((f) => f.seat === 0).slice(0, 2)) {
       const to = adjacency[force.regionId]?.[0];
       if (to !== undefined) moves.push({ forceId: force.id, to, posture: 'assault' });
     }

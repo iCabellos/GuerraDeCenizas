@@ -72,11 +72,20 @@ la restricción de UX móvil determinó la topología del juego, no al revés.
 | **Pinch** | Zoom 0,6×–2,5× | — |
 | **Drag** en vacío | Desplazar el mapa | — |
 | **Doble tap** en vacío | Encuadrar todo el mapa | — |
+| **Botón «Mi ciudad»** | Llevar la cámara a tu Bastión | Vuelo suave de 320 ms |
 | **Swipe ↑** desde el borde inferior | Abrir diplomacia | — |
 | **Swipe ←/→** en la barra superior | Cambiar de jugador en el panel de estado | — |
 
 **Cada acción tiene siempre dos caminos**: tap-tap y drag. El drag es rápido para
 expertos; el tap-tap es fiable con una mano y no falla con dedos grandes.
+
+**Un arrastre no puede acabar seleccionando.** Entre desplazar el mapa y tocar una región
+hay un umbral de 8 px: sin él, navegar abre fichas sin querer y el mapa deja de ser
+navegable con el pulgar.
+
+**La cámara también se maneja con botones**, no solo con gestos. Perder de vista tu Bastión
+en un mapa de hasta 96 regiones y tener que buscarlo arrastrando es la forma más rápida de
+que la partida deje de parecer un juego ([ADR-040](DECISIONS.md#adr-040)).
 
 **Nunca se usa:** swipe para acciones destructivas, triple tap, gestos de dos dedos para
 nada que no sea zoom, ni pulsación larga como *única* forma de llegar a algo.

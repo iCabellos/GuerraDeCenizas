@@ -1401,6 +1401,94 @@ juró no vuelve a verla. Si algún día se pasa dos veces, es que se ha roto.
 
 ---
 
+<a id="adr-040"></a>
+
+## ADR-040 — El mapa es la interfaz: se ordena tocándolo, y ningún panel flota encima
+**Estado:** aceptada · 2026-08-23
+
+**Contexto.** La pantalla de campaña de v0.3 tenía el mapa a sangre y **la hoja de órdenes
+flotando encima**, con un degradado que a partir de media pantalla era opaco. En la
+práctica el resultado era el contrario del que buscaba la composición:
+
+1. **El mapa dejaba de estar visible justo donde se juega.** El degradado tapaba el tercio
+   inferior, que es donde el pulgar mira. Con la hoja de producción abierta, más de la
+   mitad del mapa era un panel.
+2. **Un destino resaltado podía quedar debajo de la hoja.** El mismo fallo que
+   [ROADMAP v0.2, hallazgo 3](ROADMAP.md) ya había obligado a encuadrar el vecindario al
+   seleccionar una fuerza: el encuadre centraba en el *viewport*, no en la parte del
+   viewport que se ve, así que seguía ofreciendo casillas intocables.
+3. **Las órdenes no se daban en el mapa.** Producir, ver el pronóstico y repasar el
+   borrador ocurría en listas; el mapa solo servía para elegir destino. Una partida de
+   conquista en la que la mayor parte de las decisiones se toman en una lista se lee como
+   una hoja de cálculo, no como un juego.
+4. **No se veía contra quién se juega.** La vista trae `opponents` y un `control` que es
+   **público** (GDD §6.2), y la pantalla no enseñaba ni una cifra de ninguno de los dos:
+   averiguar quién iba ganando exigía contar hexágonos a mano.
+5. **Un arrastre acababa seleccionando.** No había umbral entre desplazar el mapa y tocar
+   una región, así que navegar abría fichas sin querer.
+
+**Decisión.** Cuatro cosas, y las cuatro son la misma:
+
+**a) El mapa se queda con todo el espacio que sobra, y los paneles ocupan sitio de
+verdad.** El único cromo que flota es el que **no intercepta un gesto**: cabecera, raíl de
+fases y mandos de cámara. La ficha de región y la pizarra de órdenes son hermanas del mapa
+en la columna, no capas encima. Así el mapa nunca queda debajo de nada y el encuadre
+automático puede centrar en la superficie que de verdad se ve.
+
+**b) Todo se ordena tocando el mapa.** Tocar una región abre su ficha y **arma el
+apuntado** si hay fuerza propia; tocar un destino resaltado da la orden. Mover, atacar,
+quedarse Firme, prestar Apoyo de Fuego, fortificar y producir son botones **con nombre**
+dentro de esa ficha ([ADR-038](#adr-038)), no un menú aparte. El pronóstico de combate se
+lee en la misma ficha del destino, sin abrir nada.
+
+**c) La pizarra enseña una casilla por fuerza, con orden o sin ella.** Las casillas vacías
+son la pregunta que el juego le está haciendo al jugador este turno. Cuántas hay no lo
+decide la interfaz: son las fuerzas que el motor reconoce, y el motor no acepta más de una
+orden por fuerza. Tocar una casilla vacía lleva la cámara a esa fuerza.
+
+**d) Entra el reparto, que es la diplomacia que hoy se puede enseñar sin mentir.** Una fila
+por asiento con sus regiones, sus yacimientos, si tiene el Núcleo y cuántas de sus regiones
+tocan las tuyas. Todo eso es **público** en el motor. Tocar una fila enciende ese
+territorio en el mapa y lleva la cámara a su Bastión: «¿dónde está el enemigo?» pasa a ser
+un tap. La Ceniza ajena no aparece porque no se ve, y **estimarla sería peor que no darla**.
+
+Y un botón que vuelve a tu Bastión, que es el que más falta hacía: en un mapa de hasta 96
+regiones, perder tu ciudad de vista y tener que buscarla arrastrando es la forma más rápida
+de que la partida deje de parecer un juego.
+
+**Consecuencias.**
+- ✅ El mapa es siempre visible y siempre tocable. No hay superficie del mapa debajo de un
+  panel, ni por composición ni por accidente.
+- ✅ Dos taps desde ver una fuerza hasta tenerla en marcha, y el pronóstico en el segundo.
+- ✅ Quién va ganando se lee en una tabla, que es la premisa del juego: la diplomacia es
+  aritmética.
+- ✅ El apoyo de Fuego y la postura Firme existían en el motor desde v0.2 y **no se podían
+  ordenar desde la interfaz**. Ahora sí.
+- ✅ Las cuentas de la pantalla salen de `apps/web/lib/board.ts`, que es puro y tiene test.
+  Antes vivían dentro de tres componentes y solo se podían comprobar mirando la pantalla.
+- ⚠️ La ficha de región y la pizarra se llevan hasta un 42 % del alto en 360×640. Es un
+  techo, no una media: sin selección la pizarra ocupa lo que ocupen sus casillas.
+- ⚠️ **La diplomacia sigue sin existir**: no hay Sellos, ni Rupturas, ni ofertas. El reparto
+  enseña el estado del reparto, no permite negociarlo. Eso es v0.4 y necesita motor, tablas
+  y RLS propias; fingirlo en la interfaz sería exactamente el tipo de humo que este
+  documento existe para evitar.
+
+**Descartado.**
+- *Dejar la hoja flotando y limitarle el alto.* Ya se probó en v0.2 y está en las lecciones
+  de `CLAUDE.md`: hacer el panel más pequeño no arregla nada, siempre queda una región
+  tocable debajo. `pointer-events: none` resuelve los taps, no la visibilidad.
+- *Desplazar la cámara con un margen inferior para compensar el panel.* Funciona, pero
+  obliga a medir el panel en píxeles y a mantener ese número sincronizado con el CSS. Que
+  el mapa tenga su propia caja lo resuelve sin números.
+- *Pasar el mapa de campaña al motor 2.5D del diseño.* Sigue vigente lo que dice
+  [ADR-035](#adr-035): su tablero son 37 losas fijas y el mapa real es un grafo en polares
+  de 45 a 96 regiones. Lo que faltaba no era relieve, era que se pudiera jugar tocándolo.
+- *Cinco casillas de orden fijas, como el mockup.* El motor admite una orden por fuerza
+  hasta seis fuerzas. Enseñar cinco huecos con cuatro fuerzas ofrece una decisión que no
+  existe; con seis, esconde una que sí.
+
+---
+
 ## Plantilla para nuevas decisiones
 
 ```markdown

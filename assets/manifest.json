@@ -78,6 +78,17 @@
       "sha256": "ad5837f043997f5e"
     },
     {
+      "asset": "diplomacy/seal",
+      "role": "Sello — el pacto verificable del Parlamento",
+      "component": "Seal",
+      "author": "Iván Cabellos",
+      "created": "2026-08-23",
+      "original": true,
+      "strokes": 2,
+      "bytes": 458,
+      "sha256": "e29fafa6de749977"
+    },
+    {
       "asset": "resources/ash",
       "role": "Ceniza — estrella de cuatro puntas con el único degradado del juego",
       "component": "Ash",
@@ -188,6 +199,28 @@
       "sha256": "281815798520c0a9"
     },
     {
+      "asset": "ui/bridge",
+      "role": "Puente — el paso que abre el agua a Línea y Fuego",
+      "component": "Bridge",
+      "author": "Iván Cabellos",
+      "created": "2026-08-23",
+      "original": true,
+      "strokes": 4,
+      "bytes": 483,
+      "sha256": "f230acdf3f8ef65e"
+    },
+    {
+      "asset": "ui/city",
+      "role": "Tu ciudad — el Bastión propio, destino de la cámara",
+      "component": "City",
+      "author": "Iván Cabellos",
+      "created": "2026-08-23",
+      "original": true,
+      "strokes": 3,
+      "bytes": 460,
+      "sha256": "5e9c54617512bd5c"
+    },
+    {
       "asset": "ui/close",
       "role": "Cerrar",
       "component": "Close",
@@ -210,6 +243,61 @@
       "sha256": "a3aecd190bd81b1c"
     },
     {
+      "asset": "ui/core",
+      "role": "Núcleo — el objetivo de la campaña",
+      "component": "Core",
+      "author": "Iván Cabellos",
+      "created": "2026-08-23",
+      "original": true,
+      "strokes": 2,
+      "bytes": 436,
+      "sha256": "88b8caa4168ffd86"
+    },
+    {
+      "asset": "ui/hold",
+      "role": "Firme — escudo de posición mantenida",
+      "component": "Hold",
+      "author": "Iván Cabellos",
+      "created": "2026-08-23",
+      "original": true,
+      "strokes": 2,
+      "bytes": 422,
+      "sha256": "65aa1bd705a1c833"
+    },
+    {
+      "asset": "ui/minus",
+      "role": "Alejar la cámara",
+      "component": "Minus",
+      "author": "Iván Cabellos",
+      "created": "2026-08-23",
+      "original": true,
+      "strokes": 1,
+      "bytes": 363,
+      "sha256": "098112de39d03bdd"
+    },
+    {
+      "asset": "ui/move",
+      "role": "Mover — flecha de avance",
+      "component": "Move",
+      "author": "Iván Cabellos",
+      "created": "2026-08-23",
+      "original": true,
+      "strokes": 2,
+      "bytes": 399,
+      "sha256": "30ee8f1fa200cb23"
+    },
+    {
+      "asset": "ui/plus",
+      "role": "Acercar la cámara",
+      "component": "Plus",
+      "author": "Iván Cabellos",
+      "created": "2026-08-23",
+      "original": true,
+      "strokes": 2,
+      "bytes": 386,
+      "sha256": "b8bb34f8458d6107"
+    },
+    {
       "asset": "ui/seat",
       "role": "Asiento de la partida",
       "component": "Seat",
@@ -219,6 +307,17 @@
       "strokes": 3,
       "bytes": 451,
       "sha256": "c61ee8f5aae3446b"
+    },
+    {
+      "asset": "ui/support",
+      "role": "Apoyo de Fuego — trayectoria indirecta sobre la región vecina",
+      "component": "Support",
+      "author": "Iván Cabellos",
+      "created": "2026-08-23",
+      "original": true,
+      "strokes": 3,
+      "bytes": 474,
+      "sha256": "aca0043ed69c0ba2"
     },
     {
       "asset": "units/fire",

@@ -1,0 +1,16 @@
+<!--
+  asset: ui/move
+  role: Mover — flecha de avance
+  grid: 24
+  stroke: 2
+  colors: currentColor
+  author: Iván Cabellos
+  created: 2026-08-23
+  original: true
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+     stroke="currentColor" stroke-width="2" stroke-linecap="square"
+     stroke-linejoin="miter">
+  <path d="M4 12h13"/>
+  <path d="M13 7l5 5-5 5"/>
+</svg>

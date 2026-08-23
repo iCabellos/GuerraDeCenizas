@@ -108,7 +108,12 @@ Sin Redux, sin Zustand. Tres piezas y ninguna más:
 
 **v0.3 en curso.** Capa de autoridad completa en `lib/server/` + `app/api/`, contra un
 Postgres real. Interfaz: Juramento, ciudad con relieve, emparejamiento con rivales
-artificiales, tablero en red con hoja de órdenes y producción, y clasificación final.
+artificiales, campaña que se juega tocando el mapa —ficha de región con sus acciones,
+pizarra con una casilla por fuerza, reparto y mandos de cámara— y clasificación final.
+
+**La diplomacia no existe todavía.** El reparto enseña quién controla qué, que es público;
+no hay Sellos, ni Rupturas, ni ofertas. Eso es v0.4 y necesita motor, tablas y RLS. No lo
+simules en la interfaz.
 
 **Una campaña entera se juega en solitario**, de la búsqueda al resultado. El prototipo
 hot-seat de v0.2 sigue en `/prototype`.
@@ -136,12 +141,41 @@ peaje entre el jugador y el turno que quiere jugar, y en Blitz cuesta plazo de v
 | `/dev/*` | QA visual. 404 en producción |
 
 `/dev/city` y `/dev/board` montan las dos pantallas **sin base de datos** — la de campaña
-con una partida real de `createGame` + `projectViews`. Si tocas una de las dos, mírala ahí
-antes de darla por hecha: sin credenciales no hay otra forma de verlas.
+con una partida real de `createGame` + `reduce` + `projectViews`, con varios turnos ya
+jugados por bots (`?turns=n`). Si tocas una de las dos, mírala ahí antes de darla por
+hecha: sin credenciales no hay otra forma de verlas.
+
+Que juegue turnos antes de pintar no es comodidad: en el T0 la fase es Parlamento, la única
+en la que no se puede mover, y con ella se revisaba un tablero donde ninguna orden era
+posible.
 
 **El mapa de campaña es SVG y se queda en SVG** ([ADR-035](../../docs/DECISIONS.md#adr-035)).
 El mundo 2.5D no lo puede representar: su tablero son 37 losas fijas y el mapa real es un
 grafo en polares de 45 a 96 regiones. No lo intentes otra vez sin leer el ADR.
+
+### La campaña se juega tocando el mapa
+
+[ADR-040](../../docs/DECISIONS.md#adr-040). Cuatro reglas, y las cuatro son la misma:
+
+```
+□ El mapa se queda con el espacio que sobra; los paneles ocupan sitio de verdad
+□ Solo flota lo que NO intercepta un gesto: cabecera, raíl de fases, mandos de cámara
+□ Toda orden empieza con un tap en una región y termina con un tap en el mapa
+□ Nada que el motor sepa se enseña estimado: si no se ve, no se pinta
+```
+
+Un panel que flota sobre el mapa vuelve a traer el fallo de siempre —un destino resaltado
+debajo de la hoja— y `pointer-events: none` **no lo arregla**: resuelve los taps, no la
+visibilidad. Si necesitas una capa nueva sobre el mapa, pregúntate antes si puede vivir en
+la columna.
+
+Las cuentas de la pantalla viven en [`lib/board.ts`](lib/board.ts) y son puras: quién manda
+en qué, dónde está el enemigo, qué se puede hacer en una región. No las devuelvas a un
+componente — ahí no se pueden probar.
+
+`MapView` expone la cámara como un `MapHandle` imperativo (`focus`, `zoomBy`). **No la
+muevas por estado de React**: un botón de cámara no puede costar un render del mapa entero,
+y el gesto tampoco.
 
 **No hay estado «con sesión pero sin perfil».** El perfil lo crea un trigger sobre
 `auth.users` ([ADR-030](../../docs/DECISIONS.md#adr-030)), no la API. No añadas una ruta de
