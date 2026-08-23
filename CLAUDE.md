@@ -137,12 +137,28 @@ versión estamos, qué entra y qué deuda consciente arrastra.
 | | |
 |---|---|
 | Última versión cerrada | **v0.2** — economía, producción, combate determinista y captura |
-| En curso | v0.3 — esquema, RLS, autoridad y resolución hechos; faltan auth, interfaz y despliegue |
+| En curso | v0.3 — esquema, RLS, autoridad, resolución, auth, despliegue e interfaz |
 | Tests | `npm test` (motor) **y** `npm run test:security` (RLS + autoridad) deben estar en verde |
+
+**Ya se puede jugar una campaña entera en solitario**: buscar partida sienta rivales
+artificiales, se juegan los trece turnos y termina en Reclamación Menor con su reparto de
+Ceniza. Es lo que hay que usar para probar el juego mientras no haya gente.
 
 **Lo que todavía NO existe** (no lo des por hecho al leer los documentos, que describen
 la v1.0): diplomacia, Núcleo y consagración, anomalías, Sombra, doctrinas activas,
-investigación, metaprogresión persistente, i18n, autenticación y base de datos.
+investigación y metaprogresión persistente.
+
+### Todo el arte 3D es un v0
+
+Las mallas de `components/world/` son **marcadores de posición jugables**, no arte final.
+La biblia de producción del proyecto de diseño describe la cadena real —blockout,
+high-poly, retopo, LOD, UV, bake, PBR, rig— y nada de eso está hecho.
+
+Dan la silueta correcta y la escala correcta, y con eso basta para jugar y para medir. **No
+los tomes como referencia de acabado y no construyas encima como si fueran definitivos.**
+Cuando entre el arte de verdad habrá además que decidir dónde viven los binarios, porque
+hoy la regla es que todo asset es SVG escrito a mano y un binario en `assets/src/` es un
+error de build.
 
 ---
 
@@ -202,6 +218,19 @@ No las repitas. Cada una salió de un fallo real de este repositorio:
 11. **Nada que decida el servidor puede venir en la petición.** `startGame` recibía la
    lista de asientos del llamante: con eso, el anfitrión podía empezar una partida de tres
    con un solo jugador dentro. Ahora la lee de la base de datos.
+12. **Un icono sin rótulo no enseña: esconde.** «La interfaz no explica, enseña»
+   ([ADR-027](docs/DECISIONS.md#adr-027)) se aplicó como si prohibiera *cualquier* texto y
+   la pantalla principal acabó sin una sola palabra: ni nombre, ni facción, ni qué hacía el
+   botón. Prohibido está el párrafo que explica un control; **cómo se llama** no es una
+   explicación ([ADR-038](docs/DECISIONS.md#adr-038)).
+13. **Cambiar el `source` de una fila exige mirar su `check`.** Añadir `source: 'bot'` sin
+   tocar `orders_source_check` hacía fallar la resolución **entera** de cualquier partida
+   con bots, en su primer turno. No lo cazó ningún test porque ninguno tenía un bot
+   resolviendo de verdad: el test que faltaba no era unitario, era jugar una partida.
+14. **Un valor por defecto no distingue «elegido» de «nunca preguntado».**
+   `faction_id not null default 'vantera'` hacía que toda cuenta fuera de Vantera sin
+   haberlo decidido. Hizo falta una columna aparte (`sworn_at`) para poder saberlo
+   ([ADR-039](docs/DECISIONS.md#adr-039)).
 
 ## Idioma
 

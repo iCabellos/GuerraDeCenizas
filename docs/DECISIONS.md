@@ -1313,6 +1313,94 @@ continuo. La junta es visible y es el precio consciente de conservar C₅.
 
 ---
 
+<a id="adr-038"></a>
+
+## ADR-038 — La interfaz enseña **y** nombra. Un icono sin rótulo no enseña: esconde
+**Estado:** aceptada · 2026-08-23 · matiza a [ADR-027](#adr-027)
+
+**Contexto.** [ADR-027](#adr-027) dice que la interfaz no explica sino que enseña, y la
+idea es buena: la disposición rotacional del mapa comunica «2, 3 o 5» mejor que esas
+cuatro palabras. Pero se llevó hasta el final y la pantalla principal acabó **sin una sola
+palabra**: tres glifos de simetría, tres de ritmo y un botón naranja con el emblema
+dentro. Sin nombre de jugador, sin facción y sin decir qué hace el botón.
+
+El veredicto del dueño del proyecto, mirándola desplegada: *«el menú principal no tiene ni
+una palabra y no se entiende nada»*.
+
+Lo que falló no es la idea, es una confusión: ADR-027 prohíbe el **texto explicativo** —el
+párrafo que describe un botón— y se aplicó como si prohibiera **cualquier texto**,
+incluidos los nombres de las cosas. Un rótulo no explica; identifica. «Blitz» no es una
+descripción de Blitz, es cómo se llama.
+
+Un segundo efecto, más caro: sin texto no hay nada que traducir, así que la pantalla
+parecía cumplir la regla de i18n cuando en realidad la esquivaba. Cero literales no es lo
+mismo que cero cadenas.
+
+**Decisión.** Se mantiene ADR-027 para lo que decía y se le añade el límite que le
+faltaba:
+
+| Sigue prohibido | Sigue obligatorio | **Ahora también obligatorio** |
+|---|---|---|
+| El párrafo que explica un control | Que la forma comunique la regla | Que cada control **se llame** por su nombre |
+| Los tutoriales y los tooltips de ayuda | El glifo junto a la cifra | Que la pantalla diga **de quién** es |
+
+El glifo se queda: acompaña al rótulo en vez de sustituirlo. Quien ya conoce el juego lee
+la forma; quien llega por primera vez lee la palabra. Las dos lecturas caben en el mismo
+control y ninguna estorba a la otra.
+
+**La prueba que lo caza.** Un control cuyo `aria-label` es la única forma de saber qué
+hace está mal. El lector de pantalla lo anuncia y la pantalla no: eso no es una interfaz
+sobria, es una interfaz que solo funciona para quien ya no la necesita.
+
+**Consecuencias.**
+- ✅ La pantalla principal dice quién eres, con qué juramento, cuánta Ceniza tienes y qué
+  hace el botón grande.
+- ✅ La i18n vuelve a tener algo que cubrir, y los tests de paridad ES/EN vuelven a servir
+  para algo en esta pantalla.
+- ⚠️ Más cadenas que mantener en dos idiomas, que era justo lo que ADR-027 quería evitar.
+  Se acepta: una pantalla que no se entiende no ahorra trabajo, lo aplaza.
+
+**Descartado.** *Dejarlo en iconos y añadir un tutorial.* Es cambiar un problema por otro
+peor y contradice ADR-027 de verdad, no en la interpretación estrecha.
+
+---
+
+<a id="adr-039"></a>
+
+## ADR-039 — Se jura una vez, y hasta entonces la facción no significa nada
+**Estado:** aceptada · 2026-08-23
+
+**Contexto.** `profiles.faction_id` nace con `not null default 'vantera'` y no es
+escribible desde el cliente. Las dos cosas son correctas por separado y juntas dejaban un
+agujero: **nadie elegía facción nunca**. Toda cuenta era de Vantera sin haberlo decidido,
+el emblema de la Ciudad no significaba nada, y la vista de Juramento del diseño no tenía
+dónde escribir.
+
+Con un `not null default` tampoco se puede distinguir «juré Vantera» de «nadie me ha
+preguntado»: son la misma fila.
+
+**Decisión.** Entra `profiles.sworn_at`, y con él la pantalla de Juramento
+([vista 02 del diseño](../README.md)) en `/oath`. Dos pasos: juramento y nombre — el
+nombre es la otra cosa que no se podía configurar, y es lo que ven los demás en la mesa.
+
+El primer juramento es **gratis y único**. Cambiar después es un Cisma, que cuesta Ceniza
+y renombre ([FACTIONS §5](FACTIONS.md)), y no pasa por aquí: `swear_oath()` se niega si
+`sworn_at` no es nulo. La condición vive en la base de datos y no en la ruta de API, para
+que no dependa de que la API sea el único camino.
+
+**Sobre [ADR-026](#adr-026).** Prohíbe pantallas intermedias entre el jugador y su turno,
+y esto es una pantalla intermedia. No la contradice porque **no está en el camino de
+jugar**: está en el camino de existir, se pasa una vez en la vida de la cuenta y quien ya
+juró no vuelve a verla. Si algún día se pasa dos veces, es que se ha roto.
+
+**Consecuencias.**
+- ✅ El emblema de la Ciudad significa algo que el jugador eligió.
+- ✅ El Cisma sigue costando lo que cuesta: esta puerta solo se abre una vez.
+- ⚠️ Una cuenta creada antes de esta migración tiene `sworn_at` nulo, así que pasará por el
+  Juramento la próxima vez que entre. Es lo correcto: nunca eligió.
+
+---
+
 ## Plantilla para nuevas decisiones
 
 ```markdown

@@ -12,6 +12,33 @@ Este proyecto sigue [SemVer](https://semver.org/lang/es/).
 
 ## [Sin publicar] — v0.3 en curso
 
+### Añadido
+
+- **El Juramento** ([ADR-039](docs/DECISIONS.md#adr-039)). Faltaba lo más básico: nadie
+  elegía facción. `profiles.faction_id` nace con un valor por defecto, así que toda cuenta
+  era de Vantera sin haberlo decidido y el emblema de la Ciudad no significaba nada.
+
+  Entra `/oath` con la composición de la vista 02 del diseño: los seis sigilos, el nombre y
+  la descripción de cada facción, lo que el juramento **añade** —opciones, nunca números— y
+  un segundo paso para el nombre, que es la otra cosa que no se podía configurar.
+
+  Se jura una vez: cambiar después es un Cisma y cuesta Ceniza, así que `swear_oath()` se
+  niega a repetir. La condición vive en la base de datos, no en la ruta de API.
+
+### Corregido
+
+- **La pantalla principal no decía una sola palabra** ([ADR-038](docs/DECISIONS.md#adr-038)).
+  Tres glifos de simetría, tres de ritmo y un botón naranja con el emblema dentro: ni
+  nombre de jugador, ni facción, ni qué hacía el botón.
+
+  «La interfaz no explica, enseña» ([ADR-027](docs/DECISIONS.md#adr-027)) se había aplicado
+  como si prohibiera *cualquier* texto. Lo que prohíbe es el párrafo que explica un
+  control; **cómo se llama** no es una explicación, es su nombre. Ahora cada control lleva
+  su rótulo con el glifo al lado, y la cabecera dice de quién es la ciudad.
+
+  Efecto secundario que lo hacía peor: sin texto no había nada que traducir, así que la
+  pantalla parecía cumplir la regla de i18n cuando en realidad la esquivaba.
+
 ### Corregido
 
 - **Ninguna partida con bots podía resolver el primer turno.** Al añadir `source: 'bot'` a

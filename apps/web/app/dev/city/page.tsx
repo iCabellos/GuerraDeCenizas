@@ -49,6 +49,7 @@ export default async function Page({
       messages={DICTIONARIES.es}
       profileId="00000000-0000-4000-8000-0000000000de"
       factionId="koldvik"
+      displayName="Bren"
       districts={{ archive: 2, foundry: 3, antenna: 1 }}
       ash={312}
     />

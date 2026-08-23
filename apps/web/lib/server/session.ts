@@ -11,6 +11,8 @@ export interface Viewer {
   displayName: string;
   locale: Locale;
   factionId: FactionId;
+  /** `false` mientras la cuenta no haya jurado: su facción es solo el valor por defecto. */
+  sworn: boolean;
 }
 
 /**
@@ -27,7 +29,7 @@ export async function currentViewer(): Promise<Viewer | null> {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('display_name, locale, faction_id')
+    .select('display_name, locale, faction_id, sworn_at')
     .eq('id', data.user.id)
     .maybeSingle();
 
@@ -43,6 +45,14 @@ export async function currentViewer(): Promise<Viewer | null> {
     factionId: FACTION_IDS.includes(profile.faction_id as FactionId)
       ? (profile.faction_id as FactionId)
       : 'vantera',
+    /**
+     * ¿Ha jurado esta cuenta?
+     *
+     * `faction_id` nace con un valor por defecto, así que por sí solo no distingue «juré
+     * Vantera» de «nadie me ha preguntado». Esto sí, y es lo que decide si hay que pasar
+     * por el Juramento antes de la Ciudad.
+     */
+    sworn: profile.sworn_at !== null && profile.sworn_at !== undefined,
   };
 }
 

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import type { FactionId, PlayerCount } from '@gdc/core';
 import { CityView, type DistrictLevels } from '@/components/CityView';
 import { Ash, Close, Mark } from '@/components/art/generated';
+import { FactionEmblem } from '@/components/GameChrome';
 import { browserClient } from '@/lib/supabase-browser';
 import type { Cadence } from '@/lib/cadence';
 
@@ -105,15 +106,25 @@ function Toggle({
 }
 
 export function Home({
-  messages, profileId, factionId, districts, ash,
+  messages, profileId, factionId, displayName, districts, ash,
 }: {
   messages: Messages;
   profileId: string;
   factionId: FactionId;
+  /** Cómo te llamas en la mesa. Sin esto la pantalla no dice de quién es la ciudad. */
+  displayName: string;
   districts: DistrictLevels;
   ash: number;
 }) {
-  const t = useCallback((key: string) => messages[key] ?? key, [messages]);
+  const t = useCallback(
+    (key: string, params?: Record<string, string | number>) => {
+      const template = messages[key] ?? key;
+      return params
+        ? template.replace(/\{(\w+)\}/g, (m, name: string) => String(params[name] ?? m))
+        : template;
+    },
+    [messages],
+  );
 
   const router = useRouter();
   const [size, setSize] = useState<PlayerCount>(3);
@@ -227,11 +238,22 @@ export function Home({
       <div className="pointer-events-none absolute inset-x-0 top-0 h-52
         bg-gradient-to-b from-void/95 via-void/45 to-transparent" />
 
-      {/* Barra superior: emblema y Ceniza. Dos datos, ni una etiqueta. */}
+      {/*
+        Barra superior: de quién es esta ciudad.
+        Antes eran dos iconos sin una palabra, y una pantalla sin texto no es sobria: es
+        ilegible. Ahora dice el nombre y el juramento, que son las dos cosas que el
+        jugador ha elegido.
+      */}
       <header className="pointer-events-none relative z-10 flex items-center
-        justify-between px-4 pt-4">
-        <Mark size={26} className="text-rust" title={t('app.name')} />
-        <span className="flex items-center gap-2">
+        justify-between gap-3 px-4 pt-4">
+        <span className="flex min-w-0 items-center gap-2.5">
+          <FactionEmblem factionId={factionId} size={24} className="shrink-0 text-rust" />
+          <span className="min-w-0">
+            <span className="type-title block truncate text-sm text-ink">{displayName}</span>
+            <span className="type-label block truncate">{t(`faction.${factionId}`)}</span>
+          </span>
+        </span>
+        <span className="flex shrink-0 items-center gap-2">
           <Ash size={18} className="text-ash" title={t('resource.ash')} />
           <span className="type-figure text-lg text-ink">{ash}</span>
         </span>
@@ -241,6 +263,7 @@ export function Home({
         pt-20 bg-gradient-to-b from-transparent via-void/95 to-void">
         {!searching && (
           <>
+            <p className="type-label">{t('lobby.size')}</p>
             <div className="flex gap-2">
               {SIZES.map((option) => (
                 <Toggle
@@ -250,9 +273,12 @@ export function Home({
                   label={`${option} · ${t('lobby.players')}`}
                 >
                   <SymmetryGlyph count={option} active={size === option} />
+                  <span className="type-figure mt-1 block text-sm">{option}</span>
                 </Toggle>
               ))}
             </div>
+
+            <p className="type-label mt-1">{t('lobby.cadence')}</p>
             <div className="flex gap-2">
               {CADENCES.map((option, index) => (
                 <Toggle
@@ -262,6 +288,9 @@ export function Home({
                   label={t(`cadence.${option}Detail`)}
                 >
                   <TempoGlyph steps={index + 1} active={cadence === option} />
+                  <span className="type-label mt-1 block !text-[10px]">
+                    {t(`cadence.${option}`)}
+                  </span>
                 </Toggle>
               ))}
             </div>
@@ -277,7 +306,8 @@ export function Home({
               border-line bg-panel text-muted transition-colors duration-150 ease-out
               hover:border-danger hover:text-danger"
           >
-            <Close size={22} />
+            <Close size={20} />
+            <span className="type-title text-sm">{t('lobby.searching')}</span>
             <span className="type-figure text-lg">
               {waiting}/{size}
             </span>
@@ -287,14 +317,14 @@ export function Home({
             type="button"
             onClick={play}
             aria-label={t('lobby.newCampaign')}
-            className={`flex min-h-16 items-center justify-center rounded-sharp border
-              border-rust bg-rust text-void transition-all duration-150 ease-out
-              hover:brightness-110 ${failed ? 'border-danger bg-danger' : ''}`}
+            className={`type-title flex min-h-16 items-center justify-center gap-3
+              rounded-sharp border border-rust bg-rust text-void transition-all
+              duration-150 ease-out hover:brightness-110
+              ${failed ? 'border-danger bg-danger' : ''}`}
           >
-            {/* Sin rótulo. El emblema del juego dentro de un botón de acción solo puede
-                significar una cosa, y la flecha lo remata. */}
-            <Mark size={26} />
-            <svg viewBox="0 0 24 24" width={22} height={22} aria-hidden className="ml-2">
+            <Mark size={24} />
+            {t('lobby.play')}
+            <svg viewBox="0 0 24 24" width={20} height={20} aria-hidden>
               <path d="M8 4 18 12 8 20Z" fill="currentColor" />
             </svg>
           </button>

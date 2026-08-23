@@ -71,6 +71,15 @@ export const standingOrdersSchema = z.strictObject({
   production: z.enum(['none', 'line', 'repeat']),
 });
 
+/**
+ * Jurar. El cuerpo lleva **solo** la facción: quién jura lo pone el servidor a partir de
+ * la sesión, nunca la petición.
+ */
+export const swearOathSchema = z.strictObject({
+  factionId: z.enum(['vantera', 'koldvik', 'saranth', 'meridia', 'oshara', 'tarn']),
+});
+
+export type SwearOathInput = z.infer<typeof swearOathSchema>;
 export type SubmitOrdersInput = z.infer<typeof submitOrdersSchema>;
 export type CreateGameInput = z.infer<typeof createGameSchema>;
 export type JoinGameInput = z.infer<typeof joinGameSchema>;
