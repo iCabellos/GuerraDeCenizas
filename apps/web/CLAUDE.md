@@ -106,10 +106,15 @@ Sin Redux, sin Zustand. Tres piezas y ninguna más:
 
 ## Estado actual
 
-**v0.3 en curso.** Capa de autoridad completa en `lib/server/` + `app/api/`, con 43 tests
-contra un Postgres real (resolución de turnos y emparejamiento). Interfaz: vista única con
-la ciudad, emparejamiento y tablero en red. El prototipo hot-seat de v0.2 sigue en
-`/prototype` porque es lo único jugable sin base de datos. Falta el despliegue.
+**v0.3 en curso.** Capa de autoridad completa en `lib/server/` + `app/api/`, contra un
+Postgres real. Interfaz: Juramento, ciudad con relieve, emparejamiento con rivales
+artificiales, tablero en red con hoja de órdenes y producción, y clasificación final.
+
+**Una campaña entera se juega en solitario**, de la búsqueda al resultado. El prototipo
+hot-seat de v0.2 sigue en `/prototype`.
+
+Las mallas de `components/world/` son un **v0 jugable**, no arte final: dan la silueta y la
+escala correctas y nada más. No construyas encima como si fueran definitivas.
 
 **La resolución recibe el transporte inyectado** (`Rpc`), no construye el cliente de
 Supabase. Es lo que permite que los tests ejecuten el código real de autoridad contra una
@@ -125,8 +130,9 @@ peaje entre el jugador y el turno que quiere jugar, y en Blitz cuesta plazo de v
 | Ruta | Qué es |
 |---|---|
 | `/` | La ciudad + buscar campaña |
-| `/g/:id` | La campaña. La misma vista con la cámara sobre el campo de batalla |
-| `/sign-in` | Enlace mágico **o entrar sin cuenta**. Lo único anterior a la ciudad |
+| `/g/:id` | La campaña. La misma vista con la cámara sobre el campo de batalla. Terminada, enseña la clasificación |
+| `/oath` | El Juramento: facción y nombre. **Una vez en la vida de la cuenta** ([ADR-039](../../docs/DECISIONS.md#adr-039)) |
+| `/sign-in` | Enlace mágico **o entrar sin cuenta**. Lo único anterior al Juramento |
 | `/dev/*` | QA visual. 404 en producción |
 
 `/dev/city` y `/dev/board` montan las dos pantallas **sin base de datos** — la de campaña
@@ -146,10 +152,23 @@ Y el invitado no es un caso especial ([ADR-031](../../docs/DECISIONS.md#adr-031)
 sesión anónima de Supabase, con rol `authenticated` y su fila en `auth.users`. Si escribes
 un `if (isGuest)` en la capa de autorización, algo va mal — RLS ya lo trata igual.
 
-**La interfaz no explica, enseña** ([ADR-027](../../docs/DECISIONS.md#adr-027)). Antes de
-escribir una frase visible, pregúntate si se puede dibujar. Y si la dibujas, ponle
-`aria-label`: prescindir de texto es una decisión visual, nunca una excusa para dejar
-fuera a quien no ve la pantalla.
+**La interfaz no explica, enseña** ([ADR-027](../../docs/DECISIONS.md#adr-027)) — **pero
+nombra** ([ADR-038](../../docs/DECISIONS.md#adr-038)). Los dos, y en ese orden.
+
+Lo prohibido es el **párrafo que explica un control**. Cómo se llama el control no es una
+explicación: es su nombre. Llevar ADR-027 hasta el final dejó la pantalla principal sin
+una sola palabra —ni nombre de jugador, ni facción, ni qué hacía el botón grande— y eso no
+es sobriedad, es esconder.
+
+```
+□ Cada control se llama por su nombre, con el glifo AL LADO, no en su lugar
+□ La pantalla dice de quién es: nombre y juramento
+□ Ningún párrafo explicativo, ningún tutorial, ningún tooltip de ayuda
+```
+
+**La prueba que lo caza:** si el `aria-label` es la única forma de saber qué hace un
+control, está mal. El lector de pantalla lo anuncia y la pantalla no — o sea que solo
+funciona para quien ya no lo necesita.
 
 ### El registro visual
 

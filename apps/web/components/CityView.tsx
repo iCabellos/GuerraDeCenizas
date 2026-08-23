@@ -356,9 +356,17 @@ const CITY_ZOOM = 1.2;
  * Así la ciudad gana volumen sin que la accesibilidad dependa de una GPU: quien no
  * pueda o no quiera ver el relieve recibe `CityPlan` con la misma información.
  */
-export function CityView({ className, messages, ...city }: CityProps & {
+export function CityView({ className, messages, labels = true, ...city }: CityProps & {
   /** Diccionario ya resuelto por el servidor, como en el resto de la interfaz. */
   messages?: Readonly<Record<string, string>>;
+  /**
+   * ¿Se rotulan los distritos?
+   *
+   * En la Ciudad sí: es el sujeto de la pantalla y los rótulos son lo que se lee. Donde
+   * la ciudad es telón —el Juramento— no: los rótulos se apilarían sobre el texto que sí
+   * importa, y con poca altura se amontonan arriba en vez de quedarse sobre su solar.
+   */
+  labels?: boolean;
 }) {
   const t = (key: string): string => messages?.[key] ?? key;
   const levels = DISTRICTS.map((district) => city.districts?.[district] ?? 0);
@@ -380,7 +388,7 @@ export function CityView({ className, messages, ...city }: CityProps & {
         azimuth={-0.5}
         fallback={<CityPlan {...city} className="h-full w-full" />}
       >
-        {DISTRICTS.map((district, index) => {
+        {labels && DISTRICTS.map((district, index) => {
           const level = levels[index] ?? 0;
           return (
             <span

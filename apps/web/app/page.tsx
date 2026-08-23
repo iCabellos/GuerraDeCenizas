@@ -16,6 +16,9 @@ import type { DistrictLevels } from '@/components/CityView';
 export default async function Page() {
   const viewer = await currentViewer();
   if (!viewer) redirect('/sign-in');
+  // Sin juramento no hay Ciudad: el emblema de esta pantalla tiene que significar algo
+  // que el jugador haya elegido, no un valor por defecto de la columna.
+  if (!viewer.sworn) redirect('/oath');
 
   const supabase = await userClient();
 
@@ -40,6 +43,7 @@ export default async function Page() {
       messages={DICTIONARIES[viewer.locale]}
       profileId={viewer.profileId}
       factionId={viewer.factionId}
+      displayName={viewer.displayName}
       districts={(city?.districts as DistrictLevels) ?? {}}
       ash={(city?.ash_bank as number) ?? 0}
     />
