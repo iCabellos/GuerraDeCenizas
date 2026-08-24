@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import {
   ENGINE_VERSION, botOrders, botProfile, buildAdjacency, createGame, projectViews, reduce,
-  type MoveOrder, type OrdersBySeat, type Seat,
+  type MoveOrder, type OrdersBySeat, type PlayerCount, type Seat,
 } from '@gdc/core';
 import { GameBoard } from '@/components/GameBoard';
 import { DICTIONARIES } from '@/lib/i18n/index';
@@ -27,22 +27,29 @@ import { DICTIONARIES } from '@/lib/i18n/index';
 export default async function Page({
   searchParams,
 }: {
-  searchParams: Promise<{ orders?: string; turns?: string }>;
+  searchParams: Promise<{ orders?: string; turns?: string; players?: string }>;
 }) {
   if (process.env.NODE_ENV === 'production') notFound();
 
-  const { orders, turns } = await searchParams;
+  const { orders, turns, players: size } = await searchParams;
   const seed = 424242;
+
+  // `?players=5` monta el mapa de 96 provincias, que es el que de verdad pone a prueba
+  // la pantalla: a tres caben todas holgadas y no se ve ninguno de sus problemas.
+  const players: PlayerCount = size === '5' ? 5 : size === '2' ? 2 : 3;
+  const table = [
+    { name: 'Kael', factionId: 'vantera' as const },
+    { name: 'Bren', factionId: 'koldvik' as const },
+    { name: 'Ysolde', factionId: 'saranth' as const },
+    { name: 'Ordo', factionId: 'meridia' as const },
+    { name: 'Sela', factionId: 'oshara' as const },
+  ].slice(0, players);
 
   const created = createGame({
     gameId: '00000000-0000-4000-8000-0000000000b0',
     seed,
-    players: 3,
-    seats: [
-      { name: 'Kael', factionId: 'vantera' },
-      { name: 'Bren', factionId: 'koldvik' },
-      { name: 'Ysolde', factionId: 'saranth' },
-    ],
+    players,
+    seats: table,
   });
 
   let state = created.state;
@@ -54,7 +61,7 @@ export default async function Page({
     // Los tres asientos los juega el bot: lo que se revisa aquí es la pantalla, no la
     // estrategia. Que el asiento 0 también juegue solo evita un frente artificialmente
     // quieto justo donde mira la cámara.
-    for (const seat of [0, 1, 2] as Seat[]) {
+    for (const seat of table.map((_, index) => index as Seat)) {
       const view = views[seat];
       if (view) bySeat[seat] = botOrders(view, adjacency, botProfile(seed, seat), seed);
     }

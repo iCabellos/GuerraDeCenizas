@@ -42,13 +42,14 @@
 | [032](#adr-032) | La configuración del proyecto Supabase se versiona y se despliega | aceptada |
 | [033](#adr-033) | La comprobación previa del despliegue valida forma, no presencia | aceptada |
 | [034](#adr-034) | El relieve es WebGL; lo que se lee y se toca sigue siendo DOM | aceptada |
-| [035](#adr-035) | El mapa de campaña se queda en SVG; el relieve es para la Ciudad | aceptada |
+| [035](#adr-035) | El mapa de campaña se queda en SVG; el relieve es para la Ciudad | **sustituida por [ADR-042](#adr-042)** |
 | [036](#adr-036) | Un bot no es un humano ausente, y por eso no comparten código | aceptada |
 | [037](#adr-037) | El mapa se dibuja en hexágonos, pero no teje un panal | **sustituida por [ADR-041](#adr-041)** |
 | [038](#adr-038) | La interfaz enseña **y** nombra | aceptada |
 | [039](#adr-039) | Se jura una vez, y hasta entonces la facción no significa nada | aceptada |
 | [040](#adr-040) | El mapa es la interfaz: se ordena tocándolo, y nada flota encima | aceptada |
 | [041](#adr-041) | El mapa se tesela: territorio continuo, no un grafo dibujado | aceptada |
+| [042](#adr-042) | La campaña se juega en el mundo 3D, sobre el mapa real | aceptada |
 
 ---
 
@@ -1152,7 +1153,13 @@ tres territorios son idénticos por construcción, y hay un test que lo exige.
 <a id="adr-035"></a>
 
 ## ADR-035 — El mapa de campaña se queda en SVG; el relieve es para la Ciudad
-**Estado:** aceptada · 2026-08-18
+**Estado:** sustituida por [ADR-042](#adr-042) · 2026-08-18
+
+> **Sus dos objeciones eran ciertas y ya no lo son.** El mundo 2.5D dibujaba un tablero
+> decorativo de 37 losas fijas — ahora extruye las provincias reales de `regionCells()`.
+> Y los 96 objetivos táctiles de 44 px no cabían — una provincia se toca **entera**, por
+> rayo sobre su superficie. Lo que hacía falta para levantar esta decisión no era insistir,
+> era [ADR-041](#adr-041).
 
 **Contexto.** El proyecto de diseño trae una vista «Mapa · Guerra» montada sobre el mismo
 motor 2.5D que la Ciudad (`<gdc-world scene="map">`). Al ir a implementarla aparecieron
@@ -1574,6 +1581,79 @@ motor y no en la pantalla.
   irregulares sin inventarse nada.
 - *Volver a intentar el panal hexagonal.* Sigue siendo imposible a cinco, por lo mismo que
   explica [ADR-037](#adr-037), que en eso no ha cambiado.
+
+---
+
+<a id="adr-042"></a>
+
+## ADR-042 — La campaña se juega en el mundo 3D, sobre el mapa real
+**Estado:** aceptada · 2026-08-24 · sustituye a [ADR-035](#adr-035)
+
+**Contexto.** [ADR-035](#adr-035) dejó el mapa de campaña en SVG con dos objeciones al
+mundo 2.5D, y las dos eran ciertas cuando se escribieron:
+
+1. **El tablero del motor no era el mapa del juego.** `_buildBoard()` teje 37 losas
+   hexagonales con el terreno fijado por anillo. Pintarlo bajo una partida real habría
+   sido enseñar un mapa que no se está jugando.
+2. **El tamaño.** 45 a 96 regiones, cada una un objetivo tocable de 44 px, no caben en
+   360 px de ancho.
+
+Las dos han dejado de valer, y no por insistir:
+
+- [ADR-041](#adr-041) da el **polígono real de cada provincia** con la garantía de que dos
+  se tocan si y solo si son adyacentes. Extruir eso no es un decorado: es el mapa.
+- Con provincias en vez de nodos, una región se toca **entera**. El objetivo táctil deja de
+  ser un hexágono de 44 px y pasa a ser toda su superficie.
+
+**Decisión.** La campaña se dibuja con `<gdc-world scene="campaign">`: el mismo motor de
+[ADR-034](#adr-034) que ya levanta la Ciudad, alimentado con `regionCells()`. Cada
+provincia es un prisma extruido de su polígono real, con la altura y el color de terreno de
+`board.ts` y el color del asiento **mezclado en la meseta** — un velo translúcido encima se
+lo come la luz y el mapa vuelve a ser un diorama sin frentes.
+
+El reparto de capas de ADR-034 no se toca, y es lo que hace que esto no sea un lienzo
+opaco:
+
+| Capa | Qué es |
+|---|---|
+| Mundo | `<gdc-world>`, `aria-hidden`. **No decide nada** |
+| Rótulos | DOM con `data-tile`: las cifras de fuerza, colocadas por proyección |
+| Acceso | Una lista de provincias enfocable, visible al tabular |
+| Respaldo | `MapFlat`, la vista plana completa, sin WebGL o con movimiento reducido |
+
+El motor **emite** `gdc-pick` con la provincia tocada y la pantalla decide, igual que ya
+hacía con la escaramuza. Tocar en relieve llama al mismo `onSelect` que tocar en plano, así
+que la ficha de región, el apuntado y las órdenes de [ADR-040](#adr-040) son exactamente el
+mismo código.
+
+**Consecuencias.**
+- ✅ El tablero se lee como un juego: mesetas, terreno con relieve, el Núcleo coronado y
+  los dominios teñidos del color de cada asiento.
+- ✅ Una provincia se toca entera. El mínimo táctil deja de ser lo que fija el zoom.
+- ✅ El arrastre **desplaza el mapa** y el pellizco acerca, que es lo que se espera de un
+  territorio; en la Ciudad y las vitrinas el arrastre sigue girando, que es lo que se espera
+  de un objeto que se mira.
+- ✅ La vista plana no se tira: es el respaldo, con todo lo que enseñaba.
+- ⚠️ Sin WebGL no hay relieve. Por eso el respaldo es obligatorio y por eso `MapFlat` sigue
+  siendo una vista completa y no un hueco gris.
+- ⚠️ three.js sigue entrando por `import()` dentro de un efecto. Un import estático del
+  motor se lleva por delante el presupuesto de 180 KB de la ruta de partida.
+- ⚠️ El mundo se reconstruye una vez por turno, cuando cambian control y niebla. El
+  resaltado —selección, destinos, amenazas— va por `setOverlay()` y **no** reconstruye
+  nada: cambia materiales.
+
+**Descartado.**
+- *Seguir en SVG y darle sombreado.* Lo que faltaba no era sombra: era volumen. Un mapa
+  plano con degradados sigue leyéndose como un plano.
+- *Raycasting como única forma de tocar.* Es lo que ADR-034 evita: sin foco, sin teclado y
+  sin orden de lectura. Por eso el rayo convive con la lista enfocable.
+- *Poner las cifras de fuerza dentro del lienzo.* Lo prohíbe ADR-034 y con razón: si no
+  está en el DOM, para media clase de jugadores no existe.
+
+**Un fallo que salió de aquí.** `hexPrism()` gira la losa y **además** la traslada su propia
+altura, así que la pieza flota y todo lo que se coloca «encima» acaba medio enterrado. En la
+Ciudad pasaba desapercibido; aquí dejaba los resaltados **dentro** de la provincia, sin ver.
+La escena de campaña lee la cota superior de la geometría en vez de suponerla.
 
 ---
 

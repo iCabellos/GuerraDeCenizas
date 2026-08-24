@@ -14,6 +14,50 @@ Este proyecto sigue [SemVer](https://semver.org/lang/es/).
 
 ### Cambiado
 
+- **La campaña se juega en el mundo 3D** ([ADR-042](docs/DECISIONS.md#adr-042), sustituye a
+  [ADR-035](docs/DECISIONS.md#adr-035)). El motor 2.5D que ya levantaba la Ciudad dibuja
+  ahora el campo de batalla, y no un tablero decorativo: extruye **las provincias reales**
+  que devuelve `regionCells()`, con su terreno, su altura y el color de su dueño.
+
+  Las dos objeciones que en su día dejaron el mapa en plano han dejado de valer. El motor
+  tejía 37 losas fijas — ahora dibuja las 45 a 96 regiones que hay. Y 96 objetivos de 44 px
+  no cabían en 360 px — una provincia se toca **entera**, por rayo sobre su superficie.
+
+  El reparto de capas no se toca: el lienzo es telón y va `aria-hidden`, las cifras de
+  fuerza son DOM colocado por proyección, hay una lista de provincias enfocable para
+  teclado y lector de pantalla, y sin WebGL o con movimiento reducido queda la vista plana
+  completa. El motor emite `gdc-pick` y la pantalla decide, así que tocar en relieve llama
+  al mismo código que tocar en plano: ficha de región, apuntado y órdenes son los mismos.
+
+  En la campaña el arrastre **desplaza el mapa** y el pellizco acerca, que es lo que se
+  espera de un territorio. En la Ciudad y las vitrinas sigue girando, que es lo que se
+  espera de un objeto que se mira.
+
+### Corregido
+
+- **Las losas del mundo flotaban su propia altura.** `hexPrism()` gira la pieza y además la
+  traslada, así que lo que se coloca «encima» queda medio enterrado. En la Ciudad pasaba
+  desapercibido; en el campo dejaba los resaltados **dentro** de la provincia y no se veía
+  ni la selección ni los destinos. La escena de campaña lee la cota superior de la
+  geometría en vez de suponerla.
+
+- **El mundo se reconstruía en cada render.** `onPick` se redefine en cada render de la
+  pantalla y estaba en las dependencias del montaje: 96 provincias extruidas y un contexto
+  WebGL nuevo por cada tap. Los callbacks van en refs; en las dependencias solo queda lo que
+  define **la forma** del mundo.
+
+- **El primer resaltado se perdía.** El mundo no existe hasta que three.js termina de
+  cargarse, y para entonces el efecto ya se había ejecutado: el mapa arrancaba sin la
+  provincia seleccionada ni los destinos encendidos.
+
+- **Un rótulo anclado a una provincia fuera de cuadro se pegaba al borde**, y en un mapa de
+  96 se amontonaban todos ahí: cifras de fuerzas que no se ven, en sitios donde no están.
+
+### Añadido
+
+- `/dev/board?players=5` monta el mapa de **96 provincias**, que es el que de verdad pone a
+  prueba la pantalla: a tres caben holgadas y no se ve ninguno de sus problemas.
+
 - **El mapa se tesela: territorio continuo en vez de un grafo dibujado**
   ([ADR-041](docs/DECISIONS.md#adr-041), sustituye a
   [ADR-037](docs/DECISIONS.md#adr-037)). El tablero se pintaba como lo que es por dentro

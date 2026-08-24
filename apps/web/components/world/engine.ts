@@ -18,6 +18,43 @@ import {
 
 export type { Arm, Kind } from './board';
 
+/**
+ * Una provincia de la campaña, tal y como llega del motor de reglas.
+ *
+ * `cell` es el polígono real que devuelve `regionCells()` de `@gdc/core`: **el mundo 3D
+ * no inventa geometría**, extruye la que define la adyacencia del juego. Por eso dos
+ * provincias que se tocan en relieve son exactamente las que se tocan en las reglas.
+ */
+export interface CampaignRegion {
+  id: number;
+  kind: Kind;
+  /** Centro, en coordenadas del mapa (las mismas que el `viewBox` del plano). */
+  x: number;
+  y: number;
+  cell: readonly { x: number; y: number }[];
+  owner: number | null;
+  /** ¿Se observa este turno? Si no, la provincia va bajo el velo de niebla. */
+  seen: boolean;
+  fort: number;
+}
+
+/** Marca sobre una provincia: lo que la pantalla quiere resaltar este turno. */
+export type CampaignMark = 'selected' | 'reachable' | 'threat' | 'home' | 'dim';
+
+export interface CampaignMap {
+  regions: readonly CampaignRegion[];
+  /** Radio del mapa en coordenadas de región. Fija la escala del mundo. */
+  extent: number;
+  seat: number;
+}
+
+/** Lo que cambia turno a turno sin reconstruir el mundo. */
+export interface CampaignOverlay {
+  marks: Readonly<Record<number, CampaignMark>>;
+  /** Flechas de órdenes: origen → destino, por identificador de región. */
+  arrows: readonly { from: number; to: number; support?: boolean }[];
+}
+
 const LABEL: Record<Arm | 'shade', string> = { line: 'Línea', fire: 'Fuego', sky: 'Cielo', shade: 'Sombra' };
 
 type Squad = {
@@ -177,6 +214,16 @@ function unitPiece(arm: Arm | 'shade', colorHex: number): THREE.Group {
 // ── Assets rápidos de edificio ───────────────────────────────────────────────
 // Versión "jugable": poca geometría, silueta inconfundible. Se sustituyen pieza
 // a pieza por las mallas high-poly sin tocar quien las coloca.
+/** Mezcla dos colores. `k` = 0 deja el primero; `k` = 1 devuelve el segundo. */
+function blend(a: number, b: number, k: number): number {
+  const mix = (shift: number) => {
+    const from = (a >> shift) & 0xff;
+    const to = (b >> shift) & 0xff;
+    return Math.round(from + (to - from) * k) & 0xff;
+  };
+  return (mix(16) << 16) | (mix(8) << 8) | mix(0);
+}
+
 const flat = (color: number, o: { roughness?: number; metalness?: number; emissive?: number; emissiveIntensity?: number } = {}) => mat(color, { flat: true, roughness: o.roughness ?? 0.86, metalness: o.metalness ?? 0.05, emissive: o.emissive, emissiveIntensity: o.emissiveIntensity });
 
 function shed(w: number, h: number, d: number, color: number): THREE.Group {
@@ -442,6 +489,25 @@ export class GdcWorld extends HTMLElement {
   private _ash?: THREE.Points;
   private _ashCore?: THREE.Object3D;
   private _bastionPos?: THREE.Vector3;
+  /** Datos de la campaña. Se asignan como propiedad antes de conectar el elemento. */
+  campaign?: CampaignMap;
+  private _scale = 1;
+  private _regionPos: Map<number, THREE.Vector3> = new Map();
+  private _regionHalo: Map<number, THREE.Mesh> = new Map();
+  private _pickable: THREE.Mesh[] = [];
+  private _arrows?: THREE.Group;
+  private _overlay: CampaignOverlay = { marks: {}, arrows: [] };
+  /** Píxeles recorridos en el gesto en curso. Un arrastre no puede acabar seleccionando. */
+  private _dragged = 0;
+  /** Distancia de la cámara al objetivo. La calcula `_place()`; la usa el desplazamiento. */
+  private _dist = 10;
+  /**
+   * Los oyentes de gesto se registran sobre el propio elemento, así que **sobreviven al
+   * desmontaje del mundo**: `_teardown()` suelta la escena pero no el `HTMLElement`. Sin
+   * esta guarda, cada reconstrucción duplicaba el desplazamiento y emitía dos `gdc-pick`
+   * por cada tap.
+   */
+  private _bound = false;
   private _heroGroup?: THREE.Group;
   /** Piezas del visor de assets. El material se guarda aparte: `Mesh.material` puede
    *  ser una lista, y estas piezas siempre llevan uno solo. */
@@ -579,6 +645,7 @@ export class GdcWorld extends HTMLElement {
     else if (this._world === 'tile') this._buildTile();
     else if (this._world === 'hero') this._buildHero();
     else if (this._world === 'skirmish') this._buildSkirmish();
+    else if (this._world === 'campaign') this._buildCampaign();
     else this._buildBoard();
     if (this.hasAttribute('ash')) this._buildAshfall();
 
@@ -593,6 +660,8 @@ export class GdcWorld extends HTMLElement {
     this._zoom = Number(this.getAttribute('zoom') ?? 1);
     if (!this._target) this._target = new THREE.Vector3(0, 0, 0);
     this._applyFocus();
+
+    if (this._world === 'campaign') this.setOverlay(this._overlay);
 
     this._resize();
     if (this.hasAttribute('still')) { this._freeze(); return; }
@@ -763,6 +832,226 @@ export class GdcWorld extends HTMLElement {
         this._tilePos.set('force-' + seat + '-' + i, new THREE.Vector3(base.x, base.y + 0.6, base.z));
       });
     }
+  }
+
+
+  /**
+   * El mapa de la campaña, en relieve.
+   *
+   * **No inventa un tablero**: extruye las provincias que devuelve `regionCells()` de
+   * `@gdc/core`, que son las mismas que definen la adyacencia del juego. Dos provincias
+   * que se tocan aquí son exactamente las dos que el motor considera adyacentes; el
+   * relieve no puede prometer un movimiento que `reduce()` vaya a rechazar.
+   *
+   * De `board.ts` salen la paleta, las alturas por terreno y los accesorios, así que la
+   * Ciudad y el campo de batalla siguen siendo el mismo mundo.
+   */
+  private _buildCampaign(): void {
+    const root = new THREE.Group();
+    this._scene.add(root);
+    this._root = root;
+    this._tilePos = new Map();
+    this._regionPos = new Map();
+    this._regionHalo = new Map();
+    this._pickable = [];
+
+    const data = this.campaign;
+    if (!data) { this._radius = 8; return; }
+
+    // Escala: una provincia mediana mide como un hexágono del motor, así que las alturas
+    // y los accesorios de `board.ts` conservan su proporción a 2, 3 y 5 jugadores.
+    const spans = data.regions.map((r) => {
+      let least = Infinity;
+      for (const p of r.cell) least = Math.min(least, Math.hypot(p.x - r.x, p.y - r.y));
+      return Number.isFinite(least) ? least : 1;
+    }).sort((a, b) => a - b);
+    const typical = spans[Math.floor(spans.length / 2)] ?? 1;
+    this._scale = S / Math.max(1e-6, typical);
+    const k = this._scale;
+
+    for (const region of data.regions) {
+      const shape = new THREE.Shape();
+      region.cell.forEach((p, i) => {
+        const x = (p.x - region.x) * k;
+        const y = (p.y - region.y) * k;
+        if (i === 0) shape.moveTo(x, y); else shape.lineTo(x, y);
+      });
+      shape.closePath();
+
+      const height = HEIGHT[region.kind];
+      const geometry = new THREE.ExtrudeGeometry(shape, {
+        depth: height, bevelEnabled: true, bevelThickness: 0.03, bevelSize: 0.03,
+        bevelSegments: 2, curveSegments: 1,
+      });
+      geometry.rotateX(-Math.PI / 2);
+      // La meseta se apoya en el suelo y su cara superior queda en `top`. `hexPrism()`
+      // añade además un `translate` de su misma altura, con lo que la losa flota y todo lo
+      // que se coloca «encima» acaba medio enterrado: aquí la cota se lee de la geometría
+      // y no se supone.
+      geometry.computeBoundingBox();
+      const top = geometry.boundingBox?.max.y ?? height;
+
+      const group = new THREE.Group();
+      group.position.set(region.x * k, 0, region.y * k);
+
+      // Quién manda aquí se ve en el color del terreno, no en un velo encima: una lámina
+      // translúcida se la come la luz y el mapa vuelve a ser un diorama sin frentes.
+      const surface = region.owner === null
+        ? TOP[region.kind]
+        : blend(TOP[region.kind], seatColor(region.owner), 0.42);
+      const prism = new THREE.Mesh(
+        geometry,
+        mat(surface, { roughness: region.kind === 'water' ? 0.25 : 0.92 }),
+      );
+      prism.receiveShadow = true;
+      prism.castShadow = true;
+      prism.userData = { regionId: region.id };
+      group.add(prism);
+      this._pickable.push(prism);
+
+      // Halo de estado: seleccionada, alcanzable, amenazada. Se reutiliza turno a turno
+      // cambiando su material, sin reconstruir el mundo.
+      const halo = new THREE.Mesh(
+        new THREE.ExtrudeGeometry(shape, { depth: 0.02, bevelEnabled: false }),
+        mat(PAL.ashGlow, { transparent: true, opacity: 0, emissive: PAL.ashGlow, emissiveIntensity: 1.2 }),
+      );
+      halo.geometry.rotateX(-Math.PI / 2);
+      halo.position.y = top + 0.02;
+      halo.visible = false;
+      group.add(halo);
+      this._regionHalo.set(region.id, halo);
+
+      // Un `Tile` sintético: `_props` solo mira el terreno, y así la decoración del campo
+      // es exactamente la misma que la del tablero de la Ciudad.
+      const tile: Tile = {
+        q: 0, r: 0, ring: 0, kind: region.kind, canon: '', sector: region.owner ?? -1,
+      };
+      if (region.seen) this._props(group, tile, top, region.owner);
+      else {
+        const veil = new THREE.Mesh(
+          new THREE.ExtrudeGeometry(shape, { depth: 0.02, bevelEnabled: false }),
+          mat(PAL.void, { transparent: true, opacity: 0.66, roughness: 1 }),
+        );
+        veil.geometry.rotateX(-Math.PI / 2);
+        veil.position.y = top + 0.05;
+        group.add(veil);
+      }
+
+      root.add(group);
+      const anchor = new THREE.Vector3(region.x * k, top, region.y * k);
+      this._regionPos.set(region.id, anchor);
+      this._tilePos.set(`r${region.id}`, anchor);
+      if (region.owner === data.seat && region.kind === 'bastion') this._bastionPos = anchor.clone();
+    }
+
+    this._arrows = new THREE.Group();
+    root.add(this._arrows);
+
+    this._radius = data.extent * k;
+    this._pick();
+  }
+
+  /**
+   * Selección por rayo.
+   *
+   * El motor **emite** y quien escuche pinta, como con la escaramuza: aquí sale un
+   * `gdc-pick` con el identificador de provincia y la pantalla decide qué hacer. El foco,
+   * el teclado y el lector de pantalla siguen viviendo en el DOM (ADR-034), no aquí.
+   */
+  private _pick(): void {
+    if (this._bound) return;
+    const ray = new THREE.Raycaster();
+    const point = new THREE.Vector2();
+    this.addEventListener('pointerup', (e) => {
+      if (this._dragged > 8) return;
+      const rect = this.getBoundingClientRect();
+      point.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      point.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      ray.setFromCamera(point, this._camera);
+      const hit = ray.intersectObjects(this._pickable, false)[0];
+      const id = hit?.object.userData['regionId'];
+      if (typeof id === 'number') {
+        this.dispatchEvent(new CustomEvent('gdc-pick', { detail: { regionId: id }, bubbles: true }));
+      }
+    });
+  }
+
+  /** Resalta lo que toque este turno. No reconstruye nada: cambia materiales. */
+  setOverlay(overlay: CampaignOverlay): void {
+    this._overlay = overlay;
+    if (!this._built) return;
+
+    // A ras de suelo y en perspectiva, un velo tenue no se ve: lo que en el plano bastaba
+    // como un anillo fino aquí tiene que teñir la meseta entera.
+    const TINT: Record<CampaignMark, { color: number; opacity: number }> = {
+      selected: { color: PAL.rust, opacity: 0.7 },
+      reachable: { color: PAL.ashGlow, opacity: 0.3 },
+      threat: { color: 0xb33a3a, opacity: 0.34 },
+      home: { color: PAL.ash, opacity: 0.18 },
+      // Apagar no es borrar: al 0,66 la provincia se volvía negra y el mapa desaparecía
+      // justo cuando más falta hace saber por dónde vas.
+      dim: { color: PAL.void, opacity: 0.42 },
+    };
+
+    for (const [id, halo] of this._regionHalo) {
+      const mark = overlay.marks[id];
+      const tint = mark ? TINT[mark] : undefined;
+      halo.visible = tint !== undefined;
+      if (!tint) continue;
+      const material = halo.material as THREE.MeshStandardMaterial;
+      material.color.setHex(tint.color);
+      material.emissive.setHex(mark === 'dim' ? 0x000000 : tint.color);
+      material.opacity = tint.opacity;
+    }
+
+    if (!this._arrows) return;
+    for (const child of [...this._arrows.children]) {
+      this._arrows.remove(child);
+      const mesh = child as Partial<THREE.Mesh>;
+      mesh.geometry?.dispose();
+    }
+    for (const arrow of overlay.arrows) {
+      const from = this._regionPos.get(arrow.from);
+      const to = this._regionPos.get(arrow.to);
+      if (!from || !to) continue;
+      this._arrows.add(this._arrow(from, to, arrow.support === true));
+    }
+  }
+
+  /** Una orden dibujada sobre el terreno: barra hasta el destino y punta encima. */
+  private _arrow(from: THREE.Vector3, to: THREE.Vector3, support: boolean): THREE.Group {
+    const group = new THREE.Group();
+    const lift = 0.34;
+    const a = from.clone().setY(from.y + lift);
+    const b = to.clone().setY(to.y + lift);
+    const span = a.distanceTo(b);
+    const colour = support ? PAL.rust : PAL.ashGlow;
+    const material = mat(colour, { emissive: colour, emissiveIntensity: 1.1, roughness: 0.3 });
+
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, Math.max(0.01, span - 0.5), 6), material);
+    shaft.position.copy(a.clone().lerp(b, 0.5));
+    shaft.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
+    group.add(shaft);
+
+    const head = new THREE.Mesh(new THREE.ConeGeometry(0.15, 0.34, 7), material);
+    head.position.copy(b.clone().lerp(a, 0.12));
+    head.quaternion.copy(shaft.quaternion);
+    group.add(head);
+    return group;
+  }
+
+  /** Lleva la cámara sobre una provincia. `bias` la acerca al centro del mapa. */
+  focusRegion(regionId: number, bias = 0): void {
+    const p = this._regionPos.get(regionId);
+    if (!p || !this._built) return;
+    this._target.set(p.x * (1 - bias), p.y + 0.4, p.z * (1 - bias));
+    this._place();
+  }
+
+  /** Acerca (`> 1`) o aleja (`< 1`). El recorrido es el mismo que el del plano. */
+  zoomBy(factor: number): void {
+    this._zoom = Math.min(1.6, Math.max(0.22, this._zoom / factor));
+    if (this._built) this._place();
   }
 
   private _props(g: THREE.Group, t: Tile, h: number, owner: number | null): void {
@@ -1562,7 +1851,10 @@ export class GdcWorld extends HTMLElement {
   private _applyFocus(): void {
     const f = this.getAttribute('focus');
     if (f === 'core') this._target.set(0, 1.4, 0);
-    else if (f === 'bastion' && this._bastionPos) this._target.copy(this._bastionPos).multiplyScalar(0.72).setY(0.6);
+    else if (f === 'bastion' && this._bastionPos) {
+      const pull = this._world === 'campaign' ? 0.34 : 0.72;
+      this._target.copy(this._bastionPos).multiplyScalar(pull).setY(0.6);
+    }
     else if (f === 'plaza') this._target.set(0, 1.2, 0);
     else if (f === 'clash') this._target.set(0, 0.42, 0.02);
     else if (this._world === 'hero') this._target.set(0, 0.98, 0);
@@ -1588,6 +1880,7 @@ export class GdcWorld extends HTMLElement {
       const fudge = this._world === 'skirmish' ? 1 : 0.66;
       d = Math.max(R / (tan * aspect), (R * 0.72) / tan) * fudge;
     }
+    this._dist = d;
     const fog = this._scene.fog;
     if (fog instanceof THREE.Fog) { fog.near = d * 0.6; fog.far = d * 2.1; }
     this._camera.position.set(
@@ -1598,17 +1891,80 @@ export class GdcWorld extends HTMLElement {
     this._camera.lookAt(this._target);
   }
 
+  /**
+   * Gestos.
+   *
+   * En las vitrinas y en la Ciudad el arrastre **gira** la cámara, que es lo que se quiere
+   * de un objeto que se mira. En la campaña **desplaza el mapa**, que es lo que se quiere
+   * de un territorio por el que se navega, y el pellizco acerca y aleja. Un mapa que gira
+   * cuando intentas moverte por él es un mapa en el que te pierdes.
+   */
   private _drag(): void {
-    let last: number | null = null;
-    this.addEventListener('pointerdown', (e) => { last = e.clientX; this.setPointerCapture(e.pointerId); });
-    this.addEventListener('pointermove', (e) => {
-      if (last === null) return;
-      this._azimuth += (e.clientX - last) * 0.006;
-      last = e.clientX; this._place();
+    if (this._bound) return;
+    this._bound = true;
+    const pointers = new Map<number, { x: number; y: number }>();
+    let pinch = 0;
+    let pinchZoom = 1;
+
+    this.addEventListener('pointerdown', (e) => {
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pointers.size === 1) this._dragged = 0;
+      if (pointers.size === 2) {
+        const [a, b] = [...pointers.values()];
+        pinch = Math.hypot((a?.x ?? 0) - (b?.x ?? 0), (a?.y ?? 0) - (b?.y ?? 0));
+        pinchZoom = this._zoom;
+      }
+      this.setPointerCapture(e.pointerId);
     });
-    const end = () => { last = null; };
+
+    this.addEventListener('pointermove', (e) => {
+      const previous = pointers.get(e.pointerId);
+      if (!previous) return;
+      const next = { x: e.clientX, y: e.clientY };
+      pointers.set(e.pointerId, next);
+      this._dragged += Math.hypot(next.x - previous.x, next.y - previous.y);
+
+      if (pointers.size === 2 && this._world === 'campaign') {
+        const [a, b] = [...pointers.values()];
+        const spread = Math.hypot((a?.x ?? 0) - (b?.x ?? 0), (a?.y ?? 0) - (b?.y ?? 0));
+        if (pinch > 0) {
+          this._zoom = Math.min(1.6, Math.max(0.22, (pinchZoom * pinch) / spread));
+          this._place();
+        }
+        return;
+      }
+
+      if (this._world !== 'campaign') {
+        this._azimuth += (next.x - previous.x) * 0.006;
+        this._place();
+        return;
+      }
+
+      this._pan(next.x - previous.x, next.y - previous.y);
+    });
+
+    const end = (e: PointerEvent) => { pointers.delete(e.pointerId); pinch = 0; };
     this.addEventListener('pointerup', end);
     this.addEventListener('pointercancel', end);
+  }
+
+  /**
+   * Desplaza el objetivo por el suelo, en los ejes de la cámara.
+   *
+   * Acotado al mapa: sin límite, un arrastre largo deja el terreno fuera de pantalla y no
+   * hay forma de volver — la libertad de movimiento acaba en un lienzo vacío.
+   */
+  private _pan(dx: number, dy: number): void {
+    const height = this.clientHeight || 1;
+    const perPixel = (2 * this._dist * Math.tan((this._camera.fov * Math.PI) / 360)) / height;
+    const right = new THREE.Vector3(Math.sin(this._azimuth), 0, -Math.cos(this._azimuth));
+    const forward = new THREE.Vector3(-Math.cos(this._azimuth), 0, -Math.sin(this._azimuth));
+    this._target.addScaledVector(right, -dx * perPixel);
+    this._target.addScaledVector(forward, -dy * perPixel);
+    const limit = this._radius * 1.1;
+    this._target.x = Math.min(limit, Math.max(-limit, this._target.x));
+    this._target.z = Math.min(limit, Math.max(-limit, this._target.z));
+    this._place();
   }
 
   private _resize(): void {
@@ -1630,6 +1986,13 @@ export class GdcWorld extends HTMLElement {
       const v = p.clone();
       v.y += Number(el.dataset['lift'] ?? 0.55);
       v.project(this._camera);
+      // Un rótulo cuya provincia no está en cuadro se ocultaba pegándose al borde, y en un
+      // mapa de 96 se amontonaban todos ahí: cifras de fuerzas que no se ven en sitios
+      // donde no están.
+      if (el.dataset['edge'] === 'hide' && (Math.abs(v.x) > 1 || Math.abs(v.y) > 1)) {
+        el.style.opacity = '0';
+        continue;
+      }
       el.style.position = 'absolute';
       const half = (el.offsetWidth || 0) / 2 + 6;
       const x = Math.min(Math.max(((v.x + 1) / 2) * w, half), Math.max(half, w - half));

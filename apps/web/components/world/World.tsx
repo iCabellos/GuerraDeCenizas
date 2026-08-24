@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import type { CampaignMap, CampaignOverlay } from './engine';
 
 /**
  * El mundo 2.5D como telón: monta `<gdc-world>` (ADR-034).
@@ -22,8 +23,24 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
  * `hero` son **vitrinas** de la biblioteca de assets, y solo se usan en `/dev`.
  */
 export type WorldScene =
-  | 'map' | 'city' | 'skirmish'
+  | 'map' | 'campaign' | 'city' | 'skirmish'
   | 'unit' | 'asset' | 'tile' | 'hero';
+
+/**
+ * Lo que la campaña puede pedirle al mundo. Es la misma API imperativa que expone el
+ * mapa plano: mover la cámara no puede costar un render del árbol entero.
+ */
+export interface WorldHandle {
+  focusRegion: (regionId: number, bias?: number) => void;
+  zoomBy: (factor: number) => void;
+}
+
+type WorldElement = HTMLElement & {
+  campaign?: CampaignMap;
+  setOverlay?: (overlay: CampaignOverlay) => void;
+  focusRegion?: (regionId: number, bias?: number) => void;
+  zoomBy?: (factor: number) => void;
+};
 
 export type WorldProps = {
   scene: WorldScene;
@@ -69,6 +86,14 @@ export type WorldProps = {
    * No es un hueco gris — es la vista plana de siempre, que sigue siendo completa.
    */
   fallback?: ReactNode;
+  /** El mapa real de la campaña. Va como propiedad, no como atributo: son 96 polígonos. */
+  campaign?: CampaignMap;
+  /** Lo que se resalta este turno. Cambia sin reconstruir el mundo. */
+  overlay?: CampaignOverlay;
+  /** El motor emite y la pantalla decide: aquí llega la provincia tocada. */
+  onPick?: (regionId: number) => void;
+  /** Recibe la cámara del mundo cuando está montado. */
+  handle?: (handle: WorldHandle | null) => void;
 };
 
 /** ¿Puede este navegador, y quiere esta persona, ver el mundo en relieve? */
@@ -92,9 +117,30 @@ export default function World({
   scene, districts, seat, seats, fog, ash, focus,
   zoom, elevation, azimuth, radius, arrivals, arrivalTotal,
   arm, kind, level, owned, mode, still, static: noAnim,
-  className, children, fallback,
+  className, children, fallback, campaign, overlay, onPick, handle,
 }: WorldProps) {
   const host = useRef<HTMLDivElement>(null);
+  const world = useRef<WorldElement | null>(null);
+  /**
+   * El resaltado vigente, en una ref.
+   *
+   * El mundo no existe hasta que three.js termina de cargarse, y para entonces el efecto
+   * del resaltado ya se ejecutó: sin esto, el primer `overlay` se perdía y el mapa
+   * arrancaba sin la provincia seleccionada ni los destinos encendidos.
+   */
+  const pending = useRef(overlay);
+  pending.current = overlay;
+  /**
+   * Los callbacks van en refs y **fuera de las dependencias** del montaje.
+   *
+   * `onPick` se redefine en cada render de la pantalla, así que en las dependencias
+   * reconstruía el mundo entero —96 provincias extruidas y un contexto WebGL— en cada
+   * render. Aquí solo tienen que estar las cosas de las que depende **la forma** del mundo.
+   */
+  const pick = useRef(onPick);
+  pick.current = onPick;
+  const report = useRef(handle);
+  report.current = handle;
   const wants = useWantsWorld();
   const [ready, setReady] = useState(false);
   // Un array nuevo en cada render reconstruiría el mundo entero: se compara el texto.
@@ -108,16 +154,18 @@ export default function World({
   }, [wants]);
 
   useEffect(() => {
-    const el = host.current;
-    if (!ready || !el) return;
+    if (!ready || !host.current) return;
 
-    const world = document.createElement('gdc-world');
-    world.setAttribute('scene', scene);
-    world.setAttribute('aria-hidden', 'true');
-    Object.assign(world.style, { position: 'absolute', inset: '0' });
+    const el = document.createElement('gdc-world') as WorldElement;
+    el.setAttribute('scene', scene);
+    el.setAttribute('aria-hidden', 'true');
+    Object.assign(el.style, { position: 'absolute', inset: '0' });
+    // El mapa va como propiedad y ANTES de conectar: el motor lo lee al construirse.
+    if (campaign) el.campaign = campaign;
+    if (pending.current) el.setOverlay?.(pending.current);
 
     const attr = (name: string, value: number | string | undefined) => {
-      if (value !== undefined) world.setAttribute(name, String(value));
+      if (value !== undefined) el.setAttribute(name, String(value));
     };
     attr('districts', plan);
     attr('seat', seat);
@@ -133,20 +181,43 @@ export default function World({
     attr('kind', kind);
     attr('level', level);
     attr('mode', mode);
-    if (fog !== undefined) world.setAttribute('fog', fog ? 'true' : 'false');
-    if (ash) world.setAttribute('ash', '');
-    if (owned) world.setAttribute('owned', '');
-    if (still) world.setAttribute('still', '');
-    if (noAnim) world.setAttribute('static', '');
+    if (fog !== undefined) el.setAttribute('fog', fog ? 'true' : 'false');
+    if (ash) el.setAttribute('ash', '');
+    if (owned) el.setAttribute('owned', '');
+    if (still) el.setAttribute('still', '');
+    if (noAnim) el.setAttribute('static', '');
+
+    const picked = (event: Event) => {
+      const detail = (event as CustomEvent<{ regionId: number }>).detail;
+      if (detail && typeof detail.regionId === 'number') pick.current?.(detail.regionId);
+    };
+    el.addEventListener('gdc-pick', picked);
 
     // El mundo va detrás; los rótulos son hermanos suyos y siguen siendo de React.
     // El motor los localiza subiendo al contenedor común (`_markers`).
-    el.prepend(world);
-    return () => { world.remove(); };
+    host.current?.prepend(el);
+    world.current = el;
+    report.current?.({
+      focusRegion: (regionId, bias) => el.focusRegion?.(regionId, bias),
+      zoomBy: (factor) => el.zoomBy?.(factor),
+    });
+
+    return () => {
+      el.removeEventListener('gdc-pick', picked);
+      el.remove();
+      world.current = null;
+      report.current?.(null);
+    };
   }, [
     ready, scene, plan, seat, seats, fog, ash, focus, zoom, elevation, azimuth, radius,
-    arrivals, arrivalTotal, arm, kind, level, owned, mode, still, noAnim,
+    arrivals, arrivalTotal, arm, kind, level, owned, mode, still, noAnim, campaign,
   ]);
+
+  // El resaltado va aparte: cambia en cada tap y reconstruir el mundo por eso costaría
+  // 96 provincias extruidas y el contexto WebGL entero.
+  useEffect(() => {
+    if (overlay) world.current?.setOverlay?.(overlay);
+  }, [overlay]);
 
   return (
     <div ref={host} className={className} style={{ position: 'absolute', inset: 0 }}>

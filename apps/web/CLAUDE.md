@@ -149,15 +149,30 @@ Que juegue turnos antes de pintar no es comodidad: en el T0 la fase es Parlament
 en la que no se puede mover, y con ella se revisaba un tablero donde ninguna orden era
 posible.
 
-**El mapa de campaña es SVG y se queda en SVG** ([ADR-035](../../docs/DECISIONS.md#adr-035)).
-El mundo 2.5D no lo puede representar: su tablero son 37 losas fijas y el mapa real es un
-grafo en polares de 45 a 96 regiones. No lo intentes otra vez sin leer el ADR.
+**El mapa de campaña se juega en relieve** ([ADR-042](../../docs/DECISIONS.md#adr-042),
+sustituye a [ADR-035](../../docs/DECISIONS.md#adr-035)). `<gdc-world scene="campaign">`
+extruye **las provincias reales**, no un tablero decorativo.
 
-**Y se dibuja teselado, no como un grafo** ([ADR-041](../../docs/DECISIONS.md#adr-041)).
-Los polígonos salen de `regionCells()` en `@gdc/core`: **no los calcules aquí**. La
-teselación define la adyacencia que se ve —dos provincias se tocan si y solo si son
-adyacentes— y partirla en dos sitios es la forma de acabar ofreciendo movimientos que el
-motor rechaza. Nada de aristas pintadas: la frontera es la arista.
+**Los polígonos salen de `regionCells()` en `@gdc/core`: no los calcules aquí**
+([ADR-041](../../docs/DECISIONS.md#adr-041)). La teselación define la adyacencia que se ve
+—dos provincias se tocan si y solo si son adyacentes— y partirla en dos sitios es la forma
+de acabar ofreciendo movimientos que el motor rechaza.
+
+```
+□ El lienzo es telón: aria-hidden, y no decide nada
+□ Las cifras de fuerza son DOM con data-tile; el motor solo las coloca
+□ Hay una lista de provincias enfocable: el rayo no da foco ni orden de lectura
+□ Sin WebGL o con movimiento reducido queda MapFlat, la vista plana COMPLETA
+□ El motor emite (`gdc-pick`) y la pantalla decide
+```
+
+`MapView` monta el mundo; `MapFlat` es la vista plana y el respaldo. Las dos reciben las
+mismas props, así que tocar en relieve y tocar en plano acaban en el mismo `onSelect`.
+
+**El mundo se reconstruye una vez por turno y ni una más.** Lo que cambia en cada tap
+—selección, destinos, amenazas, flechas— va por `setOverlay()`, que solo cambia materiales.
+Si metes un callback en las dependencias del montaje, vuelves a extruir 96 provincias y a
+pedir un contexto WebGL en cada render; ya pasó.
 
 ### La campaña se juega tocando el mapa
 
