@@ -63,6 +63,14 @@ export function MapView(props: MapProps) {
         seen: seen.has(region.id),
         fort: view.fortification[region.id] ?? 0,
       })),
+      // Las fuerzas son piezas sobre el tablero. De las ajenas solo se sabe el tamaño
+      // aproximado, así que su arma va en `null` y el motor pone una peana sin insignia:
+      // ponerles silueta de Línea sería enseñar lo que el motor no sabe.
+      forces: view.forces.map((force) => ({
+        regionId: force.regionId,
+        seat: force.seat,
+        arm: force.own ? dominant(force) : null,
+      })),
     };
   }, [view]);
 
@@ -127,7 +135,7 @@ export function MapView(props: MapProps) {
       // Sobre tu Bastión —tu territorio y quien te rodea, que es por donde empieza un 4X—,
       // y el mando de alejar llega hasta el mapa completo.
       focus="bastion"
-      elevation={1.18}
+      elevation={0.78}
       azimuth={-1.05}
       campaign={campaign}
       overlay={overlay}
@@ -184,6 +192,16 @@ export function MapView(props: MapProps) {
       </ul>
     </World>
   );
+}
+
+/** El arma que más pesa en una fuerza propia: la que le da silueta sobre el tablero. */
+function dominant(force: PlayerView['forces'][number]): 'line' | 'fire' | 'sky' {
+  const line = force.line ?? 0;
+  const fire = force.fire ?? 0;
+  const sky = force.sky ?? 0;
+  if (fire > line && fire >= sky) return 'fire';
+  if (sky > line && sky > fire) return 'sky';
+  return 'line';
 }
 
 /** Cómo se anuncia una provincia. El mismo texto que usaba el mapa plano. */

@@ -51,7 +51,8 @@
 | [041](#adr-041) | El mapa se tesela: territorio continuo, no un grafo dibujado | aceptada |
 | [042](#adr-042) | La campaña se juega en el mundo 3D, sobre el mapa real | aceptada |
 | [043](#adr-043) | El mapa se reparte por área: todas las provincias miden lo mismo | aceptada |
-| [044](#adr-044) | La cámara se mide en provincias, y el mapa enseña el frente | aceptada |
+| [044](#adr-044) | La cámara se mide en provincias, y el mapa enseña el frente | **parcialmente sustituida por [ADR-045](#adr-045)** |
+| [045](#adr-045) | El mapa de campaña usa el lenguaje visual del mockup, sin reinventarlo | aceptada |
 
 ---
 
@@ -1800,6 +1801,73 @@ que es el registro visual del proyecto, y no como el diorama de la Ciudad.
   Elevación de una Llanura sin leer un rótulo.
 - *Pintar el frente con líneas.* `LineBasicMaterial` ignora `linewidth` en WebGL: mide un
   píxel y desaparece al alejarse. Por eso es una franja de geometría.
+
+---
+
+<a id="adr-045"></a>
+
+## ADR-045 — El mapa de campaña usa el lenguaje visual del mockup, sin reinventarlo
+**Estado:** aceptada · 2026-08-24
+
+**Contexto.** El proyecto tiene un mockup de diseño (`world3d.js`, el `.zip` de referencia)
+que **ya define cómo se ve el tablero**. Al llevar la campaña al relieve no se aplicó: se
+inventó un lenguaje propio, y el resultado no se parecía al diseño de partida. Punto por
+punto, lo que hacía el mockup y lo que se hizo en su lugar:
+
+| | Mockup | Lo que se había hecho |
+|---|---|---|
+| Terreno | Color pleno (`TOP[kind]`) | Apagado hacia la pizarra |
+| Dominio | Anillo emisivo del color del asiento, en el borde | Teñir la meseta entera |
+| Estandarte | `banner()` en cada provincia con dueño | No existía |
+| Fuerzas | `unitPiece()`, silueta por arma, sobre la losa | Solo cifras en el DOM |
+| Canto | Bisel de 0,045 | Quitado |
+| Junta | `GAP` 0,955 — losas separadas | Provincias pegadas |
+| Alturas | 0,14 – 0,95 | Comprimidas a 0,05 – 0,40 |
+
+Cada desvío tenía su razón escrita y **ninguna resistía mirar el mockup renderizado**: el
+terreno apagado se justificó como «que no compita con el dominio», y el problema real era
+teñir la meseta; las alturas se comprimieron para arreglar un amontonamiento que en verdad
+venía de la cámara ([ADR-044](#adr-044)).
+
+**Decisión.** El mapa de campaña usa el lenguaje del mockup, y las diferencias solo se
+permiten cuando la geometría obliga —la provincia es un polígono irregular, no un hexágono.
+
+- **El terreno va a color pleno.** Lo que dice de quién es la provincia es su filo.
+- **Filo de dominio** del color del asiento, construido sobre el contorno real. El mockup
+  usa un anillo del 0,6 al borde, que sobre un hexágono mirado de cerca es una corona
+  ancha; sobre 96 provincias esa corona vuelve a ser el mosaico que se quería evitar, así
+  que aquí llega al 0,9 — es un filo, no una mancha.
+- **Estandarte** en cada provincia con dueño que no sea el Bastión, que ya tiene mástil.
+- **Las fuerzas son piezas**, con silueta por arma. La cifra sigue en el DOM
+  ([ADR-034](#adr-034)): la pieza dice que hay alguien y de quién es, el rótulo cuántos.
+- **Junta, bisel y alturas del mockup**, tal cual. La junta se hace encogiendo la celda
+  hacia su centro con el mismo `GAP`.
+- **Inclinación de cámara 0,78 rad**, cerca del 0,62 del mockup: es un diorama isométrico,
+  no una vista cenital.
+
+**Consecuencias.**
+- ✅ El tablero se parece al diseño del proyecto, que era el objetivo desde el principio.
+- ✅ El terreno se lee —bosque, agua, yermo— **y** el dominio también, porque ya no ocupan
+  el mismo canal.
+- ✅ Vuelve a haber piezas sobre el tablero: es un juego, no un mapa político con pegatinas.
+- ⚠️ El filo de dominio se dibuja **por encima del velo de niebla**. Es deliberado: el
+  control territorial es público (GDD §6.2) y esconderlo era ocultar información que el
+  juego da.
+- ⚠️ Sustituye a la parte de [ADR-044](#adr-044) que hablaba de apagar el terreno y de
+  dibujar el frente como franja de ceniza. El encuadre en provincias y el recorte de cámara
+  de esa decisión **siguen vigentes**; sin ellos, las alturas del mockup vuelven a
+  amontonarse.
+- ⚠️ Las luces puntuales de los yacimientos siguen apagadas en campaña: en la Ciudad son
+  tres y aquí serían decenas.
+
+**Descartado.**
+- *Mantener la franja de frente de ADR-044 además del filo.* Con el filo del color del
+  asiento en cada provincia, el frente **ya está dibujado** y con más información —se ve de
+  quién es cada lado—. Las dos capas juntas competían.
+- *Copiar el anillo del mockup al 0,6.* Medido en pantalla: cubre el 36 % de la superficie
+  de la provincia y devuelve el mosaico de colores de asiento.
+- *Teselar en hexágonos para poder copiar el mockup literalmente.* Es [ADR-041](#adr-041)
+  otra vez: la simetría de orden 5 no admite panal, y de ella depende el reparto justo.
 
 ---
 

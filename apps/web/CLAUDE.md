@@ -175,9 +175,23 @@ a tres jugadores hay 45 y a cinco 96, así que la misma fracción da provincias 
 tamaño en una partida que en otra. Y el objetivo se recorta a lo que hay mapa — no se puede
 arrastrar hasta quedarse mirando el vacío, ni alejarse más allá del mundo.
 
-**El frente se dibuja.** Toda frontera entre dos provincias de dueño distinto lleva una
-franja clara. Es la respuesta a «¿dónde está el enemigo?» sin tocar nada, y sale de la
-teselación, no de una capa aparte: no puede desalinearse con el mapa.
+**El lenguaje visual sale del mockup, no de tu criterio**
+([ADR-045](../../docs/DECISIONS.md#adr-045)). El proyecto tiene un `world3d.js` de
+referencia que ya define cómo se ve el tablero. Antes de cambiar cómo se pinta el mapa,
+**míralo renderizado**. Se puede: sirve la carpeta y apunta el `importmap` de `three` al
+`node_modules` del repo.
+
+```
+□ El terreno va a COLOR PLENO. De quién es lo dice el filo, no la meseta teñida
+□ Filo de dominio del color del asiento, y por encima del velo: el control es público
+□ Estandarte en cada provincia con dueño que no sea Bastión
+□ Las fuerzas son PIEZAS con silueta por arma; la cifra sigue en el DOM
+□ Junta (`GAP`), bisel y alturas son los del mockup. No los ajustes a ojo
+```
+
+Cada vez que se desvió de ahí hubo una razón escrita y ninguna resistió mirar el mockup:
+apagar el terreno «para que no compitiera con el dominio» cuando el problema era teñir la
+meseta, o comprimir las alturas para arreglar un amontonamiento que venía de la cámara.
 
 **El mundo se reconstruye una vez por turno y ni una más.** Lo que cambia en cada tap
 —selección, destinos, amenazas, flechas— va por `setOverlay()`, que solo cambia materiales.

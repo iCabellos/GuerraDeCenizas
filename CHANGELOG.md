@@ -14,6 +14,22 @@ Este proyecto sigue [SemVer](https://semver.org/lang/es/).
 
 ### Cambiado
 
+- **El mapa de campaña usa el lenguaje visual del mockup**
+  ([ADR-045](docs/DECISIONS.md#adr-045)). El proyecto tiene un mockup que ya define cómo se
+  ve el tablero, y al llevar la campaña al relieve **no se aplicó**: se inventó un lenguaje
+  propio. El terreno iba apagado hacia la pizarra, el dueño se marcaba tiñendo la provincia
+  entera, no había estandartes ni piezas de fuerza sobre las losas, y se habían quitado el
+  bisel y la junta que hacen que un tablero parezca un tablero.
+
+  Ahora el terreno va a **color pleno** y de quién es la provincia lo dice un **filo del
+  color del asiento** en su borde; hay **estandarte** en cada provincia con dueño y las
+  fuerzas son **piezas con silueta por arma** —la cifra sigue en el DOM, que la pieza dice
+  quién y el rótulo cuántos—. Vuelven la junta, el bisel y las alturas del mockup, y la
+  cámara baja a 0,78 rad: es un diorama isométrico, no una vista cenital.
+
+  El filo se dibuja **por encima de la niebla** a propósito: el control territorial es
+  público (GDD §6.2) y esconderlo era ocultar información que el juego da.
+
 - **La cámara se mide en provincias, y el mapa enseña el frente**
   ([ADR-044](docs/DECISIONS.md#adr-044)). Con las provincias ya iguales, el mapa montado
   seguía sin parecer un juego. Mirando la pantalla y no el código, tres cosas.
