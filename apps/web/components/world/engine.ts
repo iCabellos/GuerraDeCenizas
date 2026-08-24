@@ -474,9 +474,44 @@ const FLOOR = 0.9;
  * todo—, el rango se comprime.
  */
 const CAMPAIGN_HEIGHT: Record<Kind, number> = {
-  water: 0.10, plain: 0.26, forest: 0.30, seam: 0.28,
-  urban: 0.34, bastion: 0.42, high: 0.48, core: 0.58,
+  water: 0.05, plain: 0.14, forest: 0.17, seam: 0.16,
+  urban: 0.19, bastion: 0.24, high: 0.30, core: 0.40,
 };
+
+/**
+ * Cuánto se encoge la decoración de terreno en el mapa de campaña.
+ *
+ * En la Ciudad un accesorio llena su hexágono porque el hexágono se mira de cerca. Aquí
+ * se miran noventa y seis a la vez: un accesorio es una **marca de terreno**, no un
+ * decorado, y tiene que caber holgado dentro de su provincia.
+ */
+const DECO = 0.78;
+
+/**
+ * Semieje corto del encuadre de salida, en radios de provincia.
+ *
+ * Sale de un objetivo concreto: siete provincias de ancho en un móvil de 390, o sea unos
+ * 55 px cada una. Con eso se lee el terreno, se toca sin apuntar, y sobre todo se ve el
+ * frente entero de tu territorio, que es lo que se mira al abrir un turno.
+ */
+const OPEN_SPAN = 6.2;
+
+/** Radio de la circunferencia mayor que cabe en la celda, en coordenadas de mapa. */
+function inradius(region: CampaignRegion): number {
+  let least = Infinity;
+  for (let i = 0; i < region.cell.length; i += 1) {
+    const a = region.cell[i]!;
+    const b = region.cell[(i + 1) % region.cell.length]!;
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len2 = dx * dx + dy * dy;
+    // Proyección del centro sobre el segmento, acotada a él: la distancia a la arista, no
+    // a la recta que la contiene.
+    const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((region.x - a.x) * dx + (region.y - a.y) * dy) / len2));
+    least = Math.min(least, Math.hypot(region.x - (a.x + t * dx), region.y - (a.y + t * dy)));
+  }
+  return Number.isFinite(least) ? least : 1;
+}
 
 const LIVE = new Set<GdcWorld>();   // orden = último visto primero al final
 const MAX_LIVE = 8;
@@ -495,6 +530,8 @@ export class GdcWorld extends HTMLElement {
   private _azimuth = -0.45;
   private _radius = 0;
   private _zoom = 1;
+  /** ¿Falta calcular el encuadre de salida? Necesita el ancho real del elemento. */
+  private _openZoom = false;
   private _target = new THREE.Vector3();
   private _ro?: ResizeObserver;
   private _io?: IntersectionObserver;
@@ -681,6 +718,9 @@ export class GdcWorld extends HTMLElement {
       this._radius = { city: 5.4, skirmish: 3.5, hero: 1.06, unit: 0.34, asset: 1.0, tile: 1.02 }[this._world] ?? 6.5;
     }
     this._zoom = Number(this.getAttribute('zoom') ?? 1);
+    // Sin `zoom` explícito, la campaña se abre a un número fijo de provincias en pantalla.
+    // Se resuelve en el primer `_resize()`, que es cuando el elemento ya mide algo.
+    this._openZoom = this._world === 'campaign' && !this.hasAttribute('zoom');
     if (!this._target) this._target = new THREE.Vector3(0, 0, 0);
     this._applyFocus();
 
@@ -883,14 +923,14 @@ export class GdcWorld extends HTMLElement {
 
     // Escala: una provincia mediana mide como un hexágono del motor, así que las alturas
     // y los accesorios de `board.ts` conservan su proporción a 2, 3 y 5 jugadores.
-    const spans = data.regions.map((r) => {
-      let least = Infinity;
-      for (const p of r.cell) least = Math.min(least, Math.hypot(p.x - r.x, p.y - r.y));
-      return Number.isFinite(least) ? least : 1;
-    }).sort((a, b) => a - b);
+    const spans = data.regions.map(inradius).sort((a, b) => a - b);
     const typical = spans[Math.floor(spans.length / 2)] ?? 1;
-    this._scale = S / Math.max(1e-6, typical);
+    this._scale = (S * 0.87) / Math.max(1e-6, typical);
     const k = this._scale;
+
+    // Cota superior de cada provincia. La necesitan las fronteras, que se dibujan después
+    // y tienen que apoyarse en la más alta de las dos para no quedar enterradas.
+    const tops = new Map<number, number>();
 
     for (const region of data.regions) {
       const shape = new THREE.Shape();
@@ -978,8 +1018,23 @@ export class GdcWorld extends HTMLElement {
       const tile: Tile = {
         q: 0, r: 0, ring: 0, kind: region.kind, canon: '', sector: region.owner ?? -1,
       };
-      if (region.seen) this._props(group, tile, top, region.owner);
-      else {
+      if (region.seen) {
+        // Los accesorios están dimensionados para un hexágono de la Ciudad, que se mira de
+        // cerca y de uno en uno. Puestos tal cual sobre una provincia se comen el
+        // territorio: cuatro edificios tapaban media provincia y el mapa dejaba de ser una
+        // carta de situación para volver a ser una maqueta.
+        //
+        // Aquí se meten en un grupo propio y se encogen **a la provincia que les toca**,
+        // que no todas miden igual. `DECO` los deja en marca de terreno, no en decorado.
+        const deco = new THREE.Group();
+        this._props(deco, tile, 0, region.owner);
+        // Una luz por yacimiento son decenas de luces en un mapa de 96: three.js las
+        // compila todas en el shader y el mapa se arrastra. En la Ciudad son tres.
+        deco.traverse((node) => { if (node instanceof THREE.Light) node.visible = false; });
+        deco.scale.setScalar(DECO * Math.min(1, inradius(region) * k / (S * 0.87)));
+        deco.position.y = top;
+        group.add(deco);
+      } else {
         const veil = new THREE.Mesh(
           new THREE.ExtrudeGeometry(shape, { depth: 0.02, bevelEnabled: false }),
           // Niebla, no borrón: a cinco jugadores la mayor parte del mapa está sin observar,
@@ -992,11 +1047,14 @@ export class GdcWorld extends HTMLElement {
       }
 
       root.add(group);
+      tops.set(region.id, top);
       const anchor = new THREE.Vector3(region.x * k, top, region.y * k);
       this._regionPos.set(region.id, anchor);
       this._tilePos.set(`r${region.id}`, anchor);
       if (region.owner === data.seat && region.kind === 'bastion') this._bastionPos = anchor.clone();
     }
+
+    this._fronts(root, data, k, tops);
 
     // El mundo termina en algo. Sin esto la tierra flota sobre el vacío y el mapa se lee
     // como un recorte, no como un sitio: el disco cierra la base y asoma un poco por fuera
@@ -1027,6 +1085,81 @@ export class GdcWorld extends HTMLElement {
       }
     }
     this._pick();
+  }
+
+  /**
+   * El frente.
+   *
+   * En un 4X lo primero que se busca al abrir el mapa es **dónde acaba lo tuyo**. Con las
+   * provincias pintadas del color de su dueño eso se deduce comparando manchas, que a
+   * cinco jugadores y bajo niebla no se deduce: la pregunta del jugador era literalmente
+   * «no se muestra claramente dónde están los enemigos».
+   *
+   * Así que la frontera entre dos dominios distintos se dibuja, y las interiores no. Sale
+   * de la propia teselación: cada arista de celda se guarda por sus extremos, y las que
+   * aparecen en dos provincias de dueño distinto son el frente. Como los vértices
+   * compartidos son **el mismo punto** —`regionCells()` los redondea igual para las dos—,
+   * la pareja se encuentra por igualdad exacta y no por proximidad.
+   *
+   * Una franja y no una línea: `LineBasicMaterial` ignora `linewidth` en WebGL, así que un
+   * frente dibujado con líneas mide un píxel y desaparece en cuanto te alejas.
+   */
+  private _fronts(
+    root: THREE.Group,
+    data: CampaignMap,
+    k: number,
+    tops: ReadonlyMap<number, number>,
+  ): void {
+    const seen = new Map<string, { a: CampaignRegion; b?: CampaignRegion }>();
+    for (const region of data.regions) {
+      for (let i = 0; i < region.cell.length; i += 1) {
+        const p = region.cell[i]!;
+        const q = region.cell[(i + 1) % region.cell.length]!;
+        const one = `${p.x},${p.y}`;
+        const two = `${q.x},${q.y}`;
+        if (one === two) continue;
+        const id = one < two ? `${one}|${two}` : `${two}|${one}`;
+        const entry = seen.get(id);
+        if (entry) entry.b = region; else seen.set(id, { a: region });
+      }
+    }
+
+    const width = S * 0.06;
+    const points: number[] = [];
+    for (const [id, pair] of seen) {
+      const { a, b } = pair;
+      // Frontera exterior del mapa, o dos provincias del mismo dueño: no hay frente.
+      if (!b || a.owner === b.owner) continue;
+      // Entre dos neutrales tampoco. Todo lo demás sí: contra un rival es dónde te atacan,
+      // contra tierra de nadie es por dónde puedes crecer.
+      if (a.owner === null && b.owner === null) continue;
+
+      const [one, two] = id.split('|');
+      const [ax, az] = one!.split(',').map(Number) as [number, number];
+      const [bx, bz] = two!.split(',').map(Number) as [number, number];
+      const x1 = ax * k, z1 = az * k, x2 = bx * k, z2 = bz * k;
+      const len = Math.hypot(x2 - x1, z2 - z1) || 1;
+      const nx = (-(z2 - z1) / len) * (width / 2);
+      const nz = ((x2 - x1) / len) * (width / 2);
+      // Sobre la más alta de las dos: si se apoyara en la baja, el acantilado de la vecina
+      // se comería medio frente.
+      const y = Math.max(tops.get(a.id) ?? 0, tops.get(b.id) ?? 0) + 0.014;
+      points.push(
+        x1 + nx, y, z1 + nz, x2 + nx, y, z2 + nz, x2 - nx, y, z2 - nz,
+        x1 + nx, y, z1 + nz, x2 - nx, y, z2 - nz, x1 - nx, y, z1 - nz,
+      );
+    }
+
+    if (points.length === 0) return;
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(points, 3));
+    // Sin luz: un frente es una marca sobre la carta, no un objeto del terreno, y con
+    // material iluminado se apagaba justo en el lado del mapa que da la sombra.
+    const front = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({
+      color: PAL.ash, transparent: true, opacity: 0.85, depthWrite: false,
+    }));
+    front.renderOrder = 2;
+    root.add(front);
   }
 
   /**
@@ -1122,17 +1255,39 @@ export class GdcWorld extends HTMLElement {
   focusRegion(regionId: number, bias = 0): void {
     const p = this._regionPos.get(regionId);
     if (!p || !this._built) return;
+    // Ir a tu ciudad es ir a **verla**. Si la cámara está más lejos que el encuadre de
+    // trabajo, el botón acerca además de desplazarse: con el mapa entero en pantalla el
+    // recorte deja el objetivo en el centro —no hay adónde desplazarse— y el botón parecía
+    // averiado justo cuando más falta hace, que es cuando te has perdido.
+    if (this._world === 'campaign') this._zoom = Math.min(this._zoom, this._provinceZoom());
     this._target.set(p.x * (1 - bias), p.y + 0.4, p.z * (1 - bias));
-    this._place();
+    this._settle();
   }
 
   /** Acerca (`> 1`) o aleja (`< 1`). El recorrido es el mismo que el del plano. */
   zoomBy(factor: number): void {
-    this._zoom = Math.min(1.6, Math.max(0.22, this._zoom / factor));
-    // Al alejar, el objetivo vuelve hacia el centro del mapa. Si no, mirar el conjunto
-    // desde una esquina deja media pantalla vacía y el tablero arrinconado.
-    if (factor < 1) this._target.multiplyScalar(0.62);
-    if (this._built) this._place();
+    this._zoom = Math.min(this._far(), Math.max(0.22, this._zoom / factor));
+    // Al alejar ya no hace falta tirar del objetivo hacia el centro a ojo: el recorte lo
+    // hace exacto, porque sabe cuánto suelo entra en cuadro a la distancia nueva.
+    if (this._built) this._settle();
+  }
+
+  /**
+   * Lo más lejos que se puede alejar.
+   *
+   * En la campaña, **el mapa entero y ni un paso más**. El 1,6 de las vitrinas dejaba el
+   * tablero ocupando dos tercios del ancho y flotando en negro: alejarse más allá del
+   * mundo no enseña nada que no se viera ya, solo hace las provincias más pequeñas.
+   */
+  private _far(): number {
+    return this._world === 'campaign' ? 1 : 1.6;
+  }
+
+  /** Coloca la cámara, recorta el objetivo a lo que hay mapa, y vuelve a colocarla. */
+  private _settle(): void {
+    this._place();
+    this._clampTarget();
+    this._place();
   }
 
   private _props(g: THREE.Group, t: Tile, h: number, owner: number | null): void {
@@ -1933,7 +2088,7 @@ export class GdcWorld extends HTMLElement {
     const f = this.getAttribute('focus');
     if (f === 'core') this._target.set(0, 1.4, 0);
     else if (f === 'bastion' && this._bastionPos) {
-      const pull = this._world === 'campaign' ? 0.34 : 0.72;
+      const pull = this._world === 'campaign' ? 0.46 : 0.72;
       this._target.copy(this._bastionPos).multiplyScalar(pull).setY(0.6);
     }
     else if (f === 'plaza') this._target.set(0, 1.2, 0);
@@ -1942,7 +2097,10 @@ export class GdcWorld extends HTMLElement {
     else if (this._world === 'unit') this._target.set(0, 0.26, 0);
     else if (this._world === 'asset') this._target.set(0, 0.52, 0);
     else if (this._world === 'tile') this._target.set(0, this._tileTop ?? 0.34, 0);
-    this._place();
+    // El encuadre inicial se acota igual que el desplazamiento: si el Bastión cae en el
+    // anillo exterior, mirarlo de frente deja un tercio de pantalla en negro por fuera de
+    // la costa. Hace falta un `_place()` previo porque el recorte depende de la distancia.
+    this._settle();
   }
 
   // Encuadra el mundo por su radio, no por una distancia fija: así cuadra en
@@ -1957,6 +2115,20 @@ export class GdcWorld extends HTMLElement {
       const halfV = Math.atan(tan);
       const halfH = Math.atan(tan * aspect);
       d = R / Math.sin(Math.min(halfV, halfH));
+    } else if (this._world === 'campaign') {
+      // Encuadre honesto. El mapa es un disco horizontal de radio R: en pantalla mide R de
+      // ancho y R·sen(elev) de alto, que es lo que la inclinación escorza. Ajustar por los
+      // dos ejes es lo que hace que quepa entero en un vertical de móvil y en un monitor.
+      //
+      // Y **sin `fudge`**. El 0,66 de la Ciudad acerca la cámara para que la maqueta llene
+      // el cuadro; en un mapa de 96 provincias eso amontona el lado lejano contra el
+      // horizonte —las de delante enormes, las de atrás una pila de esquirlas— y el
+      // territorio deja de leerse. Una carta de situación se mira entera.
+      //
+      // El `+ R·cos(elev)` es la perspectiva: el borde cercano del mapa está esa distancia
+      // MÁS CERCA que el centro, así que se proyecta más grande y se sale por abajo. Sin
+      // ese término el ajuste cuadra en papel y recorta el mapa en pantalla.
+      d = Math.max((R * Math.sin(elev)) / tan, R / (tan * aspect)) + R * Math.cos(elev);
     } else {
       const fudge = this._world === 'skirmish' ? 1 : 0.66;
       d = Math.max(R / (tan * aspect), (R * 0.72) / tan) * fudge;
@@ -2009,8 +2181,8 @@ export class GdcWorld extends HTMLElement {
         const [a, b] = [...pointers.values()];
         const spread = Math.hypot((a?.x ?? 0) - (b?.x ?? 0), (a?.y ?? 0) - (b?.y ?? 0));
         if (pinch > 0) {
-          this._zoom = Math.min(1.6, Math.max(0.22, (pinchZoom * pinch) / spread));
-          this._place();
+          this._zoom = Math.min(this._far(), Math.max(0.22, (pinchZoom * pinch) / spread));
+          this._settle();
         }
         return;
       }
@@ -2042,10 +2214,36 @@ export class GdcWorld extends HTMLElement {
     const forward = new THREE.Vector3(-Math.cos(this._azimuth), 0, -Math.sin(this._azimuth));
     this._target.addScaledVector(right, -dx * perPixel);
     this._target.addScaledVector(forward, -dy * perPixel);
-    const limit = this._radius * 1.1;
-    this._target.x = Math.min(limit, Math.max(-limit, this._target.x));
-    this._target.z = Math.min(limit, Math.max(-limit, this._target.z));
-    this._place();
+    this._settle();
+  }
+
+  /**
+   * El mapa no se puede sacar de cuadro.
+   *
+   * Lo que se puede desplazar es exactamente lo que no cabe. El límite anterior era el
+   * radio entero por 1,1: se podía arrastrar hasta dejar el tablero fuera de pantalla y
+   * quedarse mirando el vacío, que en un mapa de 96 provincias es la forma más rápida de
+   * perderse y de que el juego parezca roto.
+   */
+  private _clampTarget(): void {
+    if (this._world !== 'campaign') {
+      const wide = this._radius * 1.1;
+      this._target.x = Math.min(wide, Math.max(-wide, this._target.x));
+      this._target.z = Math.min(wide, Math.max(-wide, this._target.z));
+      return;
+    }
+    const elev = Number(this.getAttribute('elevation') ?? 0.62);
+    const aspect = Math.max(0.2, (this.clientWidth || 1) / (this.clientHeight || 1));
+    const tan = Math.tan((this._camera.fov * Math.PI) / 360);
+    // Media anchura de suelo que entra en cuadro. La profundidad entra más —la cámara está
+    // inclinada— pero acotar por la estrecha es lo que garantiza que siempre haya mapa.
+    const half = this._dist * tan * Math.min(aspect, 1 / Math.sin(elev));
+    const limit = Math.max(0, this._radius - half);
+    const away = Math.hypot(this._target.x, this._target.z);
+    if (away > limit) {
+      this._target.x *= limit / away;
+      this._target.z *= limit / away;
+    }
   }
 
   private _resize(): void {
@@ -2053,7 +2251,36 @@ export class GdcWorld extends HTMLElement {
     this._renderer.setSize(w, h, false);
     this._camera.aspect = w / h;
     this._camera.updateProjectionMatrix();
+    // El encuadre de salida no se puede calcular al conectar: el elemento todavía no tiene
+    // ancho, y de él dependen la distancia y el recorte. Aquí ya lo tiene.
+    if (this._openZoom && this.clientWidth > 0) {
+      this._openZoom = false;
+      this._zoom = this._provinceZoom();
+      this._applyFocus();
+      return;
+    }
     if (this._radius) this._place();
+  }
+
+  /**
+   * A cuánto se abre el mapa de campaña, **medido en provincias**.
+   *
+   * Una fracción fija del mapa no vale: a tres jugadores hay 45 provincias y a cinco 96,
+   * así que el mismo 46 % daba provincias del doble de tamaño en una partida que en otra
+   * —a tres se entraba con diez en pantalla, casi en la cara—. Lo que tiene que ser
+   * constante es cuánto mide una provincia en pantalla, porque de eso dependen que se
+   * lea, que se pueda tocar y que se entienda dónde estás.
+   *
+   * Nunca más lejos que el mapa entero: en una partida de dos, `OPEN_SPAN` provincias son
+   * más mundo del que hay.
+   */
+  private _provinceZoom(): number {
+    const elev = Number(this.getAttribute('elevation') ?? 0.62);
+    const aspect = Math.max(0.2, (this.clientWidth || 1) / (this.clientHeight || 1));
+    const tan = Math.tan((this._camera.fov * Math.PI) / 360);
+    const full = Math.max(Math.sin(elev) / tan, 1 / (tan * aspect)) + Math.cos(elev);
+    const open = (OPEN_SPAN * S) / (tan * Math.min(aspect, 1 / Math.sin(elev)));
+    return Math.min(1, open / Math.max(1e-6, full * this._radius));
   }
 
   private _markers(): void {

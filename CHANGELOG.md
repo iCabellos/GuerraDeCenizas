@@ -14,6 +14,30 @@ Este proyecto sigue [SemVer](https://semver.org/lang/es/).
 
 ### Cambiado
 
+- **La cámara se mide en provincias, y el mapa enseña el frente**
+  ([ADR-044](docs/DECISIONS.md#adr-044)). Con las provincias ya iguales, el mapa montado
+  seguía sin parecer un juego. Mirando la pantalla y no el código, tres cosas.
+
+  La cámara heredaba el encuadre de la Ciudad, que acerca para que una maqueta de 37 losas
+  llene el cuadro; sobre 96 provincias eso amontonaba el lado lejano contra el horizonte y
+  el mapa parecía un montón de cristales rotos. Ahora el ajuste es exacto —incluido el
+  término de perspectiva, que es lo que antes recortaba el mapa por abajo— y **el encuadre
+  de salida se mide en provincias, no en fracción de mapa**: una fracción fija daba
+  provincias del doble de tamaño en una partida de tres que en una de cinco.
+
+  La decoración estaba dimensionada para un hexágono que se mira de cerca: cuatro edificios
+  de la Ciudad tapaban media provincia. Se encoge a la provincia que le toca, y de paso
+  desaparece la luz puntual por yacimiento, que en un mapa de 96 eran decenas.
+
+  Y **no se veía dónde acababa lo tuyo** — la queja era literal: «no se muestra claramente
+  dónde están los enemigos». Ahora toda frontera entre dos dueños distintos lleva una
+  franja clara encima. Sale de la propia teselación, así que no puede desalinearse.
+
+  Además: el objetivo de la cámara se recorta a lo que hay mapa —no se puede arrastrar
+  hasta quedarse mirando el vacío ni alejarse más allá del mundo— y **«Mi ciudad» también
+  acerca**, porque con el mapa entero en pantalla no había adónde desplazarse y el botón
+  parecía averiado justo cuando más falta hace.
+
 - **El mapa se reparte por área: todas las provincias miden lo mismo**
   ([ADR-043](docs/DECISIONS.md#adr-043)). Montado en relieve, el tablero seguía pareciendo
   roto, y medido no era cosa del render: entre la provincia mayor y la menor había hasta

@@ -122,12 +122,13 @@ export function MapView(props: MapProps) {
     <World
       scene="campaign"
       seat={view.seat}
-      // Isométrica alta y sobre tu Bastión: se entra viendo tu territorio y hacia dónde
-      // se juega, no un rincón cualquiera del mapa.
+      // Sin `zoom`: el mundo se abre a un número fijo de **provincias** en pantalla, que es
+      // lo que hace que se vean igual de grandes en una partida de tres y en una de cinco.
+      // Sobre tu Bastión —tu territorio y quien te rodea, que es por donde empieza un 4X—,
+      // y el mando de alejar llega hasta el mapa completo.
       focus="bastion"
-      elevation={1.02}
+      elevation={1.18}
       azimuth={-1.05}
-      zoom={1.1}
       campaign={campaign}
       overlay={overlay}
       onPick={onSelect}

@@ -169,6 +169,16 @@ de acabar ofreciendo movimientos que el motor rechaza.
 `MapView` monta el mundo; `MapFlat` es la vista plana y el respaldo. Las dos reciben las
 mismas props, así que tocar en relieve y tocar en plano acaban en el mismo `onSelect`.
 
+**La cámara se mide en provincias** ([ADR-044](../../docs/DECISIONS.md#adr-044)). El
+encuadre de salida es un número fijo de provincias en pantalla, no una fracción del mapa:
+a tres jugadores hay 45 y a cinco 96, así que la misma fracción da provincias del doble de
+tamaño en una partida que en otra. Y el objetivo se recorta a lo que hay mapa — no se puede
+arrastrar hasta quedarse mirando el vacío, ni alejarse más allá del mundo.
+
+**El frente se dibuja.** Toda frontera entre dos provincias de dueño distinto lleva una
+franja clara. Es la respuesta a «¿dónde está el enemigo?» sin tocar nada, y sale de la
+teselación, no de una capa aparte: no puede desalinearse con el mapa.
+
 **El mundo se reconstruye una vez por turno y ni una más.** Lo que cambia en cada tap
 —selección, destinos, amenazas, flechas— va por `setOverlay()`, que solo cambia materiales.
 Si metes un callback en las dependencias del montaje, vuelves a extruir 96 provincias y a

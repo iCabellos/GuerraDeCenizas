@@ -51,6 +51,7 @@
 | [041](#adr-041) | El mapa se tesela: territorio continuo, no un grafo dibujado | aceptada |
 | [042](#adr-042) | La campaña se juega en el mundo 3D, sobre el mapa real | aceptada |
 | [043](#adr-043) | El mapa se reparte por área: todas las provincias miden lo mismo | aceptada |
+| [044](#adr-044) | La cámara se mide en provincias, y el mapa enseña el frente | aceptada |
 
 ---
 
@@ -1731,6 +1732,74 @@ dispersión después              Núcleo
 - *Cambiar los tamaños de anillo de `SECTOR_SPEC` para que fueran proporcionales al radio.*
   Eso es composición de sector: cambia cuántas regiones hay, la bolsa de terrenos y el
   tamaño del mapa. Es diseño de juego, no un ajuste de dibujo.
+
+---
+
+<a id="adr-044"></a>
+
+## ADR-044 — La cámara se mide en provincias, y el mapa enseña el frente
+**Estado:** aceptada · 2026-08-24
+
+**Contexto.** Con [ADR-043](#adr-043) las provincias ya medían todas lo mismo, y el mapa
+montado **seguía sin parecer un juego**. Mirando la pantalla y no el código, tres cosas:
+
+1. **La cámara heredaba el encuadre de la Ciudad.** El `fudge` de 0,66 acerca la cámara
+   para que una maqueta de 37 losas llene el cuadro; aplicado a 96 provincias amontonaba
+   el lado lejano contra el horizonte. Las de delante enormes, las de atrás una pila de
+   esquirlas: el efecto era el de un montón de cristales rotos, no el de un territorio.
+2. **La decoración estaba dimensionada para un hexágono que se mira de cerca.** Cuatro
+   edificios de la Ciudad puestos sobre una provincia tapaban medio territorio.
+3. **No se veía dónde acababa lo tuyo.** Cada provincia iba del color de su dueño, y a
+   cinco jugadores y bajo niebla eso hay que deducirlo comparando manchas. La queja del
+   jugador fue literal: *«no se muestra claramente dónde están los enemigos»*.
+
+**Decisión.** El mapa de campaña se encuadra y se dibuja como **una carta de situación**,
+que es el registro visual del proyecto, y no como el diorama de la Ciudad.
+
+- **El encuadre se mide en provincias, no en fracciones de mapa.** Se abre a `OPEN_SPAN`
+  radios de provincia en el semieje corto —unas siete provincias de ancho en un móvil—.
+  Una fracción fija del mapa daba provincias del doble de tamaño en una partida de tres
+  que en una de cinco; lo que tiene que ser constante es **cuánto mide una provincia en
+  pantalla**, porque de eso dependen que se lea, que se toque y que sepas dónde estás.
+- **El ajuste de distancia es exacto, con el término de perspectiva.** El mapa es un disco
+  horizontal de radio R: mide R de ancho y R·sen(elev) de alto, y el borde cercano está
+  R·cos(elev) más cerca que el centro, así que se proyecta más grande. Sin ese término el
+  encuadre cuadra en papel y recorta el mapa en pantalla.
+- **El objetivo de la cámara se recorta a lo que hay mapa.** Se puede desplazar exactamente
+  lo que no cabe en cuadro: a encuadre completo, nada. Y no se puede alejar más allá del
+  mapa entero.
+- **Ir a tu ciudad también acerca.** Con el mapa entero en pantalla no hay adónde
+  desplazarse, así que el botón parecía averiado justo cuando más falta hace.
+- **El frente se dibuja.** Toda frontera entre dos provincias de dueño distinto —o entre
+  una con dueño y tierra de nadie— lleva una franja clara encima. Sale de la propia
+  teselación de [ADR-041](#adr-041): los vértices compartidos son el mismo punto, así que
+  la pareja se encuentra por igualdad exacta.
+- **La decoración es marca de terreno, no decorado.** Se encoge a la provincia que le toca,
+  y las provincias no miden todas igual.
+
+**Consecuencias.**
+- ✅ Una provincia mide lo mismo en pantalla a dos, tres y cinco jugadores.
+- ✅ Se ve de un vistazo dónde acaba tu territorio y con quién limita: la pregunta que abre
+  un turno de 4X tiene respuesta sin tocar nada.
+- ✅ El mapa no se puede perder de vista arrastrando, ni queda flotando en un cuadro negro.
+- ✅ La decoración cuenta el terreno sin taparlo, y ya no hay una luz puntual por yacimiento
+  —que en un mapa de 96 eran decenas y las compila todas el shader—.
+- ⚠️ En un móvil vertical, el mapa entero deja franja negra arriba y abajo: un disco no
+  llena un cuadro de proporción 0,47. Se acepta en el tope de alejamiento; en el encuadre
+  de trabajo no se nota.
+- ⚠️ Los paneles flotantes pueden tapar una ficha de fuerza que caiga bajo ellos. Los taps
+  pasan ([ADR-040](#adr-040)) pero la cifra no se ve. Pendiente.
+
+**Descartado.**
+- *Cámara ortográfica.* Quita el escorzo del todo y es la solución de manual para una carta
+  de situación, pero obliga a tocar `_place`, `_resize`, la proyección de rótulos y el
+  rayo de selección, que hoy comparten las seis escenas. Con el término de perspectiva y
+  una inclinación de 1,18 rad el amontonamiento desaparece igual. Si vuelve a aparecer,
+  esto es lo siguiente que hay que probar.
+- *Subir la inclinación hasta el cenital.* Mata el relieve, que es lo que distingue una
+  Elevación de una Llanura sin leer un rótulo.
+- *Pintar el frente con líneas.* `LineBasicMaterial` ignora `linewidth` en WebGL: mide un
+  píxel y desaparece al alejarse. Por eso es una franja de geometría.
 
 ---
 
