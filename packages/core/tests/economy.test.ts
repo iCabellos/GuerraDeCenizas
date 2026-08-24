@@ -12,7 +12,7 @@ import type { Force, GameState, PlayerCount, RegionId, Seat } from '../src/types
 import { createGame } from '../src/rules/setup';
 import { ENGINE_VERSION, reduce } from '../src/rules/reduce';
 import { buildAdjacency } from '../src/mapgen/skeleton';
-import { sectorSize } from '../src/mapgen/spec';
+import { fairShare } from '../src/mapgen/spec';
 import { BALANCE, TERRAIN_YIELD } from '../src/balance/constants';
 import { canProduceAt, diminishingFactor, grossIncome, supplyUpkeep } from '../src/rules/economy';
 
@@ -36,16 +36,30 @@ function toWar(state: GameState): GameState {
 }
 
 /** Da a un asiento exactamente `count` regiones, ignorando Bastiones ajenos. */
+/**
+ * Deja al asiento con **exactamente** `count` regiones.
+ *
+ * El Bastión se asigna primero a propósito. Antes se rellenaba por id ascendente y se
+ * forzaban los Bastiones al final, lo que colaba una región de más: con el mapa antiguo
+ * el Bastión caía dentro de los primeros ids y no se notaba; con siete anillos está en
+ * el 48 y el asiento acababa con `count + 1`. Un test de rendimiento decreciente que
+ * cuenta mal el territorio no mide el rendimiento decreciente.
+ */
 function withRegions(state: GameState, seat: Seat, count: number): GameState {
   const control = state.control.map(() => null) as (Seat | null)[];
-  let given = 0;
+  const own = state.map.bastions[seat] as RegionId;
+  control[own] = seat;
+  let given = 1;
   for (let id = 0; id < state.map.regions.length && given < count; id++) {
+    if (id === own) continue;
     if (state.map.regions[id]?.kind === 'core') continue;
-    if (state.map.bastions.includes(id) && state.map.bastions[seat] !== id) continue;
+    if (state.map.bastions.includes(id)) continue;
     control[id] = seat;
     given++;
   }
-  state.map.bastions.forEach((regionId, s) => { control[regionId] = s as Seat; });
+  state.map.bastions.forEach((regionId, s) => {
+    if (regionId !== own) control[regionId] = s as Seat;
+  });
   return { ...state, control };
 }
 
@@ -64,9 +78,13 @@ describe('renta', () => {
           industry: sum.industry + y.industry,
           intel: sum.intel + y.intel,
           ash: sum.ash + y.ash,
+          // Mineral y Brasa NO entran por renta: solo se extraen, se roban o caen de un
+          // Coloso. `grossIncome` tiene que devolverlos a cero siempre.
+          ore: 0,
+          ember: 0,
         };
       },
-      { supply: 0, industry: 0, intel: 0, ash: 0 },
+      { supply: 0, industry: 0, intel: 0, ash: 0, ore: 0, ember: 0 },
     );
 
     expect(grossIncome(state, seat)).toEqual(expected);
@@ -74,14 +92,14 @@ describe('renta', () => {
 
   it('hasta la parte justa no hay penalización', () => {
     const state = game(5);
-    const fair = sectorSize(5);
+    const fair = fairShare(5);
     expect(diminishingFactor(withRegions(state, 0, fair), 0)).toBe(1);
     expect(diminishingFactor(withRegions(state, 0, fair - 5), 0)).toBe(1);
   });
 
   it('doblar el territorio da ~1,55× de renta, no ~1× ni ~2×', () => {
     const state = game(5);
-    const fair = sectorSize(5);
+    const fair = fairShare(5);
 
     const atFair = withRegions(state, 0, fair);
     const atDouble = withRegions(state, 0, fair * 2);
@@ -112,7 +130,7 @@ describe('renta', () => {
       ...base,
       seats: base.seats.map((s) => ({
         ...s,
-        resources: { supply: 59, industry: 59, intel: 39, ash: 0 },
+        resources: { supply: 59, industry: 59, intel: 39, ash: 0, ore: 0, ember: 0 },
       })),
     };
     for (let turn = 0; turn < 6; turn++) state = reduce(state, {}, CTX).state;
@@ -280,12 +298,39 @@ describe('producción', () => {
   });
 });
 
+/**
+ * Un par (agua, orilla) que **no** esté separado por un Cerco.
+ *
+ * Antes del refactor bastaba con la primera región de agua y su primer vecino. Ahora
+ * ese vecino puede estar al otro lado de una Puerta sellada, y entonces el movimiento
+ * se rechaza por `ward_sealed` y el test mide algo que no es lo que dice medir: la
+ * regla del agua, no la de las zonas.
+ */
+function shoreline(state: GameState): [RegionId, RegionId] {
+  const adjacency = buildAdjacency(state.map.regions.length, state.map.edges);
+  const sealed = new Set(
+    state.map.edges.filter((e) => e.ward).map((e) => `${e.a}-${e.b}`),
+  );
+  const crosses = (a: RegionId, b: RegionId): boolean =>
+    sealed.has(a < b ? `${a}-${b}` : `${b}-${a}`);
+
+  const guarded = new Set(state.colossi.filter((c) => c.alive).map((c) => c.regionId));
+
+  for (let water = 0; water < state.map.regions.length; water++) {
+    if (state.map.regions[water]?.kind !== 'water') continue;
+    if (guarded.has(water)) continue;
+    for (const shore of adjacency[water] as RegionId[]) {
+      if (guarded.has(shore)) continue;
+      if (!crosses(water, shore)) return [water, shore];
+    }
+  }
+  throw new Error('no hay ninguna orilla libre de Cercos y Colosos');
+}
+
 describe('agua y puentes', () => {
   it('Línea no cruza agua sin Puente, y Cielo sí', () => {
     const base = toWar(game(5, 7));
-    const adjacency = buildAdjacency(base.map.regions.length, base.map.edges);
-    const water = base.map.regions.findIndex((r) => r.kind === 'water');
-    const shore = (adjacency[water] as RegionId[])[0] as RegionId;
+    const [water, shore] = shoreline(base);
 
     const state: GameState = {
       ...base,
@@ -314,9 +359,7 @@ describe('agua y puentes', () => {
 
   it('con Puente, Línea sí cruza', () => {
     const base = toWar(game(5, 7));
-    const adjacency = buildAdjacency(base.map.regions.length, base.map.edges);
-    const water = base.map.regions.findIndex((r) => r.kind === 'water');
-    const shore = (adjacency[water] as RegionId[])[0] as RegionId;
+    const [water, shore] = shoreline(base);
 
     const bridges = base.bridges.slice();
     bridges[water] = true;

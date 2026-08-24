@@ -121,11 +121,17 @@ describe('generación', () => {
     }
   });
 
-  it.each(COUNTS)('hay exactamente 3 yacimientos por sector (%i jugadores)', (n) => {
+  it.each(COUNTS)('cada sector tiene los yacimientos que pide su bolsa (%i jugadores)', (n) => {
     const { map } = generateMap(999, n);
+    // La bolsa se declara por zona desde el refactor RTS: el inventario de un sector es
+    // la suma de las tres, y sigue siendo idéntico en todos por construcción.
+    const expected = ([1, 2, 3] as const).reduce(
+      (sum, zone) => sum + SECTOR_SPEC[n].terrainBag[zone].seam,
+      0,
+    );
     for (let sector = 0; sector < n; sector++) {
       const seams = map.regions.filter((r) => r.sector === sector && r.kind === 'seam');
-      expect(seams).toHaveLength(SECTOR_SPEC[n].terrainBag.seam);
+      expect(seams).toHaveLength(expected);
     }
   });
 

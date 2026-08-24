@@ -18,6 +18,9 @@ import type {
 import { createGame } from '../src/rules/setup';
 import { ENGINE_VERSION, reduce } from '../src/rules/reduce';
 import { buildAdjacency } from '../src/mapgen/skeleton';
+import { buildWardIndex, canCross } from '../src/rules/zones';
+import { botOrders, botProfile, type BotProfile } from '../src/rules/bot';
+import { projectViews } from '../src/rules/views';
 import { BALANCE } from '../src/balance/constants';
 import { checksum } from '../src/util/canonical';
 
@@ -39,19 +42,32 @@ function newGame(players: PlayerCount, seed: number): GameState {
 /**
  * Bot codicioso: avanza hacia territorio no propio y produce Línea mientras pueda.
  * Deliberadamente simple — no es un jugador de referencia, es un generador de partidas
- * que se mueven. El simulador con perfiles reales llega en v0.8.
+ * que se mueven. El simulador con perfiles reales llega en v0.12.
+ *
+ * **Tiene que respetar los Cercos.** La primera versión de esta función elegía el
+ * primer vecino no propio de la lista de adyacencia, que está ordenada por id
+ * ascendente; con siete anillos los ids bajos son los interiores, así que apuntaba
+ * sistemáticamente hacia el Núcleo, se estrellaba contra una Puerta sellada y la orden
+ * se rechazaba **todos los turnos**. La expansión se paraba en 7 regiones por asiento
+ * en el T6 y la partida no volvía a moverse. Un bot que da órdenes imposibles no genera
+ * partidas: genera 225 rechazos.
  */
 function greedyOrders(view: PlayerView, turn: number): Orders {
   const adjacency = buildAdjacency(view.map.regions.length, view.map.edges);
+  const wards = buildWardIndex(view.map);
   const moves: MoveOrder[] = [];
 
   for (const force of view.forces.filter((f) => f.own)) {
     if (force.line === null || force.line <= 0) continue;
     const neighbours = (adjacency[force.regionId] ?? []) as readonly RegionId[];
 
-    // Preferir regiones no propias que no sean agua (sin puentes en este test).
+    // Preferir regiones no propias que no sean agua (sin puentes en este test), y a las
+    // que de verdad se pueda entrar.
     const target = neighbours.find(
-      (r) => view.control[r] !== view.seat && view.map.regions[r]?.kind !== 'water',
+      (r) =>
+        view.control[r] !== view.seat &&
+        view.map.regions[r]?.kind !== 'water' &&
+        canCross(wards, view.gatesOpen, force.regionId, r),
     );
     if (target !== undefined) {
       moves.push({ forceId: force.id, to: target, posture: 'assault' });
@@ -94,24 +110,94 @@ function playCampaign(players: PlayerCount, seed: number) {
   return { state, checksums, events, controlHistory };
 }
 
-describe('campaña completa de 12 turnos', () => {
+/** Lo mismo, pero con los rivales artificiales reales de `rules/bot.ts`. */
+function playWithRivals(players: PlayerCount, seed: number) {
+  let state = newGame(players, seed);
+  const adjacency = buildAdjacency(state.map.regions.length, state.map.edges);
+  const profiles = Array.from({ length: players }, (_, s) => botProfile(seed, s as Seat));
+  const events: string[] = [];
+
+  for (let turn = 0; turn <= BALANCE.campaign.turns; turn++) {
+    const views = projectViews(state);
+    const orders: OrdersBySeat = {};
+    for (let seat = 0; seat < players; seat++) {
+      orders[seat as Seat] = botOrders(
+        views[seat as Seat], adjacency, profiles[seat] as BotProfile, seed,
+      );
+    }
+    const result = reduce(state, orders, CTX);
+    state = result.state;
+    events.push(...result.events.map((e) => e.type));
+  }
+
+  return { state, events };
+}
+
+describe('campaña completa de 24 turnos, en tres actos', () => {
   it.each([2, 3, 5] as PlayerCount[])('llega al final sin romperse (%i jugadores)', (n) => {
     const { state } = playCampaign(n, 1234);
     expect(state.meta.turn).toBe(BALANCE.campaign.turns + 1);
     expect(state.meta.phase).toBe('war');
   });
 
-  it('la partida evoluciona: hay capturas, combates y cambios de control', () => {
+  it('la partida evoluciona: se captura, se produce y el mapa cambia de manos', () => {
     const { events, controlHistory } = playCampaign(5, 99);
 
     expect(events).toContain('REGION_CAPTURED');
-    expect(events).toContain('COMBAT');
     expect(events).toContain('INCOME');
     expect(events).toContain('PRODUCED');
 
     const first = controlHistory[0] as number[];
     const last = controlHistory[controlHistory.length - 1] as number[];
     expect(last.reduce((a, b) => a + b, 0)).toBeGreaterThan(first.reduce((a, b) => a + b, 0));
+  });
+
+  it('con rivales de verdad hay guerra entre asientos', () => {
+    // El combate entre asientos se comprueba con los rivales reales y no con el bot
+    // codicioso de este archivo, y el motivo es del diseño, no del test: con las zonas,
+    // cada asiento tiene un Solar de 33 regiones para él solo, así que un bot que solo
+    // sabe ocupar hueco libre **no se encuentra con nadie** en 24 turnos. Encontrarse
+    // exige querer: ir a por el vecino, o ir a por una Puerta.
+    const { events } = playWithRivals(5, 99);
+    expect(events).toContain('COMBAT');
+    expect(events).toContain('REGION_CAPTURED');
+  });
+
+  it('la economía de materiales arranca sola y no se puede perder', () => {
+    const { events, state } = playCampaign(5, 99);
+
+    // Toda ciudad se funda sobre una veta y nace con su Extractora: sin eso el juego
+    // tiene una trampa de arranque —el material solo sale de Extractoras y las
+    // Extractoras cuestan material— de la que no se sale en toda la partida.
+    expect(events).toContain('EXTRACTED');
+    expect(events).toContain('HAULED');
+
+    for (const bastion of state.map.bastions) {
+      expect(state.map.veins.some((v) => v.regionId === bastion)).toBe(true);
+      expect(
+        state.buildings.some((b) => b.regionId === bastion && b.kind === 'extractor'),
+      ).toBe(true);
+    }
+  });
+
+  it('los tres actos son alcanzables: el mapa se abre pagando Colosos', () => {
+    // Con los rivales artificiales de verdad, no con el bot de juguete de este archivo:
+    // el codicioso no sabe lo que es un Coloso y jamás abriría una Puerta. Lo que este
+    // test fija es que el camino EXISTE —que una Puerta se abre matando a su Coloso y
+    // que al abrirse queda abierta para todos—, no que un bot tonto lo recorra.
+    //
+    // Con estos rivales tampoco se llega a la Corona en 24 turnos, y no se finge que
+    // sí: eso es una cuestión de calibración y la decide el simulador, no un test.
+    const { events, state } = playWithRivals(5, 99);
+
+    expect(events).toContain('COLOSSUS_SLAIN');
+    expect(events).toContain('GATE_OPENED');
+    expect(events).toContain('SPOILS_TAKEN');
+    expect(state.gatesOpen.filter(Boolean).length).toBeGreaterThan(0);
+
+    // Y que abrirla no la vuelve a cerrar nunca.
+    const opened = state.gatesOpen.filter(Boolean).length;
+    expect(opened).toBeLessThanOrEqual(state.map.gates.length);
   });
 
   it('es reproducible byte a byte', () => {

@@ -23,7 +23,8 @@ export {
 } from './factions/index';
 
 export {
-  SECTOR_SPEC, sectorSize, mapSize, bastionSlot, assertSpecConsistency,
+  SECTOR_SPEC, VEIN_GRADE, sectorSize, zoneSize, mapSize, fairShare, bastionSlot,
+  zoneOfRing, ringsOfZone, wardBoundaries, assertSpecConsistency,
   type SectorSpec,
 } from './mapgen/spec';
 export {
@@ -33,6 +34,22 @@ export {
 export { generateMap, MAPGEN_VERSION, type GeneratedMap } from './mapgen/generate';
 
 export { reduce, ENGINE_VERSION } from './rules/reduce';
+export {
+  zoneOf, actOfTurn, buildWardIndex, canCross, passableAdjacency, reachableFrom,
+  gatesBetween, gateOfColossus, openGate, type WardIndex,
+} from './rules/zones';
+export {
+  ALL_BUILDINGS, buildingLevel, buildingAt, bestLevel, terrainAllows,
+} from './rules/buildings';
+export {
+  ALL_ARMS, ALL_POLICIES, POLICY_BRANCH, POLICY_MATERIAL,
+  emptyPolicies, startingTiers, policyEffect, tierMultiplier, bestFoundryLevel,
+} from './rules/research';
+export {
+  emptyStock, veinAt, extractionRate, applyExtraction, applyHauling, applyPlunder,
+  takePlunder, creditMaterials,
+} from './rules/extraction';
+export { applyColossi, initialColossi, guardedRegions, wardIndexOf } from './rules/colossus';
 export { projectViews } from './rules/views';
 export {
   combatPower, resolveCombat, previewCombat, previewAttack, totalOf,

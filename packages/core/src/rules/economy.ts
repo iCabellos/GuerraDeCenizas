@@ -11,15 +11,17 @@
  */
 
 import type {
-  Adjacency, Force, GameState, PlayerView, ProductionOrder, RegionId, Resources, Seat,
+  Adjacency, ArmId, Force, GameState, PlayerView, ProductionOrder, RegionId, Resources, Seat,
   TerrainKind,
 } from '../types/index';
 import { BALANCE, TERRAIN_YIELD } from '../balance/constants';
 import { bfsDistances } from '../mapgen/skeleton';
-import { sectorSize } from '../mapgen/spec';
+import { fairShare } from '../mapgen/spec';
 import { round4 } from '../util/canonical';
 import { EventLog } from './events';
 import { totalOf } from './combat';
+import { bestLevel } from './buildings';
+import { policyEffect } from './research';
 
 export interface EconomyResult {
   seats: GameState['seats'];
@@ -31,7 +33,7 @@ export interface EconomyResult {
  * El Núcleo y los yacimientos aportan Ceniza; el resto, los tres recursos ordinarios.
  */
 export function grossIncome(state: GameState, seat: Seat): Resources {
-  const income: Resources = { supply: 0, industry: 0, intel: 0, ash: 0 };
+  const income: Resources = { supply: 0, industry: 0, intel: 0, ash: 0, ore: 0, ember: 0 };
   state.control.forEach((owner, regionId) => {
     if (owner !== seat) return;
     const kind = state.map.regions[regionId]?.kind;
@@ -48,13 +50,17 @@ export function grossIncome(state: GameState, seat: Seat): Resources {
 /**
  * Factor de rendimiento decreciente.
  *
- * La «parte justa» es el tamaño de un sector: exactamente lo que te toca por
- * construcción del mapa. Expandirse **más allá de tu propio sector** es lo que empieza
+ * La «parte justa» es el tamaño de tu **Solar**: exactamente lo que te toca por
+ * construcción del mapa. Expandirse **más allá de tu propia casa** es lo que empieza
  * a rendir menos — que es justo la frontera donde el juego quiere que te lo pienses.
+ *
+ * Antes del refactor era el sector entero, y entonces las dos cosas coincidían. Ahora
+ * no: usar el sector regalaría toda la Marca sin penalización, y la Marca es
+ * precisamente lo que debe costar.
  */
 export function diminishingFactor(state: GameState, seat: Seat): number {
   const owned = state.control.filter((owner) => owner === seat).length;
-  const fair = sectorSize(state.meta.playerCount);
+  const fair = fairShare(state.meta.playerCount);
   const excess = Math.max(0, owned - fair);
   return round4(1 / (1 + BALANCE.economy.diminishingK * excess));
 }
@@ -70,11 +76,17 @@ function distancesToOwnBastion(
   return bfsDistances(adjacency, bastion);
 }
 
-/** Coste de suministro de una fuerza según su tamaño y su distancia al Bastión. */
-export function supplyUpkeep(force: Force, hops: number): number {
+/**
+ * Coste de suministro de una fuerza según su tamaño y su distancia al Bastión.
+ *
+ * `marchDoctrine` abarata **solo la parte que depende de la distancia**, no la base:
+ * la Política se llama Doctrina de Marcha porque hace barato ir lejos, no barato tener
+ * ejército. Si abaratara el total sería una rebaja de mantenimiento disfrazada.
+ */
+export function supplyUpkeep(force: Force, hops: number, marchFactor = 1): number {
   const base = Math.ceil(totalOf(force) / 10);
   const distance = Number.isFinite(hops) ? hops : 12;
-  return round4(base * (1 + BALANCE.economy.supplyDistanceK * distance));
+  return round4(base * (1 + BALANCE.economy.supplyDistanceK * distance * marchFactor));
 }
 
 /**
@@ -99,10 +111,22 @@ export function applyEconomy(
     const gross = grossIncome(state, seat);
     const factor = diminishingFactor(state, seat);
 
+    // El Mineral y la Brasa NO entran por renta: solo se extraen, se roban o caen de un
+    // Coloso. Es lo que mantiene la capa de RTS atada al mapa en vez de al reloj.
+    // La Fundición convierte Mineral en capacidad industrial: suma renta plana, sin
+    // pasar por el rendimiento decreciente. Es lo que hace que valga la pena subirla
+    // aunque no vayas a investigar.
+    const foundry = BALANCE.buildings.foundryIndustry[bestLevel(state, seat, 'foundry')] ?? 0;
+    const watch = BALANCE.buildings.watchIntel[bestLevel(state, seat, 'watch')] ?? 0;
+
     seatState.resources = {
+      ...seatState.resources,
       supply: Math.min(caps.supply, round4(seatState.resources.supply + gross.supply * factor)),
-      industry: Math.min(caps.industry, round4(seatState.resources.industry + gross.industry * factor)),
-      intel: Math.min(caps.intel, round4(seatState.resources.intel + gross.intel * factor)),
+      industry: Math.min(
+        caps.industry,
+        round4(seatState.resources.industry + gross.industry * factor + foundry),
+      ),
+      intel: Math.min(caps.intel, round4(seatState.resources.intel + gross.intel * factor + watch)),
       ash: round4(seatState.resources.ash + gross.ash * factor),
     };
 
@@ -132,7 +156,11 @@ export function applyEconomy(
 
     let available = seatState.resources.supply;
     for (const force of mine) {
-      const cost = supplyUpkeep(force, hops[force.regionId] ?? Infinity);
+      const cost = supplyUpkeep(
+        force,
+        hops[force.regionId] ?? Infinity,
+        policyEffect(seatState, 'marchDoctrine'),
+      );
       if (available >= cost) {
         available = round4(available - cost);
         force.unsupplied = 0;
@@ -209,7 +237,10 @@ export function applyProduction(
     for (const order of orders) {
       const spec = BALANCE.production[order.item];
       const qty = Math.max(1, Math.floor(order.qty));
-      const cost = spec.industry * qty;
+      const discount =
+        (1 - (BALANCE.buildings.arsenalDiscount[bestLevel(state, seatState.seat, 'arsenal')] ?? 0)) *
+        policyEffect(seatState, 'recasting');
+      const cost = round4(spec.industry * qty * discount);
 
       if (seatState.resources.industry < cost) continue; // ya avisado en la validación
       if (!canProduceAt(state, seatState.seat, order.regionId)) continue;
@@ -218,7 +249,9 @@ export function applyProduction(
         const current = fortification[order.regionId] ?? 0;
         if (current >= BALANCE.combat.maxFortLevel) continue;
         const levels = Math.min(qty, BALANCE.combat.maxFortLevel - current);
-        seatState.resources.industry = round4(seatState.resources.industry - spec.industry * levels);
+        seatState.resources.industry = round4(
+          seatState.resources.industry - spec.industry * levels * discount,
+        );
         fortification[order.regionId] = current + levels;
         log.emit({
           type: 'REGION_FORTIFIED',
@@ -231,7 +264,7 @@ export function applyProduction(
 
       if (order.item === 'bridge') {
         if (bridges[order.regionId]) continue;
-        seatState.resources.industry = round4(seatState.resources.industry - spec.industry);
+        seatState.resources.industry = round4(seatState.resources.industry - spec.industry * discount);
         bridges[order.regionId] = true;
         log.emit({
           type: 'BRIDGE_BUILT',
@@ -242,7 +275,16 @@ export function applyProduction(
         continue;
       }
 
-      const strength = ('strength' in spec ? spec.strength : 0) * qty;
+      // ── Aquí, y solo aquí, entra el Grado ────────────────────────────────────
+      //
+      // Lo producido nace con el multiplicador de su grado incorporado y ya no vuelve
+      // a cambiar. Subir de grado NO mejora lo que ya está en el mapa, y ésa es toda
+      // la decisión: ¿subo y empiezo a reemplazar, o me gasto lo mismo en más tropa de
+      // grado 1 y ataco este turno?
+      const tier = seatState.tiers[order.item as ArmId] ?? 1;
+      const strength = round4(
+        ('strength' in spec ? spec.strength : 0) * qty * (BALANCE.tiers.multiplier[tier] as number),
+      );
       seatState.resources.industry = round4(seatState.resources.industry - cost);
 
       const existing = nextForces.find(

@@ -10,8 +10,8 @@
  * es equivariante bajo rotación. Ver docs/MAP_GENERATION.md §4.
  */
 
-import type { Edge, PlayerCount, RegionId } from '../types/index';
-import { SECTOR_SPEC } from './spec';
+import type { Edge, Gate, PlayerCount, RegionId, Zone } from '../types/index';
+import { SECTOR_SPEC, wardBoundaries, zoneOfRing } from './spec';
 
 export interface SkeletonNode {
   id: RegionId;
@@ -32,6 +32,8 @@ export interface Skeleton {
   edges: Edge[];
   coreId: RegionId;
   bastions: RegionId[];
+  /** Una por sector y por Cerco, colocadas por rotación: el reparto es exacto. */
+  gates: Gate[];
   extent: number;
   /** `rotate(id, k)` = el nodo equivalente k sectores más allá. Biyección. */
   rotate: (id: RegionId, k: number) => RegionId;
@@ -133,17 +135,50 @@ export function buildSkeleton(players: PlayerCount): Skeleton {
 
   // (c) Aristas radiales por proximidad angular, en ambos sentidos, para garantizar que
   //     ningún nodo se queda sin conexión hacia dentro ni hacia fuera.
+  //
+  //     Una radial que cruza de una zona a otra es un **Cerco**: no se cruza. Las
+  //     aristas de anillo nunca lo son (un anillo entero está en una sola zona) y las
+  //     del Núcleo tampoco (el Núcleo y el anillo 0 están los dos en la Corona). Así
+  //     que el Cerco no es una lista aparte: es una propiedad de la arista, y se decide
+  //     donde ya se decide si dos nodos son vecinos.
   for (let r = 0; r < spec.rings.length - 1; r++) {
     const inner = ringNodes(nodes, r);
     const outer = ringNodes(nodes, r + 1);
-    for (const node of inner) edges.add(node.id, nearestByAngle(outer, node.angle).id);
-    for (const node of outer) edges.add(node.id, nearestByAngle(inner, node.angle).id);
+    const ward = zoneOfRing(players, r) !== zoneOfRing(players, r + 1);
+    for (const node of inner) edges.add(node.id, nearestByAngle(outer, node.angle).id, ward);
+    for (const node of outer) edges.add(node.id, nearestByAngle(inner, node.angle).id, ward);
   }
 
   const bastionRing = spec.bastionRing;
   const bastionK = Math.floor(((spec.rings[bastionRing] as number) - 1) / 2);
   const bastions: RegionId[] = [];
   for (let s = 0; s < players; s++) bastions.push(at(s, bastionRing, bastionK));
+
+  // Puertas: una por sector y Cerco, en la radial más cercana a la **frontera entre
+  // sectores**, no a la vertical del Bastión.
+  //
+  // Las dos opciones son igual de simétricas bajo rotación, pero solo ésta pone la
+  // Puerta donde se tocan dos jugadores. Y ahí es donde tiene que estar: el Coloso
+  // existe para plantear «¿quién paga la puerta?» ([ADR-043]), y esa pregunta no se le
+  // hace a nadie si cada uno tiene la suya en mitad de su casa.
+  const gates: Gate[] = [];
+  for (const { outerRing, innerRing } of wardBoundaries(players)) {
+    const outerNodes = ringNodes(nodes, outerRing);
+    const innerNodes = ringNodes(nodes, innerRing);
+    for (let s = 0; s < players; s++) {
+      const boundary = (s + 1) * sectorSpan - Math.PI / 2;
+      const outer = nearestByAngle(outerNodes, boundary);
+      const inner = nearestByAngle(innerNodes, outer.angle);
+      gates.push({
+        id: gates.length,
+        inner: inner.id,
+        outer: outer.id,
+        from: zoneOfRing(players, outerRing) as Zone,
+        to: zoneOfRing(players, innerRing) as Zone,
+        colossus: `x${gates.length}`,
+      });
+    }
+  }
 
   const rotate = (id: RegionId, k: number): RegionId => {
     if (id === CORE_ID) return CORE_ID;
@@ -157,6 +192,7 @@ export function buildSkeleton(players: PlayerCount): Skeleton {
     edges: edges.toArray(),
     coreId: CORE_ID,
     bastions,
+    gates,
     extent: Math.ceil((radii[radii.length - 1] as number) + NODE_RADIUS + 16),
     rotate,
   };
@@ -198,14 +234,16 @@ class EdgeSet {
   private readonly seen = new Set<string>();
   private readonly list: Edge[] = [];
 
-  add(a: RegionId, b: RegionId): void {
+  add(a: RegionId, b: RegionId, ward = false): void {
     if (a === b) return;
     const lo = Math.min(a, b);
     const hi = Math.max(a, b);
     const key = `${lo}-${hi}`;
     if (this.seen.has(key)) return;
     this.seen.add(key);
-    this.list.push({ a: lo, b: hi });
+    // `ward` solo aparece cuando es cierto: un `false` explícito ensuciaría la forma
+    // canónica del mapa y cambiaría el checksum sin que cambie nada del juego.
+    this.list.push(ward ? { a: lo, b: hi, ward: true } : { a: lo, b: hi });
   }
 
   toArray(): Edge[] {
