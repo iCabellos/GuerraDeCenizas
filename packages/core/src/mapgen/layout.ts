@@ -21,15 +21,12 @@
  */
 
 import type { GameMap, RegionId } from '../types/index';
-import { buildAdjacency } from './skeleton';
+import { CELL_RADIUS, CORE_SHARE, buildAdjacency } from './skeleton';
 
 export interface Point {
   x: number;
   y: number;
 }
-
-/** Margen entre el anillo exterior y el borde del mundo, en unidades del `viewBox`. */
-const RIM_INSET = 6;
 
 /**
  * Las celdas del mapa, indexadas por `regionId`.
@@ -55,7 +52,8 @@ export function regionCells(map: GameMap): Point[][] {
   }
 
   const { faceOf, faces } = traceFaces(count, around, slot);
-  const centers = faces.map((face) => faceCenter(face, pos, adjacency));
+  const weights = nodeWeights(map, adjacency, pos);
+  const centers = faces.map((face) => faceCenter(face, pos, weights));
 
   // La cara exterior es la única recorrida en sentido horario: su área con signo es
   // negativa porque encierra al resto del mapa, no a un trozo de él.
@@ -64,7 +62,11 @@ export function regionCells(map: GameMap): Point[][] {
     0,
   );
 
-  const rimRadius = Math.max(1, map.extent - RIM_INSET);
+  // `extent` es la frontera exterior del último anillo: las provincias de fuera llegan
+  // justo hasta ahí y ni un punto más, que es lo que las deja del tamaño de las demás.
+  // La unidad de holgura es por el redondeo a dos decimales, que si no puede empujar un
+  // vértice fuera del `viewBox` por milésimas.
+  const rimRadius = Math.max(1, map.extent - 1);
 
   return map.regions.map((region) => {
     const v = region.id;
@@ -137,23 +139,43 @@ function traceFaces(
 }
 
 /**
- * El vértice que aporta una cara.
+ * Cuánto tira cada región de los vértices que la rodean.
  *
- * No es el centroide sino una media **ponderada por grado**: un nodo con muchas caras
- * alrededor tira de todas hacia sí. Sin eso, el Núcleo —que toca el anillo interior
- * entero— se quedaba con un cuarto del mapa, y el objetivo de la partida no puede ser
- * también la mayor provincia por accidente geométrico.
+ * **Uno para todas menos el Núcleo.** Ponderar por grado parecía elegante y costaba caro:
+ * un nodo de grado 5 tiraba más que uno de grado 4 y acababa con una provincia un 50 %
+ * más pequeña, sin que eso significara nada en el juego.
+ *
+ * El Núcleo sí necesita su propio peso: toca el anillo interior **entero**, así que sin él
+ * su celda se comería el centro del mapa. El peso sale en forma cerrada de la geometría —
+ * con el Núcleo en el origen y sus vecinos a `r0`, el vértice de cada cara queda a
+ * `2·r0·cos(π/n) / (w + 2)`, y se despeja la `w` que deja la celda en su cuota.
  */
+function nodeWeights(
+  map: GameMap,
+  adjacency: readonly (readonly RegionId[])[],
+  pos: readonly Point[],
+): number[] {
+  const weights = new Array<number>(map.regions.length).fill(1);
+  const ring = adjacency[map.coreId] ?? [];
+  if (ring.length === 0) return weights;
+
+  const r0 = ring.reduce((sum, v) => sum + Math.hypot(pos[v]!.x, pos[v]!.y), 0) / ring.length;
+  const target = CELL_RADIUS * Math.sqrt(CORE_SHARE);
+  weights[map.coreId] = Math.max(1, (2 * r0 * Math.cos(Math.PI / ring.length)) / target - 2);
+  return weights;
+}
+
+/** El vértice que aporta una cara: la media de sus regiones, con sus pesos. */
 function faceCenter(
   face: readonly RegionId[],
   pos: readonly Point[],
-  adjacency: readonly (readonly RegionId[])[],
+  weights: readonly number[],
 ): Point {
   let x = 0;
   let y = 0;
   let total = 0;
   for (const v of face) {
-    const weight = adjacency[v]!.length;
+    const weight = weights[v]!;
     x += pos[v]!.x * weight;
     y += pos[v]!.y * weight;
     total += weight;

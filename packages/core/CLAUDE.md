@@ -141,7 +141,14 @@ anomalías, Sombra, doctrinas activas, investigación, perturbación y evaluaci�
 | `rules/movement.ts` | Validación de todas las órdenes + movimiento simultáneo. |
 | `rules/standing.ts` | Órdenes Permanentes y Mando Automático. **La ausencia nunca daña a un tercero.** |
 | `rules/views.ts` | Proyección de vistas sin resolver: la necesita el turno 0, que no pasa por `reduce()`. |
+| `mapgen/skeleton.ts` | Nodos, aristas y el **reparto por área** de los anillos ([ADR-043](../../docs/DECISIONS.md#adr-043)). |
 | `mapgen/layout.ts` | Las **provincias**: el grafo plano convertido en teselación ([ADR-041](../../docs/DECISIONS.md#adr-041)). |
+
+Los anillos se reparten **por área**, no por un hueco fijo: `b[r+1]² = b[r]² + CELL_RADIUS²·n(r)`,
+y el nodo va en la mitad **por superficie** de su banda. Todas las provincias miden
+aproximadamente lo mismo, que además de verse bien es lo que hace que capturar una región
+valga lo mismo caiga donde caiga. Si tocas `ringGeometry()`, el test que lo caza fija la
+dispersión (< ×2), no los números.
 
 `layout.ts` parece cosa de la interfaz y no lo es. La teselación **define la adyacencia que
 el jugador ve**: dos provincias comparten frontera si y solo si sus regiones son adyacentes.

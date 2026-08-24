@@ -160,6 +160,22 @@ describe('teselación del mapa', () => {
     }
   });
 
+  it.each(COUNTS)('todas las provincias miden aproximadamente lo mismo (%i jugadores)', (n) => {
+    // La intención, no la constante: **capturar una región vale lo mismo caiga donde
+    // caiga**. Con anillos separados por un hueco fijo la dispersión llegaba a ×2,8 y el
+    // tablero parecía roto además de ser injusto; las bandas de área igual la bajan a ×1,8.
+    for (const seed of SEEDS) {
+      const { map } = generateMap(seed, n);
+      const cells = regionCells(map);
+      const sizes = cells
+        .filter((_, id) => id !== map.coreId)
+        .map((cell) => Math.abs(area(cell)))
+        .sort((a, b) => a - b);
+
+      expect(sizes[sizes.length - 1]! / sizes[0]!).toBeLessThan(2);
+    }
+  });
+
   it('el Núcleo no se come el centro del mapa', () => {
     // Toca el anillo interior entero, así que su celda sale de más caras que ninguna. Sin
     // ponderar por grado se llevaba un cuarto de la superficie: el objetivo de la partida
@@ -172,7 +188,10 @@ describe('teselación del mapa', () => {
         .filter((_, id) => id !== map.coreId)
         .map((cell) => Math.abs(area(cell)));
       const median = others.sort((a, b) => a - b)[Math.floor(others.length / 2)]!;
-      expect(core / median).toBeLessThan(3);
+      // Se le nota que es el objetivo, y no se come el centro: entre una provincia y media
+      // y dos. Su cuota la fija `CORE_SHARE`, no el azar de la geometría.
+      expect(core / median).toBeGreaterThan(1);
+      expect(core / median).toBeLessThan(2);
     }
   });
 });

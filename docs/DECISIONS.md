@@ -50,6 +50,7 @@
 | [040](#adr-040) | El mapa es la interfaz: se ordena tocándolo, y nada flota encima | aceptada |
 | [041](#adr-041) | El mapa se tesela: territorio continuo, no un grafo dibujado | aceptada |
 | [042](#adr-042) | La campaña se juega en el mundo 3D, sobre el mapa real | aceptada |
+| [043](#adr-043) | El mapa se reparte por área: todas las provincias miden lo mismo | aceptada |
 
 ---
 
@@ -1654,6 +1655,82 @@ mismo código.
 altura, así que la pieza flota y todo lo que se coloca «encima» acaba medio enterrado. En la
 Ciudad pasaba desapercibido; aquí dejaba los resaltados **dentro** de la provincia, sin ver.
 La escena de campaña lee la cota superior de la geometría en vez de suponerla.
+
+---
+
+<a id="adr-043"></a>
+
+## ADR-043 — El mapa se reparte por área: todas las provincias miden lo mismo
+**Estado:** aceptada · 2026-08-24
+
+**Contexto.** [ADR-041](#adr-041) hizo que el mapa se leyera como territorio, pero al
+mirarlo montado seguía pareciendo roto. Medido, el motivo no era el render:
+
+```
+dispersión de superficie entre la provincia mayor y la menor
+  2 jugadores  ×2,82        Núcleo  ×0,75 de la mediana
+  3 jugadores  ×2,14        Núcleo  ×0,94
+  5 jugadores  ×1,95        Núcleo  ×1,69
+```
+
+Casi tres veces de diferencia. Y no es solo estético: **capturar una región valía cosas
+distintas según dónde cayera**, en un juego cuya premisa es que el reparto es verificable.
+
+Dos causas, las dos en `skeleton.ts`:
+
+1. **Los anillos se separaban por un hueco constante** (`RING_GAP`), sin mirar cuántos
+   nodos tenía cada uno. Un anillo de 15 nodos y otro de 30 recibían la misma banda, así
+   que las provincias del primero salían al doble.
+2. **El anillo exterior se estiraba hasta el borde del mundo.** `extent` añadía un margen
+   y las celdas de fuera llegaban hasta él: un 45 % más grandes que las de dentro.
+
+**Decisión.** El mapa se reparte **por área**. A cada anillo se le da exactamente la banda
+que necesita para que todas sus provincias midan lo mismo:
+
+```
+A = π · CELL_RADIUS²                       ← la provincia tipo
+b[r+1]² = b[r]² + CELL_RADIUS² · n(r)      ← la banda del anillo r
+radio(r) = √((b[r]² + b[r+1]²) / 2)        ← el nodo, en la mitad por ÁREA
+```
+
+El nodo va en el radio que parte su banda en dos mitades de igual superficie, no en el
+punto medio: con anillos anchos el medio geométrico deja más área fuera que dentro y la
+provincia se descuelga. Y `extent` pasa a ser **la frontera exterior del último anillo**,
+ni un punto más: el mundo es el mapa.
+
+El Núcleo tiene su propia cuota, `CORE_SHARE`, y su peso en la teselación se despeja en
+forma cerrada de la geometría en vez de salir de una heurística.
+
+```
+dispersión después              Núcleo
+  2 jugadores  ×1,72            ×1,25 de la mediana
+  3 jugadores  ×1,60            ×1,26
+  5 jugadores  ×1,72            ×1,31
+```
+
+**Consecuencias.**
+- ✅ Una provincia vale aproximadamente lo mismo caiga donde caiga. Hay test, y fija la
+  **intención** —dispersión < ×2— no las constantes.
+- ✅ El Núcleo se nota que es el objetivo sin comerse el centro, y su tamaño ya no depende
+  del número de jugadores.
+- ✅ El tablero se lee como un reparto y no como un montón de piezas de tamaños dispares.
+- ⚠️ `MAPGEN_VERSION` sube a **0.2.0**: la misma semilla ya no da el mismo mapa. Las
+  partidas en curso guardan el suyo en `game_states` y siguen exactamente igual.
+- ⚠️ La dispersión no baja de ×1,7. Lo que queda viene de que las conexiones radiales entre
+  anillos de distinto tamaño no pueden ser todas iguales, y **eso es adyacencia**, o sea
+  balance. La geometría se adapta al juego, no al revés ([ADR-041](#adr-041)).
+
+**Descartado.**
+- *Relajación de Lloyd sobre las posiciones.* Es la técnica de manual para igualar celdas y
+  aquí **empeora**: medida, sube la dispersión de ×1,72 a ×6,77 en seis pasadas. Con el
+  borde exterior fijo, las celdas de la costa se estiran y las de dentro se hunden. Se
+  descarta por medida, no por intuición.
+- *Ponderar el vértice de cada cara por el grado del nodo.* Parecía elegante y costaba caro:
+  un nodo de grado 5 tiraba más que uno de grado 4 y acababa con una provincia un 50 % más
+  pequeña, sin que eso significara nada en el juego. Peso 1 para todos menos el Núcleo.
+- *Cambiar los tamaños de anillo de `SECTOR_SPEC` para que fueran proporcionales al radio.*
+  Eso es composición de sector: cambia cuántas regiones hay, la bolsa de terrenos y el
+  tamaño del mapa. Es diseño de juego, no un ajuste de dibujo.
 
 ---
 

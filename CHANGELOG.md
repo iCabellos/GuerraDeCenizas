@@ -14,6 +14,47 @@ Este proyecto sigue [SemVer](https://semver.org/lang/es/).
 
 ### Cambiado
 
+- **El mapa se reparte por área: todas las provincias miden lo mismo**
+  ([ADR-043](docs/DECISIONS.md#adr-043)). Montado en relieve, el tablero seguía pareciendo
+  roto, y medido no era cosa del render: entre la provincia mayor y la menor había hasta
+  **×2,8 de superficie**. No es solo estético — capturar una región valía cosas distintas
+  según dónde cayera, en un juego cuya premisa es que el reparto se verifica.
+
+  Dos causas, las dos en el esqueleto. Los anillos se separaban por un hueco constante sin
+  mirar cuántos nodos tenía cada uno, así que un anillo de 15 y otro de 30 recibían la
+  misma banda. Y el anillo exterior se estiraba hasta el margen del mundo: un 45 % más
+  grande que el resto.
+
+  Ahora a cada anillo se le da exactamente la banda que necesita para que sus provincias
+  midan lo mismo, el nodo va en la mitad **por área** de su banda —no en el punto medio— y
+  `extent` es la frontera exterior del último anillo, ni un punto más. La dispersión baja a
+  ×1,7 y el Núcleo pasa de oscilar entre ×0,75 y ×1,69 de la mediana a un ×1,25 estable.
+
+  Probé la relajación de Lloyd, que es la técnica de manual para esto, y **la medida dijo
+  que no**: con el borde exterior fijo sube la dispersión a ×6,8. Queda descartada en el
+  ADR con su número.
+
+  `MAPGEN_VERSION` sube a 0.2.0 — la misma semilla ya no da el mismo mapa. Las partidas en
+  curso guardan el suyo y siguen exactamente igual.
+
+- **El relieve se lee como una tierra y no como un montón de losas.** Las provincias
+  arrancan todas del mismo suelo, así que un desnivel entre vecinas es un acantilado de un
+  mismo cuerpo y no un hueco al vacío; el bisel desaparece, porque metía la cara superior
+  hacia dentro y separaba a las vecinas que en el plano se tocan exactamente.
+
+  El terreno usa su propia tabla de alturas en la campaña: una provincia mide el doble que
+  un hexágono de la Ciudad y con el rango de allí el tablero salía como una escalera rota.
+
+  Y **el color lo pone quién manda; el terreno es textura**. Con los dos a pleno color
+  competían y el mapa era un mosaico donde no se distinguía un frente de un bosque: ahora
+  el terreno se apaga hacia la pizarra —lo siguen contando la altura y los accesorios— y el
+  color vivo queda para el asiento. Los frentes se ven de un vistazo.
+
+  Cada provincia lleva además su borde, el mundo se apoya en un disco de ceniza en vez de
+  flotar, las sombras se encuadran al mapa —con la caja de las vitrinas media mitad no
+  proyectaba— y alejar la cámara devuelve el objetivo hacia el centro, que si no el tablero
+  se queda arrinconado.
+
 - **La campaña se juega en el mundo 3D** ([ADR-042](docs/DECISIONS.md#adr-042), sustituye a
   [ADR-035](docs/DECISIONS.md#adr-035)). El motor 2.5D que ya levantaba la Ciudad dibuja
   ahora el campo de batalla, y no un tablero decorativo: extruye **las provincias reales**

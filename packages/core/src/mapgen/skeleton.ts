@@ -37,41 +37,65 @@ export interface Skeleton {
   rotate: (id: RegionId, k: number) => RegionId;
 }
 
-// Geometría del render. Unidades del `viewBox`, no píxeles.
-const NODE_RADIUS = 32;
-const NODE_GAP = 24;
-const RING_GAP = 88;
+/**
+ * Geometría del render, en unidades del `viewBox`.
+ *
+ * `CELL_RADIUS` es el radio de la provincia **tipo**: todas miden lo mismo, así que este
+ * número fija a la vez el tamaño de una región y, por acumulación, el del mapa entero.
+ */
+export const CELL_RADIUS = 58;
+
+/** Cuántas provincias vale el Núcleo. Es el objetivo de la campaña: se le nota, no se le come. */
+export const CORE_SHARE = 1.35;
 
 const CORE_ID = 0;
 
 export function nodeRadius(): number {
-  return NODE_RADIUS;
+  return CELL_RADIUS;
 }
 
 /**
- * Radios de cada anillo.
+ * Fronteras de cada anillo, **por área**.
  *
- * Dos restricciones a la vez: los nodos de un mismo anillo no pueden solaparse (el radio
- * mínimo depende de cuántos hay), y los anillos deben separarse entre sí. Se toma el
- * máximo de ambas y se fuerza que sea monótono creciente.
+ * La versión anterior separaba los anillos por un hueco constante y colocaba el nodo en
+ * el radio del anillo. El resultado, al teselar, eran provincias de hasta **2,8× de
+ * diferencia de superficie** entre la mayor y la menor: un tablero que parece roto, y
+ * además injusto — capturar una región valía cosas muy distintas según dónde cayera.
+ *
+ * Aquí cada anillo recibe justo el área que necesita para que **todas sus provincias
+ * midan lo mismo**:
+ *
+ * ```
+ * área de una provincia = A = π · CELL_RADIUS²
+ * banda del anillo r    = π · (b[r+1]² − b[r]²) = A · n(r)
+ *   ⇒  b[r+1]² = b[r]² + CELL_RADIUS² · n(r)
+ * ```
+ *
+ * Y el nodo va en el **radio que parte su banda en dos mitades de igual área**, no en el
+ * punto medio: con anillos anchos, el medio geométrico deja más superficie fuera que
+ * dentro y la provincia se descuelga hacia afuera.
+ *
+ * Devuelve los radios de los nodos y las fronteras, que es lo que necesita `extent`.
  */
-function ringRadii(players: PlayerCount): number[] {
+function ringGeometry(players: PlayerCount): { radii: number[]; bounds: number[] } {
   const spec = SECTOR_SPEC[players];
-  const spacing = 2 * NODE_RADIUS + NODE_GAP;
+  // El Núcleo ocupa el disco central: su cuota fija dónde empieza el primer anillo.
+  const bounds = [CELL_RADIUS * Math.sqrt(CORE_SHARE)];
   const radii: number[] = [];
 
   for (let r = 0; r < spec.rings.length; r++) {
     const total = (spec.rings[r] as number) * players;
-    const needed = (total * spacing) / (2 * Math.PI);
-    const previous = r === 0 ? NODE_RADIUS + RING_GAP : (radii[r - 1] as number) + RING_GAP;
-    radii.push(Math.max(needed, previous));
+    const inner = bounds[r] as number;
+    const outer = Math.sqrt(inner * inner + CELL_RADIUS * CELL_RADIUS * total);
+    bounds.push(outer);
+    radii.push(Math.sqrt((inner * inner + outer * outer) / 2));
   }
-  return radii;
+  return { radii, bounds };
 }
 
 export function buildSkeleton(players: PlayerCount): Skeleton {
   const spec = SECTOR_SPEC[players];
-  const radii = ringRadii(players);
+  const { radii, bounds } = ringGeometry(players);
   const sectorSpan = (2 * Math.PI) / players;
 
   const nodes: SkeletonNode[] = [
@@ -157,7 +181,10 @@ export function buildSkeleton(players: PlayerCount): Skeleton {
     edges: edges.toArray(),
     coreId: CORE_ID,
     bastions,
-    extent: Math.ceil((radii[radii.length - 1] as number) + NODE_RADIUS + 16),
+    // El mundo **es** el mapa: `extent` es la frontera exterior del último anillo, ni un
+    // punto más. Con margen, las provincias de fuera se estiraban hasta el borde y salían
+    // un 45 % más grandes que las de dentro.
+    extent: Math.ceil(bounds[bounds.length - 1] as number),
     rotate,
   };
 }

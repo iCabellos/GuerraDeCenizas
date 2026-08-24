@@ -455,6 +455,29 @@ const asKind = (raw: string | null): Kind =>
 const asBuilding = (raw: string | null): BuildingKind =>
   BUILDINGS.find((b) => b === raw) ?? 'granary';
 
+/**
+ * Cuánto cuerpo tienen las provincias por debajo del suelo.
+ *
+ * Todas arrancan de la misma cota, así que el desnivel entre dos vecinas es un
+ * **acantilado de un mismo cuerpo** y no un hueco al vacío. Sin esto el mapa se lee como
+ * un montón de losas sueltas.
+ */
+const FLOOR = 0.9;
+
+/**
+ * Altura de cada terreno **en el mapa de campaña**.
+ *
+ * No es `HEIGHT`, la de la Ciudad, y no por capricho: allí una losa es un hexágono de una
+ * unidad y el rango 0,14–0,95 se lee como relieve; aquí una provincia mide el doble, los
+ * saltos entre vecinas llegaban a media provincia y el tablero salía como una escalera
+ * rota. El orden se conserva —el agua abajo, la elevación arriba, el Núcleo por encima de
+ * todo—, el rango se comprime.
+ */
+const CAMPAIGN_HEIGHT: Record<Kind, number> = {
+  water: 0.10, plain: 0.26, forest: 0.30, seam: 0.28,
+  urban: 0.34, bastion: 0.42, high: 0.48, core: 0.58,
+};
+
 const LIVE = new Set<GdcWorld>();   // orden = último visto primero al final
 const MAX_LIVE = 8;
 
@@ -878,36 +901,65 @@ export class GdcWorld extends HTMLElement {
       });
       shape.closePath();
 
-      const height = HEIGHT[region.kind];
+      // **Sin bisel.** El bisel mete la cara superior hacia dentro, y con eso dos
+      // provincias vecinas dejan de tocarse: el mapa se lee como un montón de losas
+      // sueltas en vez de como una tierra. Sin él comparten pared exacta, igual que
+      // comparten frontera en el plano.
+      //
+      // Y todas arrancan del mismo suelo (`FLOOR`), no de su propia cota: así los
+      // desniveles entre vecinas son **acantilados de un mismo cuerpo** y no huecos al
+      // vacío. El relieve del terreno se comprime, porque una provincia mide el doble que
+      // un hexágono de la Ciudad y la misma altura absoluta se lee el doble de alta.
+      const height = CAMPAIGN_HEIGHT[region.kind];
       const geometry = new THREE.ExtrudeGeometry(shape, {
-        depth: height, bevelEnabled: true, bevelThickness: 0.03, bevelSize: 0.03,
-        bevelSegments: 2, curveSegments: 1,
+        depth: FLOOR + height, bevelEnabled: false, curveSegments: 1,
       });
       geometry.rotateX(-Math.PI / 2);
-      // La meseta se apoya en el suelo y su cara superior queda en `top`. `hexPrism()`
-      // añade además un `translate` de su misma altura, con lo que la losa flota y todo lo
-      // que se coloca «encima» acaba medio enterrado: aquí la cota se lee de la geometría
-      // y no se supone.
+      geometry.translate(0, -FLOOR, 0);
+      // La cota superior se lee de la geometría y no se supone: `hexPrism()` traslada la
+      // losa su propia altura y deja flotando todo lo que se coloque «encima».
       geometry.computeBoundingBox();
       const top = geometry.boundingBox?.max.y ?? height;
 
       const group = new THREE.Group();
       group.position.set(region.x * k, 0, region.y * k);
 
-      // Quién manda aquí se ve en el color del terreno, no en un velo encima: una lámina
-      // translúcida se la come la luz y el mapa vuelve a ser un diorama sin frentes.
+      // **El color lo pone quién manda; el terreno es textura.**
+      //
+      // Con el terreno a pleno color y el dominio mezclado a partes iguales, los dos
+      // competían: el mapa salía como un mosaico de verdes, tierras y grises donde no se
+      // distinguía un frente de un bosque. Así que el terreno se apaga hacia la pizarra
+      // —lo siguen contando la altura y los accesorios— y el color vivo queda para el
+      // asiento. Lo neutral es tierra de nadie, y se ve de un vistazo.
+      const ground = blend(TOP[region.kind], PAL.line, 0.5);
       const surface = region.owner === null
-        ? TOP[region.kind]
-        : blend(TOP[region.kind], seatColor(region.owner), 0.42);
-      const prism = new THREE.Mesh(
-        geometry,
+        ? ground
+        : blend(ground, seatColor(region.owner), 0.62);
+      // Dos materiales: la meseta y el acantilado. Sin el segundo, la pared lateral tiene
+      // el mismo color que la cara de arriba y el desnivel no se ve.
+      const prism = new THREE.Mesh(geometry, [
         mat(surface, { roughness: region.kind === 'water' ? 0.25 : 0.92 }),
-      );
+        mat(blend(surface, PAL.void, 0.4), { roughness: 0.98 }),
+      ]);
       prism.receiveShadow = true;
       prism.castShadow = true;
       prism.userData = { regionId: region.id };
       group.add(prism);
       this._pickable.push(prism);
+
+      // El borde de la provincia. Dos vecinas a la misma altura se funden en una sola
+      // mancha de color sin él, y el mapa deja de leerse como un reparto de territorios.
+      const outline = new THREE.LineLoop(
+        new THREE.BufferGeometry().setFromPoints(
+          region.cell.map((p) => new THREE.Vector3(
+            (p.x - region.x) * k, top + 0.006, (p.y - region.y) * k,
+          )),
+        ),
+        new THREE.LineBasicMaterial({
+          color: blend(surface, PAL.void, 0.62), transparent: true, opacity: 0.9,
+        }),
+      );
+      group.add(outline);
 
       // Halo de estado: seleccionada, alcanzable, amenazada. Se reutiliza turno a turno
       // cambiando su material, sin reconstruir el mundo.
@@ -930,7 +982,9 @@ export class GdcWorld extends HTMLElement {
       else {
         const veil = new THREE.Mesh(
           new THREE.ExtrudeGeometry(shape, { depth: 0.02, bevelEnabled: false }),
-          mat(PAL.void, { transparent: true, opacity: 0.66, roughness: 1 }),
+          // Niebla, no borrón: a cinco jugadores la mayor parte del mapa está sin observar,
+          // y al 0,66 el tablero entero se volvía negro.
+          mat(PAL.void, { transparent: true, opacity: 0.46, roughness: 1 }),
         );
         veil.geometry.rotateX(-Math.PI / 2);
         veil.position.y = top + 0.05;
@@ -944,10 +998,34 @@ export class GdcWorld extends HTMLElement {
       if (region.owner === data.seat && region.kind === 'bastion') this._bastionPos = anchor.clone();
     }
 
+    // El mundo termina en algo. Sin esto la tierra flota sobre el vacío y el mapa se lee
+    // como un recorte, no como un sitio: el disco cierra la base y asoma un poco por fuera
+    // de la costa, que es lo que la dibuja.
+    const world = data.extent * k;
+    const flats = new THREE.Mesh(
+      new THREE.CircleGeometry(world * 1.05, 96),
+      mat(blend(PAL.void, PAL.panel, 0.55), { roughness: 1 }),
+    );
+    flats.geometry.rotateX(-Math.PI / 2);
+    flats.position.y = -FLOOR + 0.02;
+    flats.receiveShadow = true;
+    root.add(flats);
+
     this._arrows = new THREE.Group();
     root.add(this._arrows);
 
-    this._radius = data.extent * k;
+    this._radius = world;
+    // Las sombras se encuadran al mapa: con la caja fija de las vitrinas, medio tablero
+    // se quedaba fuera y sus provincias no proyectaban nada.
+    for (const light of this._scene.children) {
+      if (light instanceof THREE.DirectionalLight && light.castShadow) {
+        const box = light.shadow.camera;
+        box.left = -world * 1.1; box.right = world * 1.1;
+        box.top = world * 1.1; box.bottom = -world * 1.1;
+        box.far = world * 5;
+        box.updateProjectionMatrix();
+      }
+    }
     this._pick();
   }
 
@@ -1051,6 +1129,9 @@ export class GdcWorld extends HTMLElement {
   /** Acerca (`> 1`) o aleja (`< 1`). El recorrido es el mismo que el del plano. */
   zoomBy(factor: number): void {
     this._zoom = Math.min(1.6, Math.max(0.22, this._zoom / factor));
+    // Al alejar, el objetivo vuelve hacia el centro del mapa. Si no, mirar el conjunto
+    // desde una esquina deja media pantalla vacía y el tablero arrinconado.
+    if (factor < 1) this._target.multiplyScalar(0.62);
     if (this._built) this._place();
   }
 

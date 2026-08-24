@@ -194,7 +194,29 @@ El tercer invariante (multiconjunto de distancias entre bastiones) es el que gar
 que, con 5 jugadores, **nadie tiene «peores vecinos» que otro**: cada uno tiene dos
 vecinos cercanos y dos lejanos, siempre.
 
-### 4.2 De grafo a territorio: la teselación
+### 4.2 El reparto por área
+
+Los anillos **no** se separan por un hueco fijo: a cada uno se le da exactamente la banda
+que necesita para que todas sus provincias midan lo mismo
+([ADR-043](DECISIONS.md#adr-043)).
+
+```
+A          = π · CELL_RADIUS²                  ← la provincia tipo
+b[r+1]²    = b[r]² + CELL_RADIUS² · n(r)       ← la banda del anillo r
+radio(r)   = √((b[r]² + b[r+1]²) / 2)          ← el nodo, en la mitad por ÁREA
+extent     = b[último]                         ← el mundo ES el mapa
+```
+
+El nodo va en el radio que parte su banda en dos mitades de igual superficie, no en el
+punto medio: con anillos anchos el medio geométrico deja más área fuera que dentro. Y
+`extent` es la frontera exterior del último anillo — con margen, las provincias de la costa
+salían un 45 % más grandes.
+
+Con el hueco fijo la dispersión de superficie llegaba a **×2,8**; así baja a **×1,7**, y el
+Núcleo tiene su cuota propia (`CORE_SHARE`) en vez de depender del número de jugadores.
+Hay test, y fija la intención —dispersión < ×2—, no las constantes.
+
+### 4.3 De grafo a territorio: la teselación
 
 El esqueleto es un grafo, pero **dibujarlo como un grafo fue un error de tres versiones**:
 nodos sueltos unidos por líneas se lee como un árbol de investigación, no como el tablero
@@ -224,7 +246,7 @@ La teselación **conserva la simetría C_n**, porque el dual de un grafo C_n-sim
 hay test que lo comprueba celda a celda. Ver
 [ADR-041](DECISIONS.md#adr-041), que sustituye a [ADR-037](DECISIONS.md#adr-037).
 
-### 4.3 El caso de 2 jugadores
+### 4.4 El caso de 2 jugadores
 
 Con n = 2, C₂ es una rotación de 180°, que en la práctica se percibe como un espejo. Para
 que no se sienta plano se aplica una excepción:
