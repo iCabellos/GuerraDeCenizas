@@ -236,7 +236,12 @@ No las repitas. Cada una salió de un fallo real de este repositorio:
    existe para mirar la campaña sin base de datos y se caía en el montaje al suscribirse a
    Realtime; además montaba el T0, la única fase en la que no se puede mover, así que
    enseñaba un tablero donde ninguna orden era posible.
-16. **Un valor por defecto no distingue «elegido» de «nunca preguntado».**
+16. **Dibujar el grafo por dentro es enseñar la estructura de datos, no el juego.** El mapa
+   se pintaba como nodos unidos por líneas —que es exactamente lo que es— y a cinco
+   jugadores salía una estrella de radios que se lee como un árbol de investigación. La
+   teselación lo arregla y además no puede mentir: dos provincias se tocan **si y solo si**
+   son adyacentes ([ADR-041](docs/DECISIONS.md#adr-041)).
+17. **Un valor por defecto no distingue «elegido» de «nunca preguntado».**
    `faction_id not null default 'vantera'` hacía que toda cuenta fuera de Vantera sin
    haberlo decidido. Hizo falta una columna aparte (`sworn_at`) para poder saberlo
    ([ADR-039](docs/DECISIONS.md#adr-039)).

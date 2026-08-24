@@ -58,7 +58,7 @@ src/
 ├── rng/         xoshiro128** determinista
 ├── balance/     constantes como DATOS (el simulador las barre) — no lógica
 ├── factions/    catálogo de facciones + reglas de desbloqueo (nivel de cuenta)
-├── mapgen/      esqueleto C_n · decoración · disposición · generación
+├── mapgen/      esqueleto C_n · decoración · disposición · teselación · generación
 ├── rules/       reduce() = etapas puras encadenadas
 └── util/        JSON canónico y checksum
 ```
@@ -141,6 +141,12 @@ anomalías, Sombra, doctrinas activas, investigación, perturbación y evaluaci�
 | `rules/movement.ts` | Validación de todas las órdenes + movimiento simultáneo. |
 | `rules/standing.ts` | Órdenes Permanentes y Mando Automático. **La ausencia nunca daña a un tercero.** |
 | `rules/views.ts` | Proyección de vistas sin resolver: la necesita el turno 0, que no pasa por `reduce()`. |
+| `mapgen/layout.ts` | Las **provincias**: el grafo plano convertido en teselación ([ADR-041](../../docs/DECISIONS.md#adr-041)). |
+
+`layout.ts` parece cosa de la interfaz y no lo es. La teselación **define la adyacencia que
+el jugador ve**: dos provincias comparten frontera si y solo si sus regiones son adyacentes.
+Si la geometría viviera en `apps/web` y la adyacencia aquí, el día que una de las dos cambie
+el mapa ofrecería movimientos que `reduce()` rechaza. Misma razón que `previewAttack`.
 
 Si una regla nueva necesita estado del turno, va en `battle.ts` o en su etapa propia,
 **nunca** dentro de `combat.ts`: ahí se rompería la previsualización.

@@ -194,7 +194,37 @@ El tercer invariante (multiconjunto de distancias entre bastiones) es el que gar
 que, con 5 jugadores, **nadie tiene «peores vecinos» que otro**: cada uno tiene dos
 vecinos cercanos y dos lejanos, siempre.
 
-### 4.2 El caso de 2 jugadores
+### 4.2 De grafo a territorio: la teselación
+
+El esqueleto es un grafo, pero **dibujarlo como un grafo fue un error de tres versiones**:
+nodos sueltos unidos por líneas se lee como un árbol de investigación, no como el tablero
+de un 4X. `mapgen/layout.ts` lo convierte en provincias.
+
+```
+regionCells(map) → un polígono por región
+```
+
+El esqueleto es **plano** —cero cruces de aristas, comprobado a 2, 3 y 5— así que admite su
+**dual baricéntrico**: se trazan las caras del grafo, cada cara aporta un vértice, y la
+celda de una región es el polígono de las caras que la rodean. De ahí sale la propiedad que
+lo hace honesto:
+
+```
+∀ u,v:  las celdas de u y v comparten frontera  ⟺  (u,v) ∈ aristas
+```
+
+Y con ella desaparece el motivo por el que había que pintar las aristas: **la frontera es
+la arista**. Un Voronoi sobre los mismos centros quedaría más orgánico y **mentiría**: a 3
+jugadores, 27 pares de provincias compartirían frontera sin tener arista entre ellas.
+
+El vértice de cada cara es una media **ponderada por grado**. Sin ponderar, el Núcleo —que
+toca el anillo interior entero— se quedaba con un cuarto de la superficie del mapa.
+
+La teselación **conserva la simetría C_n**, porque el dual de un grafo C_n-simétrico lo es:
+hay test que lo comprueba celda a celda. Ver
+[ADR-041](DECISIONS.md#adr-041), que sustituye a [ADR-037](DECISIONS.md#adr-037).
+
+### 4.3 El caso de 2 jugadores
 
 Con n = 2, C₂ es una rotación de 180°, que en la práctica se percibe como un espejo. Para
 que no se sienta plano se aplica una excepción:

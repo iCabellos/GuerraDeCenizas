@@ -14,6 +14,30 @@ Este proyecto sigue [SemVer](https://semver.org/lang/es/).
 
 ### Cambiado
 
+- **El mapa se tesela: territorio continuo en vez de un grafo dibujado**
+  ([ADR-041](docs/DECISIONS.md#adr-041), sustituye a
+  [ADR-037](docs/DECISIONS.md#adr-037)). El tablero se pintaba como lo que es por dentro
+  —nodos hexagonales sueltos unidos por líneas— y a cinco jugadores, con 96 regiones y el
+  Núcleo conectado al anillo interior entero, salía una estrella de radios. Es literalmente
+  el dibujo de un grafo, y así se leía: *«parece que esto es para la investigación»*.
+
+  Ahora cada región es una **provincia poligonal** y el mapa una superficie continua, sin
+  huecos y sin líneas de conexión. Los polígonos son el dual baricéntrico del grafo plano y
+  salen de `regionCells()` en `@gdc/core`, no de la pantalla, porque cumplen la propiedad
+  que hace honesto el dibujo: **dos provincias comparten frontera si y solo si sus regiones
+  son adyacentes**. Por eso desaparecen las aristas pintadas: la frontera es la arista.
+
+  Un Voronoi habría quedado más orgánico y habría mentido — en una partida de tres, 27
+  pares de provincias se tocarían sin tener arista entre ellas, ofreciendo movimientos que
+  el motor rechaza.
+
+  La simetría C_n se conserva **exactamente** (hay test celda a celda), que era justo lo que
+  impedía tejer un panal hexagonal: la restricción cristalográfica no admite orden 5.
+
+  Efecto secundario que se nota al jugar: la superficie tocable de una región pasa de un
+  hexágono de ~50 px a la provincia entera, así que el mínimo táctil deja de ser lo que fija
+  el zoom, y alejar la cámara ya no desmonta el mapa en fichas.
+
 - **La campaña se juega tocando el mapa** ([ADR-040](docs/DECISIONS.md#adr-040)). La
   pantalla tenía el mapa a sangre y la hoja de órdenes flotando encima con un degradado
   que a media pantalla ya era opaco: el mapa dejaba de verse justo en el tercio donde mira

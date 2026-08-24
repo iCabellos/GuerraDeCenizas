@@ -41,6 +41,14 @@
 | [031](#adr-031) | Invitado = sesión anónima de Supabase, no una cuenta aparte | aceptada |
 | [032](#adr-032) | La configuración del proyecto Supabase se versiona y se despliega | aceptada |
 | [033](#adr-033) | La comprobación previa del despliegue valida forma, no presencia | aceptada |
+| [034](#adr-034) | El relieve es WebGL; lo que se lee y se toca sigue siendo DOM | aceptada |
+| [035](#adr-035) | El mapa de campaña se queda en SVG; el relieve es para la Ciudad | aceptada |
+| [036](#adr-036) | Un bot no es un humano ausente, y por eso no comparten código | aceptada |
+| [037](#adr-037) | El mapa se dibuja en hexágonos, pero no teje un panal | **sustituida por [ADR-041](#adr-041)** |
+| [038](#adr-038) | La interfaz enseña **y** nombra | aceptada |
+| [039](#adr-039) | Se jura una vez, y hasta entonces la facción no significa nada | aceptada |
+| [040](#adr-040) | El mapa es la interfaz: se ordena tocándolo, y nada flota encima | aceptada |
+| [041](#adr-041) | El mapa se tesela: territorio continuo, no un grafo dibujado | aceptada |
 
 ---
 
@@ -1259,7 +1267,13 @@ Un test contra el territorio habría declarado peor al que convierte mejor.
 <a id="adr-037"></a>
 
 ## ADR-037 — El mapa se dibuja en hexágonos, pero no teje un panal
-**Estado:** aceptada · 2026-08-21
+**Estado:** sustituida por [ADR-041](#adr-041) · 2026-08-21
+
+> **Lo que sigue vigente:** el porqué. La restricción cristalográfica es un hecho y C₅
+> sigue siendo la razón por la que este mapa no puede ser una retícula hexagonal.
+> **Lo que cambia:** la conclusión de que había que dibujar las aristas. Ese ⚠️ de más
+> abajo —«dos hexágonos pueden verse próximos y no ser adyacentes»— es exactamente lo que
+> acabó haciendo que el mapa se leyera como un árbol de investigación.
 
 **Contexto.** El diseño quiere un mapa hexagonal, y con razón: es lo que dibujan los
 mockups y lo que permite que el mundo 2.5D represente el mapa de verdad en vez de un
@@ -1486,6 +1500,80 @@ de que la partida deje de parecer un juego.
 - *Cinco casillas de orden fijas, como el mockup.* El motor admite una orden por fuerza
   hasta seis fuerzas. Enseñar cinco huecos con cuatro fuerzas ofrece una decisión que no
   existe; con seis, esconde una que sí.
+
+---
+
+<a id="adr-041"></a>
+
+## ADR-041 — El mapa se tesela: territorio continuo, no un grafo dibujado
+**Estado:** aceptada · 2026-08-24 · sustituye a [ADR-037](#adr-037)
+
+**Contexto.** El mapa se dibujaba como lo que es por dentro: nodos hexagonales en sus
+posiciones polares, con junta entre ellos, y las aristas pintadas como líneas.
+[ADR-037](#adr-037) lo aceptó a conciencia y anotó el precio en sus consecuencias — «no hay
+vecindad implícita: dos hexágonos pueden verse próximos y no ser adyacentes, y el mapa
+dibuja las aristas precisamente por eso».
+
+Ese precio resultó ser el juego entero. Jugado a cinco, con 96 regiones y el Núcleo
+conectado al anillo interior completo, el resultado en pantalla es una estrella de radios:
+fichas sueltas unidas por líneas alrededor de un centro. Es, literalmente, el dibujo de un
+grafo — y así se lee. La primera reacción de un jugador ante el mapa alejado fue *«parece
+que esto es para la investigación»*. Un 4X de conquista cuyo tablero se confunde con un
+árbol de tecnologías ha perdido antes de empezar.
+
+Lo que no se podía hacer era tejer un panal: la restricción cristalográfica no admite
+simetría de orden 5, y de esa simetría depende que el reparto entre los cinco asientos sea
+**idéntico por construcción**, que es la premisa del juego.
+
+**Decisión.** El mapa se dibuja como una **teselación**: cada región es una provincia
+poligonal, y el mapa entero una superficie continua sin huecos y sin líneas de conexión.
+
+Los polígonos son el **dual baricéntrico del grafo plano** —el esqueleto no tiene ni un
+cruce de aristas, comprobado—: se trazan sus caras, cada cara aporta un vértice, y la celda
+de una región es el polígono de las caras que la rodean. De ahí sale la propiedad que hace
+honesto el dibujo:
+
+> **dos provincias comparten frontera si y solo si sus regiones son adyacentes.**
+
+Y con ella desaparece el motivo por el que había que pintar aristas: la frontera **es** la
+arista. Lo que ADR-037 tenía que compensar con líneas, aquí no hace falta compensarlo.
+
+Vive en `packages/core/src/mapgen/layout.ts` —`regionCells(map)`— y **no** en la interfaz.
+La teselación define la adyacencia que el jugador ve; si la geometría viviera en el cliente
+y la adyacencia en el motor, el día que una de las dos cambiara el mapa ofrecería
+movimientos que `reduce()` rechaza. Es la misma razón por la que `previewAttack` está en el
+motor y no en la pantalla.
+
+**Consecuencias.**
+- ✅ El tablero se lee como territorio: quién tiene qué se ve por el color de las
+  provincias, y el frente es el sitio donde dos colores se tocan.
+- ✅ **La simetría C_n se conserva exactamente.** El dual de un grafo C_n-simétrico es
+  C_n-simétrico; hay test que lo comprueba celda a celda.
+- ✅ La superficie tocable de una región pasa de un hexágono de ~50 px a la provincia
+  entera. El mínimo de 44 px deja de ser el factor que fija el zoom.
+- ✅ El vértice de cada cara se pondera **por grado**. Sin eso el Núcleo —que toca el
+  anillo interior entero— se quedaba con un cuarto del mapa: el objetivo de la partida no
+  puede ser además la mayor provincia por accidente geométrico.
+- ⚠️ Un mapa de 5 sigue siendo un disco de anillos concéntricos, porque eso es lo que
+  `mapgen` genera. La teselación lo enseña como provincias, no lo convierte en un
+  continente. Darle forma de tierra es trabajo de `mapgen` —perturbación, prevista en
+  v0.8— y no de la pantalla.
+- ⚠️ `regionCells()` es O(V + E) y se recalcula al cambiar el mapa, una vez por partida.
+  No entra en el camino de un gesto.
+
+**Descartado.**
+- *Un Voronoi sobre los centros de región.* Sale más orgánico y **miente**: en un mapa de 3
+  jugadores, 27 pares de provincias compartirían frontera sin tener arista entre ellas. El
+  mapa estaría ofreciendo movimientos imposibles, que es peor que parecer un grafo.
+- *Cambiar la adyacencia del motor para que fuera la geométrica.* Arreglaría la mentira por
+  el otro lado, pero sube el grado medio de 3,9 a ~5, mueve el balance de movimiento y
+  suministro entero, y rompe el invariante «ningún nodo es un callejón ni un hub» que ya
+  tiene test. La geometría se adapta al juego, no al revés.
+- *Sectores anulares perfectos, tipo diana.* Teselan igual y con menos código, pero un
+  mapa que es exactamente una diana se lee como un diagrama. El dual da polígonos
+  irregulares sin inventarse nada.
+- *Volver a intentar el panal hexagonal.* Sigue siendo imposible a cinco, por lo mismo que
+  explica [ADR-037](#adr-037), que en eso no ha cambiado.
 
 ---
 

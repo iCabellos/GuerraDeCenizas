@@ -31,6 +31,7 @@ export {
   type Skeleton, type SkeletonNode,
 } from './mapgen/skeleton';
 export { generateMap, MAPGEN_VERSION, type GeneratedMap } from './mapgen/generate';
+export { regionCells, type Point } from './mapgen/layout';
 
 export { reduce, ENGINE_VERSION } from './rules/reduce';
 export { projectViews } from './rules/views';

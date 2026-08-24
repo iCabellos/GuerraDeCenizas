@@ -153,6 +153,12 @@ posible.
 El mundo 2.5D no lo puede representar: su tablero son 37 losas fijas y el mapa real es un
 grafo en polares de 45 a 96 regiones. No lo intentes otra vez sin leer el ADR.
 
+**Y se dibuja teselado, no como un grafo** ([ADR-041](../../docs/DECISIONS.md#adr-041)).
+Los polígonos salen de `regionCells()` en `@gdc/core`: **no los calcules aquí**. La
+teselación define la adyacencia que se ve —dos provincias se tocan si y solo si son
+adyacentes— y partirla en dos sitios es la forma de acabar ofreciendo movimientos que el
+motor rechaza. Nada de aristas pintadas: la frontera es la arista.
+
 ### La campaña se juega tocando el mapa
 
 [ADR-040](../../docs/DECISIONS.md#adr-040). Cuatro reglas, y las cuatro son la misma:
