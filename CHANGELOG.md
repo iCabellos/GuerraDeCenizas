@@ -14,6 +14,186 @@ Este proyecto sigue [SemVer](https://semver.org/lang/es/).
 
 ### Cambiado
 
+- **Cada provincia es un hexágono regular, y la vecindad se decide por distancia**
+  ([ADR-046](docs/DECISIONS.md#adr-046), sustituye a [ADR-041](docs/DECISIONS.md#adr-041)).
+  El tablero se dibujaba como el dual baricéntrico del grafo, y medido resultó que **ni una
+  sola provincia era un hexágono**: en un dual una celda tiene tantos lados como vecinos su
+  región, y el grafo tenía grado medio 3,9. Salían cuadriláteros y pentágonos con los lados
+  desiguales de media al doble, cuando el diseño del proyecto son hexágonos iguales.
+
+  Ahora cada provincia es el mismo hexágono regular. Como hexágonos iguales no cubren un
+  disco con simetría C_5 —eso es imposible, y de esa simetría depende el 5 jugadores—,
+  entre provincias queda holgura, así que la garantía de que el mapa no miente cambia de
+  forma: **el par no adyacente más cercano está más lejos que el par adyacente más lejano**.
+  Lo que parece vecino, lo es.
+
+  Para que eso sea cierto por construcción, la adyacencia sale de la distancia. La regla
+  anterior unía cada nodo con el más próximo **en ángulo** del anillo vecino, y ante dos
+  nodos a la misma distancia dejaba a uno vecino y al otro no — sobre el tablero los dos se
+  veían igual de juntos.
+
+  Los recuentos de anillo y los radios se recalculan juntos para que la distancia entre
+  vecinos sea casi uniforme: la dispersión baja de ×2,41 a ×1,30. Los mapas pasan a 59, 61
+  y 86 regiones, y el grado medio de 3,9 a 4,2 sin salirse del invariante de siempre.
+
+  `MAPGEN_VERSION` sube a 0.3.0 y **cambia el balance**: hay que volver a pasar el
+  simulador. Las partidas en curso guardan su mapa y siguen exactamente igual.
+
+- **Las cifras de tropas se enseñan enteras.** El combate reparte las bajas en proporción y
+  un superviviente podía quedar en 2,609; en pantalla salía «Línea 2.609», que no es una
+  cifra de un juego sino una fuga de la implementación. El motor sigue guardando el número
+  exacto, que es de lo que depende que la partida se reproduzca desde (semilla, órdenes).
+  Venía de antes de este cambio.
+
+- **El mapa de campaña usa el lenguaje visual del mockup**
+  ([ADR-045](docs/DECISIONS.md#adr-045)). El proyecto tiene un mockup que ya define cómo se
+  ve el tablero, y al llevar la campaña al relieve **no se aplicó**: se inventó un lenguaje
+  propio. El terreno iba apagado hacia la pizarra, el dueño se marcaba tiñendo la provincia
+  entera, no había estandartes ni piezas de fuerza sobre las losas, y se habían quitado el
+  bisel y la junta que hacen que un tablero parezca un tablero.
+
+  Ahora el terreno va a **color pleno** y de quién es la provincia lo dice un **filo del
+  color del asiento** en su borde; hay **estandarte** en cada provincia con dueño y las
+  fuerzas son **piezas con silueta por arma** —la cifra sigue en el DOM, que la pieza dice
+  quién y el rótulo cuántos—. Vuelven la junta, el bisel y las alturas del mockup, y la
+  cámara baja a 0,78 rad: es un diorama isométrico, no una vista cenital.
+
+  El filo se dibuja **por encima de la niebla** a propósito: el control territorial es
+  público (GDD §6.2) y esconderlo era ocultar información que el juego da.
+
+- **La cámara se mide en provincias, y el mapa enseña el frente**
+  ([ADR-044](docs/DECISIONS.md#adr-044)). Con las provincias ya iguales, el mapa montado
+  seguía sin parecer un juego. Mirando la pantalla y no el código, tres cosas.
+
+  La cámara heredaba el encuadre de la Ciudad, que acerca para que una maqueta de 37 losas
+  llene el cuadro; sobre 96 provincias eso amontonaba el lado lejano contra el horizonte y
+  el mapa parecía un montón de cristales rotos. Ahora el ajuste es exacto —incluido el
+  término de perspectiva, que es lo que antes recortaba el mapa por abajo— y **el encuadre
+  de salida se mide en provincias, no en fracción de mapa**: una fracción fija daba
+  provincias del doble de tamaño en una partida de tres que en una de cinco.
+
+  La decoración estaba dimensionada para un hexágono que se mira de cerca: cuatro edificios
+  de la Ciudad tapaban media provincia. Se encoge a la provincia que le toca, y de paso
+  desaparece la luz puntual por yacimiento, que en un mapa de 96 eran decenas.
+
+  Y **no se veía dónde acababa lo tuyo** — la queja era literal: «no se muestra claramente
+  dónde están los enemigos». Ahora toda frontera entre dos dueños distintos lleva una
+  franja clara encima. Sale de la propia teselación, así que no puede desalinearse.
+
+  Además: el objetivo de la cámara se recorta a lo que hay mapa —no se puede arrastrar
+  hasta quedarse mirando el vacío ni alejarse más allá del mundo— y **«Mi ciudad» también
+  acerca**, porque con el mapa entero en pantalla no había adónde desplazarse y el botón
+  parecía averiado justo cuando más falta hace.
+
+- **El mapa se reparte por área: todas las provincias miden lo mismo**
+  ([ADR-043](docs/DECISIONS.md#adr-043)). Montado en relieve, el tablero seguía pareciendo
+  roto, y medido no era cosa del render: entre la provincia mayor y la menor había hasta
+  **×2,8 de superficie**. No es solo estético — capturar una región valía cosas distintas
+  según dónde cayera, en un juego cuya premisa es que el reparto se verifica.
+
+  Dos causas, las dos en el esqueleto. Los anillos se separaban por un hueco constante sin
+  mirar cuántos nodos tenía cada uno, así que un anillo de 15 y otro de 30 recibían la
+  misma banda. Y el anillo exterior se estiraba hasta el margen del mundo: un 45 % más
+  grande que el resto.
+
+  Ahora a cada anillo se le da exactamente la banda que necesita para que sus provincias
+  midan lo mismo, el nodo va en la mitad **por área** de su banda —no en el punto medio— y
+  `extent` es la frontera exterior del último anillo, ni un punto más. La dispersión baja a
+  ×1,7 y el Núcleo pasa de oscilar entre ×0,75 y ×1,69 de la mediana a un ×1,25 estable.
+
+  Probé la relajación de Lloyd, que es la técnica de manual para esto, y **la medida dijo
+  que no**: con el borde exterior fijo sube la dispersión a ×6,8. Queda descartada en el
+  ADR con su número.
+
+  `MAPGEN_VERSION` sube a 0.2.0 — la misma semilla ya no da el mismo mapa. Las partidas en
+  curso guardan el suyo y siguen exactamente igual.
+
+- **El relieve se lee como una tierra y no como un montón de losas.** Las provincias
+  arrancan todas del mismo suelo, así que un desnivel entre vecinas es un acantilado de un
+  mismo cuerpo y no un hueco al vacío; el bisel desaparece, porque metía la cara superior
+  hacia dentro y separaba a las vecinas que en el plano se tocan exactamente.
+
+  El terreno usa su propia tabla de alturas en la campaña: una provincia mide el doble que
+  un hexágono de la Ciudad y con el rango de allí el tablero salía como una escalera rota.
+
+  Y **el color lo pone quién manda; el terreno es textura**. Con los dos a pleno color
+  competían y el mapa era un mosaico donde no se distinguía un frente de un bosque: ahora
+  el terreno se apaga hacia la pizarra —lo siguen contando la altura y los accesorios— y el
+  color vivo queda para el asiento. Los frentes se ven de un vistazo.
+
+  Cada provincia lleva además su borde, el mundo se apoya en un disco de ceniza en vez de
+  flotar, las sombras se encuadran al mapa —con la caja de las vitrinas media mitad no
+  proyectaba— y alejar la cámara devuelve el objetivo hacia el centro, que si no el tablero
+  se queda arrinconado.
+
+- **La campaña se juega en el mundo 3D** ([ADR-042](docs/DECISIONS.md#adr-042), sustituye a
+  [ADR-035](docs/DECISIONS.md#adr-035)). El motor 2.5D que ya levantaba la Ciudad dibuja
+  ahora el campo de batalla, y no un tablero decorativo: extruye **las provincias reales**
+  que devuelve `regionCells()`, con su terreno, su altura y el color de su dueño.
+
+  Las dos objeciones que en su día dejaron el mapa en plano han dejado de valer. El motor
+  tejía 37 losas fijas — ahora dibuja las 45 a 96 regiones que hay. Y 96 objetivos de 44 px
+  no cabían en 360 px — una provincia se toca **entera**, por rayo sobre su superficie.
+
+  El reparto de capas no se toca: el lienzo es telón y va `aria-hidden`, las cifras de
+  fuerza son DOM colocado por proyección, hay una lista de provincias enfocable para
+  teclado y lector de pantalla, y sin WebGL o con movimiento reducido queda la vista plana
+  completa. El motor emite `gdc-pick` y la pantalla decide, así que tocar en relieve llama
+  al mismo código que tocar en plano: ficha de región, apuntado y órdenes son los mismos.
+
+  En la campaña el arrastre **desplaza el mapa** y el pellizco acerca, que es lo que se
+  espera de un territorio. En la Ciudad y las vitrinas sigue girando, que es lo que se
+  espera de un objeto que se mira.
+
+### Corregido
+
+- **Las losas del mundo flotaban su propia altura.** `hexPrism()` gira la pieza y además la
+  traslada, así que lo que se coloca «encima» queda medio enterrado. En la Ciudad pasaba
+  desapercibido; en el campo dejaba los resaltados **dentro** de la provincia y no se veía
+  ni la selección ni los destinos. La escena de campaña lee la cota superior de la
+  geometría en vez de suponerla.
+
+- **El mundo se reconstruía en cada render.** `onPick` se redefine en cada render de la
+  pantalla y estaba en las dependencias del montaje: 96 provincias extruidas y un contexto
+  WebGL nuevo por cada tap. Los callbacks van en refs; en las dependencias solo queda lo que
+  define **la forma** del mundo.
+
+- **El primer resaltado se perdía.** El mundo no existe hasta que three.js termina de
+  cargarse, y para entonces el efecto ya se había ejecutado: el mapa arrancaba sin la
+  provincia seleccionada ni los destinos encendidos.
+
+- **Un rótulo anclado a una provincia fuera de cuadro se pegaba al borde**, y en un mapa de
+  96 se amontonaban todos ahí: cifras de fuerzas que no se ven, en sitios donde no están.
+
+### Añadido
+
+- `/dev/board?players=5` monta el mapa de **96 provincias**, que es el que de verdad pone a
+  prueba la pantalla: a tres caben holgadas y no se ve ninguno de sus problemas.
+
+- **El mapa se tesela: territorio continuo en vez de un grafo dibujado**
+  ([ADR-041](docs/DECISIONS.md#adr-041), sustituye a
+  [ADR-037](docs/DECISIONS.md#adr-037)). El tablero se pintaba como lo que es por dentro
+  —nodos hexagonales sueltos unidos por líneas— y a cinco jugadores, con 96 regiones y el
+  Núcleo conectado al anillo interior entero, salía una estrella de radios. Es literalmente
+  el dibujo de un grafo, y así se leía: *«parece que esto es para la investigación»*.
+
+  Ahora cada región es una **provincia poligonal** y el mapa una superficie continua, sin
+  huecos y sin líneas de conexión. Los polígonos son el dual baricéntrico del grafo plano y
+  salen de `regionCells()` en `@gdc/core`, no de la pantalla, porque cumplen la propiedad
+  que hace honesto el dibujo: **dos provincias comparten frontera si y solo si sus regiones
+  son adyacentes**. Por eso desaparecen las aristas pintadas: la frontera es la arista.
+
+  Un Voronoi habría quedado más orgánico y habría mentido — en una partida de tres, 27
+  pares de provincias se tocarían sin tener arista entre ellas, ofreciendo movimientos que
+  el motor rechaza.
+
+  La simetría C_n se conserva **exactamente** (hay test celda a celda), que era justo lo que
+  impedía tejer un panal hexagonal: la restricción cristalográfica no admite orden 5.
+
+  Efecto secundario que se nota al jugar: la superficie tocable de una región pasa de un
+  hexágono de ~50 px a la provincia entera, así que el mínimo táctil deja de ser lo que fija
+  el zoom, y alejar la cámara ya no desmonta el mapa en fichas.
+
 - **La campaña se juega tocando el mapa** ([ADR-040](docs/DECISIONS.md#adr-040)). La
   pantalla tenía el mapa a sangre y la hoja de órdenes flotando encima con un degradado
   que a media pantalla ya era opaco: el mapa dejaba de verse justo en el tercio donde mira

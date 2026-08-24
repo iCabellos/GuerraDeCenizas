@@ -236,10 +236,27 @@ No las repitas. Cada una salió de un fallo real de este repositorio:
    existe para mirar la campaña sin base de datos y se caía en el montaje al suscribirse a
    Realtime; además montaba el T0, la única fase en la que no se puede mover, así que
    enseñaba un tablero donde ninguna orden era posible.
-16. **Un valor por defecto no distingue «elegido» de «nunca preguntado».**
+16. **Dibujar el grafo por dentro es enseñar la estructura de datos, no el juego.** El mapa
+   se pintaba como nodos unidos por líneas —que es exactamente lo que es— y a cinco
+   jugadores salía una estrella de radios que se lee como un árbol de investigación. La
+   teselación lo arregla y además no puede mentir: dos provincias se tocan **si y solo si**
+   son adyacentes ([ADR-041](docs/DECISIONS.md#adr-041)).
+17. **Un valor por defecto no distingue «elegido» de «nunca preguntado».**
    `faction_id not null default 'vantera'` hacía que toda cuenta fuera de Vantera sin
    haberlo decidido. Hizo falta una columna aparte (`sworn_at`) para poder saberlo
    ([ADR-039](docs/DECISIONS.md#adr-039)).
+
+18. **En un dual, una celda tiene tantos lados como vecinos su región.** El mapa se dibujó
+   como dual baricéntrico para garantizar que «tocarse = ser adyacente», y con grado medio
+   3,9 eso condenaba el tablero a cuadriláteros y pentágonos: **ni una sola provincia era
+   un hexágono**, cuando el diseño del proyecto son hexágonos iguales. La forma de las
+   piezas no se elige en el render — sale de la estructura del grafo
+   ([ADR-046](docs/DECISIONS.md#adr-046)).
+19. **«El más próximo en ángulo» convierte un empate en una mentira.** Las aristas radiales
+   unían cada nodo con el más cercano en ángulo del anillo vecino; cuando dos estaban a la
+   **misma** distancia, uno quedaba vecino y el otro no, y sobre el tablero los dos se veían
+   igual de juntos. La adyacencia por distancia no puede hacer eso: «verse juntas» y «ser
+   vecinas» pasan a ser la misma condición.
 
 ## Idioma
 

@@ -24,12 +24,25 @@ export function ownForces(view: PlayerView): VisibleForce[] {
     .sort((a, b) => a.regionId - b.regionId || (a.id < b.id ? -1 : 1));
 }
 
+/**
+ * Cuántos soldados se enseñan.
+ *
+ * **Siempre un entero.** El combate reparte las bajas en proporción, así que un
+ * superviviente puede quedar en 2,609 — y «Línea 2,609» no es una cifra de un juego, es una
+ * fuga de la implementación en la cara del jugador. Esto es presentación y solo
+ * presentación: el motor sigue guardando el número exacto, que es de lo que depende que la
+ * resolución sea reproducible desde (semilla, órdenes).
+ */
+export function troops(value: number | null | undefined): number {
+  return Math.round(value ?? 0);
+}
+
 /** Suma de armas de una fuerza. Las ajenas sin desglose usan su tamaño aproximado. */
 export function sizeOf(force: VisibleForce): number {
   if (force.own || force.line !== null) {
-    return (force.line ?? 0) + (force.fire ?? 0) + (force.sky ?? 0);
+    return troops((force.line ?? 0) + (force.fire ?? 0) + (force.sky ?? 0));
   }
-  return force.approxTotal ?? 0;
+  return troops(force.approxTotal);
 }
 
 /** El arma que da carácter a una fuerza: la mayor. En 360 px no caben tres cifras. */

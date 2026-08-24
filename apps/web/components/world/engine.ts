@@ -18,6 +18,51 @@ import {
 
 export type { Arm, Kind } from './board';
 
+/**
+ * Una provincia de la campaña, tal y como llega del motor de reglas.
+ *
+ * `cell` es el polígono real que devuelve `regionCells()` de `@gdc/core`: **el mundo 3D
+ * no inventa geometría**, extruye la que define la adyacencia del juego. Por eso dos
+ * provincias que se tocan en relieve son exactamente las que se tocan en las reglas.
+ */
+export interface CampaignRegion {
+  id: number;
+  kind: Kind;
+  /** Centro, en coordenadas del mapa (las mismas que el `viewBox` del plano). */
+  x: number;
+  y: number;
+  cell: readonly { x: number; y: number }[];
+  owner: number | null;
+  /** ¿Se observa este turno? Si no, la provincia va bajo el velo de niebla. */
+  seen: boolean;
+  fort: number;
+}
+
+/** Marca sobre una provincia: lo que la pantalla quiere resaltar este turno. */
+export type CampaignMark = 'selected' | 'reachable' | 'threat' | 'home' | 'dim';
+
+/** Una fuerza sobre el tablero. `arm` es `null` cuando no se conoce su composición. */
+export interface CampaignForce {
+  regionId: number;
+  seat: number;
+  arm: Arm | null;
+}
+
+export interface CampaignMap {
+  regions: readonly CampaignRegion[];
+  forces: readonly CampaignForce[];
+  /** Radio del mapa en coordenadas de región. Fija la escala del mundo. */
+  extent: number;
+  seat: number;
+}
+
+/** Lo que cambia turno a turno sin reconstruir el mundo. */
+export interface CampaignOverlay {
+  marks: Readonly<Record<number, CampaignMark>>;
+  /** Flechas de órdenes: origen → destino, por identificador de región. */
+  arrows: readonly { from: number; to: number; support?: boolean }[];
+}
+
 const LABEL: Record<Arm | 'shade', string> = { line: 'Línea', fire: 'Fuego', sky: 'Cielo', shade: 'Sombra' };
 
 type Squad = {
@@ -177,6 +222,16 @@ function unitPiece(arm: Arm | 'shade', colorHex: number): THREE.Group {
 // ── Assets rápidos de edificio ───────────────────────────────────────────────
 // Versión "jugable": poca geometría, silueta inconfundible. Se sustituyen pieza
 // a pieza por las mallas high-poly sin tocar quien las coloca.
+/** Mezcla dos colores. `k` = 0 deja el primero; `k` = 1 devuelve el segundo. */
+function blend(a: number, b: number, k: number): number {
+  const mix = (shift: number) => {
+    const from = (a >> shift) & 0xff;
+    const to = (b >> shift) & 0xff;
+    return Math.round(from + (to - from) * k) & 0xff;
+  };
+  return (mix(16) << 16) | (mix(8) << 8) | mix(0);
+}
+
 const flat = (color: number, o: { roughness?: number; metalness?: number; emissive?: number; emissiveIntensity?: number } = {}) => mat(color, { flat: true, roughness: o.roughness ?? 0.86, metalness: o.metalness ?? 0.05, emissive: o.emissive, emissiveIntensity: o.emissiveIntensity });
 
 function shed(w: number, h: number, d: number, color: number): THREE.Group {
@@ -408,6 +463,110 @@ const asKind = (raw: string | null): Kind =>
 const asBuilding = (raw: string | null): BuildingKind =>
   BUILDINGS.find((b) => b === raw) ?? 'granary';
 
+/**
+ * Cuánto cuerpo tienen las provincias por debajo del suelo.
+ *
+ * Todas arrancan de la misma cota, así que el desnivel entre dos vecinas es un
+ * **acantilado de un mismo cuerpo** y no un hueco al vacío. Sin esto el mapa se lee como
+ * un montón de losas sueltas.
+ */
+
+
+/**
+ * Semieje corto del encuadre de salida, en radios de provincia.
+ *
+ * Sale de un objetivo concreto: siete provincias de ancho en un móvil de 390, o sea unos
+ * 55 px cada una. Con eso se lee el terreno, se toca sin apuntar, y sobre todo se ve el
+ * frente entero de tu territorio, que es lo que se mira al abrir un turno.
+ */
+const OPEN_SPAN = 6.2;
+
+/**
+ * Dónde empieza el collar de dominio, en fracción del radio de la provincia.
+ *
+ * El mockup usa un anillo del 0,6 al borde: sobre un hexágono que se mira de cerca es una
+ * corona ancha y queda bien. Sobre noventa y seis provincias esa corona se come el terreno
+ * y el mapa vuelve a ser un mosaico de colores de asiento — el fallo que se venía
+ * arrastrando. Aquí es un **filo**: se ve de quién es la provincia sin dejar de verse qué
+ * es la provincia.
+ */
+const COLLAR = 0.9;
+
+/** Un contorno encogido hacia el centro de la provincia. */
+function scaleShape(rim: readonly { x: number; y: number }[], factor: number): THREE.Shape {
+  const shape = new THREE.Shape();
+  rim.forEach((p, i) => {
+    const x = p.x * factor;
+    const y = p.y * factor;
+    if (i === 0) shape.moveTo(x, y); else shape.lineTo(x, y);
+  });
+  shape.closePath();
+  return shape;
+}
+
+/**
+ * El collar: la corona que va entre el borde de la losa y `inner` de su radio.
+ *
+ * En el mockup es un `RingGeometry` hexagonal, que aquí no vale porque la provincia no es
+ * un hexágono. Es la misma figura construida sobre el contorno real: dos triángulos por
+ * arista entre el contorno y su copia encogida.
+ */
+function bandGeometry(rim: readonly { x: number; y: number }[], inner: number): THREE.BufferGeometry {
+  const pos: number[] = [];
+  for (let i = 0; i < rim.length; i += 1) {
+    const a = rim[i]!;
+    const b = rim[(i + 1) % rim.length]!;
+    const ai = { x: a.x * inner, y: a.y * inner };
+    const bi = { x: b.x * inner, y: b.y * inner };
+    // Sentido horario en (x, z). La celda viene antihoraria en (x, y) del mapa, y al
+    // pasar la `y` a `z` el giro se invierte: con el orden ingenuo las caras miran al
+    // suelo y el collar es invisible desde arriba, que es justo desde donde se mira.
+    pos.push(ai.x, 0, ai.y, b.x, 0, b.y, a.x, 0, a.y);
+    pos.push(ai.x, 0, ai.y, bi.x, 0, bi.y, b.x, 0, b.y);
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+/**
+ * Una fuerza de composición desconocida.
+ *
+ * De las ajenas solo se conoce el tamaño aproximado, así que ponerles la silueta de Línea
+ * sería **inventarse el arma**: el jugador leería «infantería» donde el motor no lo sabe.
+ * Peana del color del asiento y un bulto sin insignia.
+ */
+function blankPiece(colorHex: number): THREE.Group {
+  const g = new THREE.Group();
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.29, 0.08, 20),
+    mat(colorHex, { emissive: colorHex, emissiveIntensity: 0.35, roughness: 0.5 }));
+  base.position.y = 0.04;
+  const shroud = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.14, 0.3, 12),
+    mat(0x2a2d35, { roughness: 0.9 }));
+  shroud.position.y = 0.23;
+  g.add(base, shroud);
+  g.traverse((m) => { m.castShadow = true; });
+  return g;
+}
+
+/** Radio de la circunferencia mayor que cabe en la celda, en coordenadas de mapa. */
+function inradius(region: CampaignRegion): number {
+  let least = Infinity;
+  for (let i = 0; i < region.cell.length; i += 1) {
+    const a = region.cell[i]!;
+    const b = region.cell[(i + 1) % region.cell.length]!;
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len2 = dx * dx + dy * dy;
+    // Proyección del centro sobre el segmento, acotada a él: la distancia a la arista, no
+    // a la recta que la contiene.
+    const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((region.x - a.x) * dx + (region.y - a.y) * dy) / len2));
+    least = Math.min(least, Math.hypot(region.x - (a.x + t * dx), region.y - (a.y + t * dy)));
+  }
+  return Number.isFinite(least) ? least : 1;
+}
+
 const LIVE = new Set<GdcWorld>();   // orden = último visto primero al final
 const MAX_LIVE = 8;
 
@@ -425,6 +584,8 @@ export class GdcWorld extends HTMLElement {
   private _azimuth = -0.45;
   private _radius = 0;
   private _zoom = 1;
+  /** ¿Falta calcular el encuadre de salida? Necesita el ancho real del elemento. */
+  private _openZoom = false;
   private _target = new THREE.Vector3();
   private _ro?: ResizeObserver;
   private _io?: IntersectionObserver;
@@ -442,6 +603,25 @@ export class GdcWorld extends HTMLElement {
   private _ash?: THREE.Points;
   private _ashCore?: THREE.Object3D;
   private _bastionPos?: THREE.Vector3;
+  /** Datos de la campaña. Se asignan como propiedad antes de conectar el elemento. */
+  campaign?: CampaignMap;
+  private _scale = 1;
+  private _regionPos: Map<number, THREE.Vector3> = new Map();
+  private _regionHalo: Map<number, THREE.Mesh> = new Map();
+  private _pickable: THREE.Mesh[] = [];
+  private _arrows?: THREE.Group;
+  private _overlay: CampaignOverlay = { marks: {}, arrows: [] };
+  /** Píxeles recorridos en el gesto en curso. Un arrastre no puede acabar seleccionando. */
+  private _dragged = 0;
+  /** Distancia de la cámara al objetivo. La calcula `_place()`; la usa el desplazamiento. */
+  private _dist = 10;
+  /**
+   * Los oyentes de gesto se registran sobre el propio elemento, así que **sobreviven al
+   * desmontaje del mundo**: `_teardown()` suelta la escena pero no el `HTMLElement`. Sin
+   * esta guarda, cada reconstrucción duplicaba el desplazamiento y emitía dos `gdc-pick`
+   * por cada tap.
+   */
+  private _bound = false;
   private _heroGroup?: THREE.Group;
   /** Piezas del visor de assets. El material se guarda aparte: `Mesh.material` puede
    *  ser una lista, y estas piezas siempre llevan uno solo. */
@@ -579,6 +759,7 @@ export class GdcWorld extends HTMLElement {
     else if (this._world === 'tile') this._buildTile();
     else if (this._world === 'hero') this._buildHero();
     else if (this._world === 'skirmish') this._buildSkirmish();
+    else if (this._world === 'campaign') this._buildCampaign();
     else this._buildBoard();
     if (this.hasAttribute('ash')) this._buildAshfall();
 
@@ -591,8 +772,13 @@ export class GdcWorld extends HTMLElement {
       this._radius = { city: 5.4, skirmish: 3.5, hero: 1.06, unit: 0.34, asset: 1.0, tile: 1.02 }[this._world] ?? 6.5;
     }
     this._zoom = Number(this.getAttribute('zoom') ?? 1);
+    // Sin `zoom` explícito, la campaña se abre a un número fijo de provincias en pantalla.
+    // Se resuelve en el primer `_resize()`, que es cuando el elemento ya mide algo.
+    this._openZoom = this._world === 'campaign' && !this.hasAttribute('zoom');
     if (!this._target) this._target = new THREE.Vector3(0, 0, 0);
     this._applyFocus();
+
+    if (this._world === 'campaign') this.setOverlay(this._overlay);
 
     this._resize();
     if (this.hasAttribute('still')) { this._freeze(); return; }
@@ -763,6 +949,359 @@ export class GdcWorld extends HTMLElement {
         this._tilePos.set('force-' + seat + '-' + i, new THREE.Vector3(base.x, base.y + 0.6, base.z));
       });
     }
+  }
+
+
+  /**
+   * El mapa de la campaña, en relieve.
+   *
+   * **No inventa un tablero**: extruye las provincias que devuelve `regionCells()` de
+   * `@gdc/core`, que son las mismas que definen la adyacencia del juego. Dos provincias
+   * que se tocan aquí son exactamente las dos que el motor considera adyacentes; el
+   * relieve no puede prometer un movimiento que `reduce()` vaya a rechazar.
+   *
+   * De `board.ts` salen la paleta, las alturas por terreno y los accesorios, así que la
+   * Ciudad y el campo de batalla siguen siendo el mismo mundo.
+   */
+  private _buildCampaign(): void {
+    const root = new THREE.Group();
+    this._scene.add(root);
+    this._root = root;
+    this._tilePos = new Map();
+    this._regionPos = new Map();
+    this._regionHalo = new Map();
+    this._pickable = [];
+
+    const data = this.campaign;
+    if (!data) { this._radius = 8; return; }
+
+    // Escala: una provincia mediana mide como un hexágono del motor, así que las alturas
+    // y los accesorios de `board.ts` conservan su proporción a 2, 3 y 5 jugadores.
+    const spans = data.regions.map(inradius).sort((a, b) => a - b);
+    const typical = spans[Math.floor(spans.length / 2)] ?? 1;
+    this._scale = (S * 0.87) / Math.max(1e-6, typical);
+    const k = this._scale;
+
+    // Cota superior de cada provincia. La necesitan las fronteras, que se dibujan después
+    // y tienen que apoyarse en la más alta de las dos para no quedar enterradas.
+    const tops = new Map<number, number>();
+
+    for (const region of data.regions) {
+      // La junta entre losas. En el mockup los hexágonos se extruyen a `S * GAP`, no a `S`:
+      // el tablero se lee como **piezas puestas sobre una mesa** y no como una sábana
+      // pintada. Aquí la provincia es un polígono irregular, así que la junta se hace
+      // encogiendo la celda hacia su propio centro con el mismo `GAP`.
+      const rim = region.cell.map((p) => ({
+        x: (p.x - region.x) * k * GAP,
+        y: (p.y - region.y) * k * GAP,
+      }));
+      const shape = new THREE.Shape();
+      rim.forEach((p, i) => { if (i === 0) shape.moveTo(p.x, p.y); else shape.lineTo(p.x, p.y); });
+      shape.closePath();
+
+      // Misma extrusión que `hexPrism()`: bisel de 0,045 y la losa apoyada en el suelo.
+      // Con junta, el bisel ya no separa a dos vecinas que deberían tocarse —están
+      // separadas a propósito—, y es lo que le da el canto de pieza de tablero.
+      const height = HEIGHT[region.kind];
+      const geometry = new THREE.ExtrudeGeometry(shape, {
+        depth: height,
+        bevelEnabled: true, bevelThickness: 0.045, bevelSize: 0.045, bevelSegments: 3,
+        curveSegments: 1,
+      });
+      geometry.rotateX(-Math.PI / 2);
+      geometry.translate(0, height, 0);
+      // La cota superior se lee de la geometría y no se supone: con bisel, el prisma
+      // sobresale de `depth` y todo lo que se coloque «encima» quedaría medio enterrado.
+      geometry.computeBoundingBox();
+      const top = geometry.boundingBox?.max.y ?? height;
+
+      const group = new THREE.Group();
+      group.position.set(region.x * k, 0, region.y * k);
+
+      // **El terreno va a color pleno.** Apagarlo hacia la pizarra para que no compitiera
+      // con el dominio dejaba un mapa de barros donde no se distinguía un bosque de un
+      // yermo. Lo que distingue al dueño no es teñir la provincia entera: es su collar.
+      const prism = new THREE.Mesh(geometry, mat(TOP[region.kind], {
+        roughness: region.kind === 'water' ? 0.25 : 0.92,
+      }));
+      prism.receiveShadow = true;
+      prism.castShadow = true;
+      prism.userData = { regionId: region.id };
+      group.add(prism);
+      this._pickable.push(prism);
+
+      if (region.kind === 'water') {
+        const surf = new THREE.Mesh(
+          new THREE.ExtrudeGeometry(scaleShape(rim, 0.96), { depth: 0.01, bevelEnabled: false }),
+          mat(0x2d5a6e, { roughness: 0.12, metalness: 0.4, transparent: true, opacity: 0.75 }),
+        );
+        surf.geometry.rotateX(-Math.PI / 2);
+        surf.position.y = top + 0.02;
+        group.add(surf);
+      }
+
+      // **El collar de dominio.** Es la pieza que faltaba: en el mockup el dueño se marca
+      // con un anillo emisivo de su color pegado al borde de la losa, no tiñendo la losa.
+      // La diferencia no es de gusto — con la meseta teñida, terreno y dominio compiten y
+      // el mapa entero se vuelve un mosaico; con el collar, el terreno cuenta lo que es y
+      // el color cuenta de quién es, y el frente se dibuja solo.
+      if (region.owner !== null) {
+        const tint = seatColor(region.owner);
+        const collar = new THREE.Mesh(
+          bandGeometry(rim, COLLAR),
+          // Emisión contenida. A 1,15 —el valor del mockup, pensado para un anillo ancho
+          // sobre un hexágono— el filo se quema a blanco y deja de decir de qué asiento es:
+          // el mapa acababa perfilado en blanco, que es exactamente no decir nada.
+          mat(tint, { emissive: tint, emissiveIntensity: 0.5, roughness: 0.35 }),
+        );
+        // Pegado a la meseta cuando se observa, y **por encima del velo** cuando no. El
+        // control territorial es público (GDD §6.2): de quién es una provincia se sabe
+        // aunque no la estés mirando, y dejarlo bajo la niebla era esconder información
+        // que el juego da. Flotarlo siempre se nota a esta inclinación —el filo se
+        // despega de la losa—, así que solo se levanta donde hace falta.
+        collar.position.y = top + (region.seen ? 0.02 : 0.075);
+        group.add(collar);
+      } else {
+        // Tierra de nadie: un filo tenue para que la losa no se funda con el fondo.
+        const edge = new THREE.LineLoop(
+          new THREE.BufferGeometry().setFromPoints(
+            rim.map((p) => new THREE.Vector3(p.x, top + 0.015, p.y)),
+          ),
+          new THREE.LineBasicMaterial({ color: PAL.line, transparent: true, opacity: 0.8 }),
+        );
+        group.add(edge);
+      }
+
+      // Halo de estado: seleccionada, alcanzable, amenazada. Se reutiliza turno a turno
+      // cambiando su material, sin reconstruir el mundo.
+      const halo = new THREE.Mesh(
+        new THREE.ExtrudeGeometry(shape, { depth: 0.02, bevelEnabled: false }),
+        mat(PAL.ashGlow, { transparent: true, opacity: 0, emissive: PAL.ashGlow, emissiveIntensity: 1.2 }),
+      );
+      halo.geometry.rotateX(-Math.PI / 2);
+      halo.position.y = top + 0.1;
+      halo.visible = false;
+      group.add(halo);
+      this._regionHalo.set(region.id, halo);
+
+      // Cuánto cabe en esta provincia: no todas miden igual, y los accesorios están
+      // dimensionados para un hexágono del motor.
+      const fit = Math.min(1, (inradius(region) * k) / (S * 0.87));
+
+      // Un `Tile` sintético: `_props` solo mira el terreno, y así la decoración del campo
+      // es exactamente la misma que la del tablero de la Ciudad.
+      const tile: Tile = {
+        q: 0, r: 0, ring: 0, kind: region.kind, canon: '', sector: region.owner ?? -1,
+      };
+      if (region.seen) {
+        const deco = new THREE.Group();
+        this._props(deco, tile, 0, region.owner);
+        // Una luz por yacimiento son decenas de luces en un mapa de 96: three.js las
+        // compila todas en el shader y el mapa se arrastra. En la Ciudad son tres.
+        deco.traverse((node) => { if (node instanceof THREE.Light) node.visible = false; });
+        deco.scale.setScalar(fit);
+        deco.position.y = top;
+        group.add(deco);
+
+        // El estandarte del dueño, como en el mockup. El Bastión ya lleva su propia base
+        // con mástil, así que ahí sobra.
+        if (region.owner !== null && region.kind !== 'bastion') {
+          const flag = banner(seatColor(region.owner));
+          flag.position.set(0.5 * fit, top, 0.46 * fit);
+          flag.scale.setScalar(0.95 * fit);
+          group.add(flag);
+        }
+      } else {
+        const veil = new THREE.Mesh(
+          new THREE.ExtrudeGeometry(shape, { depth: 0.02, bevelEnabled: false }),
+          // Niebla, no borrón: a cinco jugadores la mayor parte del mapa está sin observar,
+          // y al 0,66 el tablero entero se volvía negro.
+          mat(PAL.void, { transparent: true, opacity: 0.46, roughness: 1 }),
+        );
+        veil.geometry.rotateX(-Math.PI / 2);
+        veil.position.y = top + 0.06;
+        group.add(veil);
+      }
+
+      root.add(group);
+      tops.set(region.id, top);
+      const anchor = new THREE.Vector3(region.x * k, top, region.y * k);
+      this._regionPos.set(region.id, anchor);
+      this._tilePos.set(`r${region.id}`, anchor);
+      if (region.owner === data.seat && region.kind === 'bastion') this._bastionPos = anchor.clone();
+    }
+
+    // Las fuerzas son **piezas sobre el tablero**, con silueta distinta por arma. La cifra
+    // sigue viviendo en el DOM (ADR-034): la pieza dice que ahí hay alguien y de quién es,
+    // el rótulo dice cuántos. Sin la pieza, el tablero es un mapa político con pegatinas.
+    for (const force of data.forces) {
+      const seat = this._regionPos.get(force.regionId);
+      if (!seat) continue;
+      const piece = force.arm === null
+        ? blankPiece(seatColor(force.seat))
+        : unitPiece(force.arm, seatColor(force.seat));
+      piece.position.set(seat.x, seat.y, seat.z + 0.12);
+      piece.rotation.y = -Math.atan2(seat.z, seat.x);
+      root.add(piece);
+    }
+
+    // El mundo termina en algo. Sin esto la tierra flota sobre el vacío y el mapa se lee
+    // como un recorte, no como un sitio: el disco cierra la base y asoma un poco por fuera
+    // de la costa, que es lo que la dibuja.
+    const world = data.extent * k;
+    const flats = new THREE.Mesh(
+      new THREE.CircleGeometry(world * 1.05, 96),
+      mat(blend(PAL.void, PAL.panel, 0.55), { roughness: 1 }),
+    );
+    flats.geometry.rotateX(-Math.PI / 2);
+    flats.position.y = -0.02;
+    flats.receiveShadow = true;
+    root.add(flats);
+
+    this._arrows = new THREE.Group();
+    root.add(this._arrows);
+
+    this._radius = world;
+    // Las sombras se encuadran al mapa: con la caja fija de las vitrinas, medio tablero
+    // se quedaba fuera y sus provincias no proyectaban nada.
+    for (const light of this._scene.children) {
+      if (light instanceof THREE.DirectionalLight && light.castShadow) {
+        const box = light.shadow.camera;
+        box.left = -world * 1.1; box.right = world * 1.1;
+        box.top = world * 1.1; box.bottom = -world * 1.1;
+        box.far = world * 5;
+        box.updateProjectionMatrix();
+      }
+    }
+    this._pick();
+  }
+
+  /**
+   * Selección por rayo.
+   *
+   * El motor **emite** y quien escuche pinta, como con la escaramuza: aquí sale un
+   * `gdc-pick` con el identificador de provincia y la pantalla decide qué hacer. El foco,
+   * el teclado y el lector de pantalla siguen viviendo en el DOM (ADR-034), no aquí.
+   */
+  private _pick(): void {
+    if (this._bound) return;
+    const ray = new THREE.Raycaster();
+    const point = new THREE.Vector2();
+    this.addEventListener('pointerup', (e) => {
+      if (this._dragged > 8) return;
+      const rect = this.getBoundingClientRect();
+      point.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      point.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      ray.setFromCamera(point, this._camera);
+      const hit = ray.intersectObjects(this._pickable, false)[0];
+      const id = hit?.object.userData['regionId'];
+      if (typeof id === 'number') {
+        this.dispatchEvent(new CustomEvent('gdc-pick', { detail: { regionId: id }, bubbles: true }));
+      }
+    });
+  }
+
+  /** Resalta lo que toque este turno. No reconstruye nada: cambia materiales. */
+  setOverlay(overlay: CampaignOverlay): void {
+    this._overlay = overlay;
+    if (!this._built) return;
+
+    // A ras de suelo y en perspectiva, un velo tenue no se ve: lo que en el plano bastaba
+    // como un anillo fino aquí tiene que teñir la meseta entera.
+    const TINT: Record<CampaignMark, { color: number; opacity: number }> = {
+      selected: { color: PAL.rust, opacity: 0.7 },
+      reachable: { color: PAL.ashGlow, opacity: 0.3 },
+      threat: { color: 0xb33a3a, opacity: 0.34 },
+      home: { color: PAL.ash, opacity: 0.18 },
+      // Apagar no es borrar: al 0,66 la provincia se volvía negra y el mapa desaparecía
+      // justo cuando más falta hace saber por dónde vas.
+      dim: { color: PAL.void, opacity: 0.42 },
+    };
+
+    for (const [id, halo] of this._regionHalo) {
+      const mark = overlay.marks[id];
+      const tint = mark ? TINT[mark] : undefined;
+      halo.visible = tint !== undefined;
+      if (!tint) continue;
+      const material = halo.material as THREE.MeshStandardMaterial;
+      material.color.setHex(tint.color);
+      material.emissive.setHex(mark === 'dim' ? 0x000000 : tint.color);
+      material.opacity = tint.opacity;
+    }
+
+    if (!this._arrows) return;
+    for (const child of [...this._arrows.children]) {
+      this._arrows.remove(child);
+      const mesh = child as Partial<THREE.Mesh>;
+      mesh.geometry?.dispose();
+    }
+    for (const arrow of overlay.arrows) {
+      const from = this._regionPos.get(arrow.from);
+      const to = this._regionPos.get(arrow.to);
+      if (!from || !to) continue;
+      this._arrows.add(this._arrow(from, to, arrow.support === true));
+    }
+  }
+
+  /** Una orden dibujada sobre el terreno: barra hasta el destino y punta encima. */
+  private _arrow(from: THREE.Vector3, to: THREE.Vector3, support: boolean): THREE.Group {
+    const group = new THREE.Group();
+    const lift = 0.34;
+    const a = from.clone().setY(from.y + lift);
+    const b = to.clone().setY(to.y + lift);
+    const span = a.distanceTo(b);
+    const colour = support ? PAL.rust : PAL.ashGlow;
+    const material = mat(colour, { emissive: colour, emissiveIntensity: 1.1, roughness: 0.3 });
+
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, Math.max(0.01, span - 0.5), 6), material);
+    shaft.position.copy(a.clone().lerp(b, 0.5));
+    shaft.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
+    group.add(shaft);
+
+    const head = new THREE.Mesh(new THREE.ConeGeometry(0.15, 0.34, 7), material);
+    head.position.copy(b.clone().lerp(a, 0.12));
+    head.quaternion.copy(shaft.quaternion);
+    group.add(head);
+    return group;
+  }
+
+  /** Lleva la cámara sobre una provincia. `bias` la acerca al centro del mapa. */
+  focusRegion(regionId: number, bias = 0): void {
+    const p = this._regionPos.get(regionId);
+    if (!p || !this._built) return;
+    // Ir a tu ciudad es ir a **verla**. Si la cámara está más lejos que el encuadre de
+    // trabajo, el botón acerca además de desplazarse: con el mapa entero en pantalla el
+    // recorte deja el objetivo en el centro —no hay adónde desplazarse— y el botón parecía
+    // averiado justo cuando más falta hace, que es cuando te has perdido.
+    if (this._world === 'campaign') this._zoom = Math.min(this._zoom, this._provinceZoom());
+    this._target.set(p.x * (1 - bias), p.y + 0.4, p.z * (1 - bias));
+    this._settle();
+  }
+
+  /** Acerca (`> 1`) o aleja (`< 1`). El recorrido es el mismo que el del plano. */
+  zoomBy(factor: number): void {
+    this._zoom = Math.min(this._far(), Math.max(0.22, this._zoom / factor));
+    // Al alejar ya no hace falta tirar del objetivo hacia el centro a ojo: el recorte lo
+    // hace exacto, porque sabe cuánto suelo entra en cuadro a la distancia nueva.
+    if (this._built) this._settle();
+  }
+
+  /**
+   * Lo más lejos que se puede alejar.
+   *
+   * En la campaña, **el mapa entero y ni un paso más**. El 1,6 de las vitrinas dejaba el
+   * tablero ocupando dos tercios del ancho y flotando en negro: alejarse más allá del
+   * mundo no enseña nada que no se viera ya, solo hace las provincias más pequeñas.
+   */
+  private _far(): number {
+    return this._world === 'campaign' ? 1 : 1.6;
+  }
+
+  /** Coloca la cámara, recorta el objetivo a lo que hay mapa, y vuelve a colocarla. */
+  private _settle(): void {
+    this._place();
+    this._clampTarget();
+    this._place();
   }
 
   private _props(g: THREE.Group, t: Tile, h: number, owner: number | null): void {
@@ -1562,14 +2101,20 @@ export class GdcWorld extends HTMLElement {
   private _applyFocus(): void {
     const f = this.getAttribute('focus');
     if (f === 'core') this._target.set(0, 1.4, 0);
-    else if (f === 'bastion' && this._bastionPos) this._target.copy(this._bastionPos).multiplyScalar(0.72).setY(0.6);
+    else if (f === 'bastion' && this._bastionPos) {
+      const pull = this._world === 'campaign' ? 0.46 : 0.72;
+      this._target.copy(this._bastionPos).multiplyScalar(pull).setY(0.6);
+    }
     else if (f === 'plaza') this._target.set(0, 1.2, 0);
     else if (f === 'clash') this._target.set(0, 0.42, 0.02);
     else if (this._world === 'hero') this._target.set(0, 0.98, 0);
     else if (this._world === 'unit') this._target.set(0, 0.26, 0);
     else if (this._world === 'asset') this._target.set(0, 0.52, 0);
     else if (this._world === 'tile') this._target.set(0, this._tileTop ?? 0.34, 0);
-    this._place();
+    // El encuadre inicial se acota igual que el desplazamiento: si el Bastión cae en el
+    // anillo exterior, mirarlo de frente deja un tercio de pantalla en negro por fuera de
+    // la costa. Hace falta un `_place()` previo porque el recorte depende de la distancia.
+    this._settle();
   }
 
   // Encuadra el mundo por su radio, no por una distancia fija: así cuadra en
@@ -1584,10 +2129,25 @@ export class GdcWorld extends HTMLElement {
       const halfV = Math.atan(tan);
       const halfH = Math.atan(tan * aspect);
       d = R / Math.sin(Math.min(halfV, halfH));
+    } else if (this._world === 'campaign') {
+      // Encuadre honesto. El mapa es un disco horizontal de radio R: en pantalla mide R de
+      // ancho y R·sen(elev) de alto, que es lo que la inclinación escorza. Ajustar por los
+      // dos ejes es lo que hace que quepa entero en un vertical de móvil y en un monitor.
+      //
+      // Y **sin `fudge`**. El 0,66 de la Ciudad acerca la cámara para que la maqueta llene
+      // el cuadro; en un mapa de 96 provincias eso amontona el lado lejano contra el
+      // horizonte —las de delante enormes, las de atrás una pila de esquirlas— y el
+      // territorio deja de leerse. Una carta de situación se mira entera.
+      //
+      // El `+ R·cos(elev)` es la perspectiva: el borde cercano del mapa está esa distancia
+      // MÁS CERCA que el centro, así que se proyecta más grande y se sale por abajo. Sin
+      // ese término el ajuste cuadra en papel y recorta el mapa en pantalla.
+      d = Math.max((R * Math.sin(elev)) / tan, R / (tan * aspect)) + R * Math.cos(elev);
     } else {
       const fudge = this._world === 'skirmish' ? 1 : 0.66;
       d = Math.max(R / (tan * aspect), (R * 0.72) / tan) * fudge;
     }
+    this._dist = d;
     const fog = this._scene.fog;
     if (fog instanceof THREE.Fog) { fog.near = d * 0.6; fog.far = d * 2.1; }
     this._camera.position.set(
@@ -1598,17 +2158,106 @@ export class GdcWorld extends HTMLElement {
     this._camera.lookAt(this._target);
   }
 
+  /**
+   * Gestos.
+   *
+   * En las vitrinas y en la Ciudad el arrastre **gira** la cámara, que es lo que se quiere
+   * de un objeto que se mira. En la campaña **desplaza el mapa**, que es lo que se quiere
+   * de un territorio por el que se navega, y el pellizco acerca y aleja. Un mapa que gira
+   * cuando intentas moverte por él es un mapa en el que te pierdes.
+   */
   private _drag(): void {
-    let last: number | null = null;
-    this.addEventListener('pointerdown', (e) => { last = e.clientX; this.setPointerCapture(e.pointerId); });
-    this.addEventListener('pointermove', (e) => {
-      if (last === null) return;
-      this._azimuth += (e.clientX - last) * 0.006;
-      last = e.clientX; this._place();
+    if (this._bound) return;
+    this._bound = true;
+    const pointers = new Map<number, { x: number; y: number }>();
+    let pinch = 0;
+    let pinchZoom = 1;
+
+    this.addEventListener('pointerdown', (e) => {
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pointers.size === 1) this._dragged = 0;
+      if (pointers.size === 2) {
+        const [a, b] = [...pointers.values()];
+        pinch = Math.hypot((a?.x ?? 0) - (b?.x ?? 0), (a?.y ?? 0) - (b?.y ?? 0));
+        pinchZoom = this._zoom;
+      }
+      this.setPointerCapture(e.pointerId);
     });
-    const end = () => { last = null; };
+
+    this.addEventListener('pointermove', (e) => {
+      const previous = pointers.get(e.pointerId);
+      if (!previous) return;
+      const next = { x: e.clientX, y: e.clientY };
+      pointers.set(e.pointerId, next);
+      this._dragged += Math.hypot(next.x - previous.x, next.y - previous.y);
+
+      if (pointers.size === 2 && this._world === 'campaign') {
+        const [a, b] = [...pointers.values()];
+        const spread = Math.hypot((a?.x ?? 0) - (b?.x ?? 0), (a?.y ?? 0) - (b?.y ?? 0));
+        if (pinch > 0) {
+          this._zoom = Math.min(this._far(), Math.max(0.22, (pinchZoom * pinch) / spread));
+          this._settle();
+        }
+        return;
+      }
+
+      if (this._world !== 'campaign') {
+        this._azimuth += (next.x - previous.x) * 0.006;
+        this._place();
+        return;
+      }
+
+      this._pan(next.x - previous.x, next.y - previous.y);
+    });
+
+    const end = (e: PointerEvent) => { pointers.delete(e.pointerId); pinch = 0; };
     this.addEventListener('pointerup', end);
     this.addEventListener('pointercancel', end);
+  }
+
+  /**
+   * Desplaza el objetivo por el suelo, en los ejes de la cámara.
+   *
+   * Acotado al mapa: sin límite, un arrastre largo deja el terreno fuera de pantalla y no
+   * hay forma de volver — la libertad de movimiento acaba en un lienzo vacío.
+   */
+  private _pan(dx: number, dy: number): void {
+    const height = this.clientHeight || 1;
+    const perPixel = (2 * this._dist * Math.tan((this._camera.fov * Math.PI) / 360)) / height;
+    const right = new THREE.Vector3(Math.sin(this._azimuth), 0, -Math.cos(this._azimuth));
+    const forward = new THREE.Vector3(-Math.cos(this._azimuth), 0, -Math.sin(this._azimuth));
+    this._target.addScaledVector(right, -dx * perPixel);
+    this._target.addScaledVector(forward, -dy * perPixel);
+    this._settle();
+  }
+
+  /**
+   * El mapa no se puede sacar de cuadro.
+   *
+   * Lo que se puede desplazar es exactamente lo que no cabe. El límite anterior era el
+   * radio entero por 1,1: se podía arrastrar hasta dejar el tablero fuera de pantalla y
+   * quedarse mirando el vacío, que en un mapa de 96 provincias es la forma más rápida de
+   * perderse y de que el juego parezca roto.
+   */
+  private _clampTarget(): void {
+    if (this._world !== 'campaign') {
+      const wide = this._radius * 1.1;
+      this._target.x = Math.min(wide, Math.max(-wide, this._target.x));
+      this._target.z = Math.min(wide, Math.max(-wide, this._target.z));
+      return;
+    }
+    const elev = Number(this.getAttribute('elevation') ?? 0.62);
+    const aspect = Math.max(0.2, (this.clientWidth || 1) / (this.clientHeight || 1));
+    const tan = Math.tan((this._camera.fov * Math.PI) / 360);
+    // Media anchura de suelo que entra en cuadro. La profundidad entra más —la cámara está
+    // inclinada— pero acotar por la estrecha es lo que garantiza que siempre haya mapa.
+    const half = this._dist * tan * Math.min(aspect, 1 / Math.sin(elev));
+    const limit = Math.max(0, this._radius - half);
+    const away = Math.hypot(this._target.x, this._target.z);
+    if (away > limit) {
+      this._target.x *= limit / away;
+      this._target.z *= limit / away;
+    }
   }
 
   private _resize(): void {
@@ -1616,7 +2265,36 @@ export class GdcWorld extends HTMLElement {
     this._renderer.setSize(w, h, false);
     this._camera.aspect = w / h;
     this._camera.updateProjectionMatrix();
+    // El encuadre de salida no se puede calcular al conectar: el elemento todavía no tiene
+    // ancho, y de él dependen la distancia y el recorte. Aquí ya lo tiene.
+    if (this._openZoom && this.clientWidth > 0) {
+      this._openZoom = false;
+      this._zoom = this._provinceZoom();
+      this._applyFocus();
+      return;
+    }
     if (this._radius) this._place();
+  }
+
+  /**
+   * A cuánto se abre el mapa de campaña, **medido en provincias**.
+   *
+   * Una fracción fija del mapa no vale: a tres jugadores hay 45 provincias y a cinco 96,
+   * así que el mismo 46 % daba provincias del doble de tamaño en una partida que en otra
+   * —a tres se entraba con diez en pantalla, casi en la cara—. Lo que tiene que ser
+   * constante es cuánto mide una provincia en pantalla, porque de eso dependen que se
+   * lea, que se pueda tocar y que se entienda dónde estás.
+   *
+   * Nunca más lejos que el mapa entero: en una partida de dos, `OPEN_SPAN` provincias son
+   * más mundo del que hay.
+   */
+  private _provinceZoom(): number {
+    const elev = Number(this.getAttribute('elevation') ?? 0.62);
+    const aspect = Math.max(0.2, (this.clientWidth || 1) / (this.clientHeight || 1));
+    const tan = Math.tan((this._camera.fov * Math.PI) / 360);
+    const full = Math.max(Math.sin(elev) / tan, 1 / (tan * aspect)) + Math.cos(elev);
+    const open = (OPEN_SPAN * S) / (tan * Math.min(aspect, 1 / Math.sin(elev)));
+    return Math.min(1, open / Math.max(1e-6, full * this._radius));
   }
 
   private _markers(): void {
@@ -1630,6 +2308,13 @@ export class GdcWorld extends HTMLElement {
       const v = p.clone();
       v.y += Number(el.dataset['lift'] ?? 0.55);
       v.project(this._camera);
+      // Un rótulo cuya provincia no está en cuadro se ocultaba pegándose al borde, y en un
+      // mapa de 96 se amontonaban todos ahí: cifras de fuerzas que no se ven en sitios
+      // donde no están.
+      if (el.dataset['edge'] === 'hide' && (Math.abs(v.x) > 1 || Math.abs(v.y) > 1)) {
+        el.style.opacity = '0';
+        continue;
+      }
       el.style.position = 'absolute';
       const half = (el.offsetWidth || 0) / 2 + 6;
       const x = Math.min(Math.max(((v.x + 1) / 2) * w, half), Math.max(half, w - half));

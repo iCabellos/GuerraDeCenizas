@@ -7,7 +7,7 @@ import {
   type MoveOrder, type OrdersBySeat, type PlayerCount, type PlayerView,
   type ProductionOrder, type RegionId, type Seat,
 } from '@gdc/core';
-import { MapView } from './MapView';
+import { MapFlat } from './MapFlat';
 import {
   CommandHeader, FactionEmblem, OrderBar, OrderCommit, OrderTool,
 } from './GameChrome';
@@ -318,7 +318,7 @@ function Board({
       <TopBar view={view} state={state} />
 
       <div className="relative min-h-0 flex-1">
-        <MapView
+        <MapFlat
           view={view}
           selected={selected}
           reachable={reachable}

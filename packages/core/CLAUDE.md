@@ -58,7 +58,7 @@ src/
 ├── rng/         xoshiro128** determinista
 ├── balance/     constantes como DATOS (el simulador las barre) — no lógica
 ├── factions/    catálogo de facciones + reglas de desbloqueo (nivel de cuenta)
-├── mapgen/      esqueleto C_n · decoración · disposición · generación
+├── mapgen/      esqueleto C_n · decoración · disposición · teselación · generación
 ├── rules/       reduce() = etapas puras encadenadas
 └── util/        JSON canónico y checksum
 ```
@@ -141,6 +141,36 @@ anomalías, Sombra, doctrinas activas, investigación, perturbación y evaluaci�
 | `rules/movement.ts` | Validación de todas las órdenes + movimiento simultáneo. |
 | `rules/standing.ts` | Órdenes Permanentes y Mando Automático. **La ausencia nunca daña a un tercero.** |
 | `rules/views.ts` | Proyección de vistas sin resolver: la necesita el turno 0, que no pasa por `reduce()`. |
+| `mapgen/skeleton.ts` | Nodos, radios por anillo y **adyacencia por distancia** ([ADR-046](../../docs/DECISIONS.md#adr-046)). |
+| `mapgen/layout.ts` | Las **provincias**: un hexágono regular por región ([ADR-046](../../docs/DECISIONS.md#adr-046)). |
+
+**Cada provincia es un hexágono regular del mismo tamaño**, y eso ata tres cosas que hay
+que tocar juntas o no tocar ninguna:
+
+| | Qué es | Dónde |
+|---|---|---|
+| Recuentos de anillo | Cuántos nodos por anillo y sector | `SECTOR_SPEC` |
+| Radios de anillo | A qué distancia va cada anillo, en unidades de paso | `RING_RADII` |
+| Alcance de vecindad | Hasta dónde dos provincias son vecinas | `LINK_RANGE` |
+
+Para que hexágonos iguales quepan unos junto a otros, lo uniforme tiene que ser la
+**distancia entre vecinos** — no el área de la banda, que era el criterio anterior. Los
+recuentos y los radios salen de minimizar la dispersión de esa distancia; hoy está en
+×1,16–×1,30. Si cambias uno, recalcula el otro y vuelve a medir.
+
+La escala **se mide, no se supone**: `buildSkeleton` busca el par de vecinos más apretado
+del mapa ya construido y estira todo hasta que esos dos hexágonos encajan lado con lado. Por
+eso `CELL_RADIUS` se puede cambiar sin retocar nada más.
+
+`layout.ts` parece cosa de la interfaz y no lo es. La adyacencia **es** geométrica: dos
+provincias son vecinas si sus centros están a menos de `LINK_RANGE`. De ahí sale la
+propiedad que impide que el tablero mienta, y que tiene test:
+
+> el par de provincias NO adyacentes más cercano está más lejos que el par adyacente más
+> lejano. **Lo que parece vecino, lo es.**
+
+Si la geometría viviera en `apps/web` y la adyacencia aquí, el día que una de las dos cambie
+el mapa ofrecería movimientos que `reduce()` rechaza. Misma razón que `previewAttack`.
 
 Si una regla nueva necesita estado del turno, va en `battle.ts` o en su etapa propia,
 **nunca** dentro de `combat.ts`: ahí se rompería la previsualización.

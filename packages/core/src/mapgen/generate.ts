@@ -15,7 +15,7 @@ import { Rng } from '../rng/index';
 import { buildAdjacency, buildSkeleton, type Skeleton } from './skeleton';
 import { SECTOR_SPEC, assertSpecConsistency, bastionSlot } from './spec';
 
-export const MAPGEN_VERSION = '0.1.0';
+export const MAPGEN_VERSION = '0.3.0';
 
 export interface GeneratedMap {
   map: GameMap;

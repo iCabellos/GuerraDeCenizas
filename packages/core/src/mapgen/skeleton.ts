@@ -37,41 +37,70 @@ export interface Skeleton {
   rotate: (id: RegionId, k: number) => RegionId;
 }
 
-// Geometría del render. Unidades del `viewBox`, no píxeles.
-const NODE_RADIUS = 32;
-const NODE_GAP = 24;
-const RING_GAP = 88;
+/**
+ * Geometría del render, en unidades del `viewBox`.
+ *
+ * `CELL_RADIUS` es el **circunradio del hexágono** de una provincia: del centro a un
+ * vértice. Todas las provincias son el mismo hexágono, así que este número fija a la vez
+ * el tamaño de una región y, por acumulación, el del mapa entero.
+ */
+export const CELL_RADIUS = 58;
+
+/** Separación de dos hexágonos de circunradio `R` que encajan lado con lado. */
+const STEP = Math.sqrt(3);
+
+/**
+ * Hasta dónde llega la vecindad, en unidades de paso.
+ *
+ * Es el radio del corte que decide qué provincias son adyacentes. Se elige por encima del
+ * par de vecinos más separado y por debajo del par no vecino más próximo, y ese hueco es
+ * lo que garantiza que el mapa no pueda mentir. Con 1,2 el margen es de un 5–9 % a dos,
+ * tres y cinco jugadores, el grado medio queda en torno a 4,2 y ningún nodo baja de 3 ni
+ * pasa de 6: ni callejones ni encrucijadas, que es el invariante de siempre.
+ *
+ * Subirlo espesa el grafo y cambia el balance; bajarlo desconecta el mapa. Si lo tocas,
+ * el test de honestidad y el de grados te lo dirán.
+ */
+const LINK_RANGE = 1.2;
+
+/** Cuántas provincias vale el Núcleo. Es el objetivo de la campaña: se le nota, no se le come. */
+export const CORE_SHARE = 1.35;
 
 const CORE_ID = 0;
 
 export function nodeRadius(): number {
-  return NODE_RADIUS;
+  return CELL_RADIUS;
 }
 
 /**
- * Radios de cada anillo.
+ * Radio de cada anillo, en unidades del **paso** — la distancia entre dos provincias
+ * vecinas.
  *
- * Dos restricciones a la vez: los nodos de un mismo anillo no pueden solaparse (el radio
- * mínimo depende de cuántos hay), y los anillos deben separarse entre sí. Se toma el
- * máximo de ambas y se fuerza que sea monótono creciente.
+ * Las provincias se dibujan como hexágonos regulares del mismo tamaño
+ * ([ADR-046](../../../../docs/DECISIONS.md#adr-046)). Para que quepan, lo que tiene que
+ * ser uniforme no es el área de una banda: es la **distancia entre vecinos**. Dos
+ * hexágonos iguales de circunradio `R` encajan cuando sus centros están a `√3·R`; si un
+ * par está más cerca, se solapan, y si está mucho más lejos, se abre un boquete.
+ *
+ * Con anillos repartidos por área la horquilla llegaba a ×2,4 y no había tamaño de
+ * hexágono que sirviera. Estos radios salen de minimizar esa horquilla junto con los
+ * recuentos de `SECTOR_SPEC`, y la dejan en ×1,16 a dos y tres jugadores y ×1,23 a cinco.
+ *
+ * Van en unidades de paso y no en píxeles a propósito: el paso real lo fija
+ * `buildSkeleton` midiendo el mapa ya construido, así que estos números no hay que
+ * reescalarlos si cambia `CELL_RADIUS`.
  */
-function ringRadii(players: PlayerCount): number[] {
-  const spec = SECTOR_SPEC[players];
-  const spacing = 2 * NODE_RADIUS + NODE_GAP;
-  const radii: number[] = [];
-
-  for (let r = 0; r < spec.rings.length; r++) {
-    const total = (spec.rings[r] as number) * players;
-    const needed = (total * spacing) / (2 * Math.PI);
-    const previous = r === 0 ? NODE_RADIUS + RING_GAP : (radii[r - 1] as number) + RING_GAP;
-    radii.push(Math.max(needed, previous));
-  }
-  return radii;
-}
+const RING_RADII: Readonly<Record<PlayerCount, readonly number[]>> = {
+  2: [1.025, 1.87, 2.755, 3.671],
+  3: [0.995, 1.91, 2.865, 3.86],
+  5: [0.936, 1.782, 2.677, 3.669, 4.695],
+};
 
 export function buildSkeleton(players: PlayerCount): Skeleton {
   const spec = SECTOR_SPEC[players];
-  const radii = ringRadii(players);
+  // Los radios se construyen en unidades de paso y se escalan al final, cuando ya se
+  // puede medir cuál es el par de vecinos más apretado del mapa.
+  const units = RING_RADII[players];
   const sectorSpan = (2 * Math.PI) / players;
 
   const nodes: SkeletonNode[] = [
@@ -89,7 +118,7 @@ export function buildSkeleton(players: PlayerCount): Skeleton {
         // El +0.5 centra el slot dentro de su porción de sector; el −π/2 pone el
         // sector 0 arriba, que es donde el jugador espera encontrarse.
         const angle = s * sectorSpan + ((k + 0.5) / count) * sectorSpan - Math.PI / 2;
-        const radius = radii[r] as number;
+        const radius = units[r] as number;
         const id = nodes.length;
         nodes.push({
           id,
@@ -98,8 +127,8 @@ export function buildSkeleton(players: PlayerCount): Skeleton {
           slot: k,
           angle,
           radius,
-          x: round2(Math.cos(angle) * radius),
-          y: round2(Math.sin(angle) * radius),
+          x: Math.cos(angle) * radius,
+          y: Math.sin(angle) * radius,
         });
         index[s]![r]![k] = id;
       }
@@ -109,41 +138,52 @@ export function buildSkeleton(players: PlayerCount): Skeleton {
   const at = (s: number, r: number, k: number): RegionId =>
     index[((s % players) + players) % players]![r]![k] as RegionId;
 
+  // ── Adyacencia por distancia ────────────────────────────────────────────────
+  //
+  // **Dos provincias son vecinas si y solo si sus centros están a menos de `LINK_RANGE`.**
+  //
+  // Antes las aristas salían de tres reglas —el Núcleo con todo el anillo interior, el
+  // ciclo de cada anillo, y la radial al más próximo en ángulo—. Con provincias dibujadas
+  // como hexágonos iguales eso deja de valer, y no por estética: la regla del «más próximo
+  // en ángulo» conecta a uno de dos nodos que están **a la misma distancia**, así que el
+  // mapa acababa enseñando dos provincias igual de juntas, una vecina y la otra no. Eso es
+  // exactamente lo que ADR-037 llamó «no hay vecindad implícita», y es lo que hace que un
+  // tablero no se pueda leer sin un manual.
+  //
+  // Con el corte por distancia el dibujo **no puede mentir**: si dos provincias se ven
+  // juntas, son vecinas, porque «verse juntas» y «ser vecinas» son la misma condición. Y
+  // la simetría C_n se conserva sola — la distancia no cambia al girar el mapa.
   const edges = new EdgeSet();
-
-  // (a) El Núcleo se conecta con todo el anillo interior: es una encrucijada, y debe
-  //     ser alcanzable desde cualquier dirección por igual.
-  for (let s = 0; s < players; s++) {
-    for (let k = 0; k < (spec.rings[0] as number); k++) edges.add(CORE_ID, at(s, 0, k));
-  }
-
-  // (b) Cada anillo es un ciclo completo alrededor del mapa. Al cerrarse entre sectores
-  //     produce las aristas inter-sector sin necesidad de una regla aparte, y la
-  //     simetría se conserva por construcción.
-  for (let r = 0; r < spec.rings.length; r++) {
-    const count = spec.rings[r] as number;
-    const total = count * players;
-    for (let i = 0; i < total; i++) {
-      const a = at(Math.floor(i / count), r, i % count);
-      const j = (i + 1) % total;
-      const b = at(Math.floor(j / count), r, j % count);
-      edges.add(a, b);
+  for (let a = 0; a < nodes.length; a++) {
+    for (let b = a + 1; b < nodes.length; b++) {
+      const p = nodes[a] as SkeletonNode;
+      const q = nodes[b] as SkeletonNode;
+      if (Math.hypot(p.x - q.x, p.y - q.y) <= LINK_RANGE) edges.add(p.id, q.id);
     }
-  }
-
-  // (c) Aristas radiales por proximidad angular, en ambos sentidos, para garantizar que
-  //     ningún nodo se queda sin conexión hacia dentro ni hacia fuera.
-  for (let r = 0; r < spec.rings.length - 1; r++) {
-    const inner = ringNodes(nodes, r);
-    const outer = ringNodes(nodes, r + 1);
-    for (const node of inner) edges.add(node.id, nearestByAngle(outer, node.angle).id);
-    for (const node of outer) edges.add(node.id, nearestByAngle(inner, node.angle).id);
   }
 
   const bastionRing = spec.bastionRing;
   const bastionK = Math.floor(((spec.rings[bastionRing] as number) - 1) / 2);
   const bastions: RegionId[] = [];
   for (let s = 0; s < players; s++) bastions.push(at(s, bastionRing, bastionK));
+
+  // **La escala se mide, no se supone.** Los radios vienen en unidades de paso; aquí se
+  // busca el par de vecinos más apretado del mapa ya construido y se estira todo hasta que
+  // esos dos hexágonos encajan exactamente lado con lado. Así ningún par se solapa —los
+  // demás quedan algo más holgados— y `CELL_RADIUS` se puede cambiar sin retocar nada más.
+  const built = edges.toArray();
+  let tightest = Infinity;
+  for (const edge of built) {
+    const a = nodes[edge.a] as SkeletonNode;
+    const b = nodes[edge.b] as SkeletonNode;
+    tightest = Math.min(tightest, Math.hypot(a.x - b.x, a.y - b.y));
+  }
+  const scale = (STEP * CELL_RADIUS) / (tightest || 1);
+  for (const node of nodes) {
+    node.radius = node.radius * scale;
+    node.x = round2(node.x * scale);
+    node.y = round2(node.y * scale);
+  }
 
   const rotate = (id: RegionId, k: number): RegionId => {
     if (id === CORE_ID) return CORE_ID;
@@ -154,39 +194,15 @@ export function buildSkeleton(players: PlayerCount): Skeleton {
   return {
     players,
     nodes,
-    edges: edges.toArray(),
+    edges: built,
     coreId: CORE_ID,
     bastions,
-    extent: Math.ceil((radii[radii.length - 1] as number) + NODE_RADIUS + 16),
+    // El mundo **es** el mapa: llega hasta donde llega el hexágono más exterior, ni un
+    // punto más. Sumar el circunradio es justo lo que hace falta para que la provincia de
+    // fuera quepa entera y no se corte contra el borde del `viewBox`.
+    extent: Math.ceil((units[units.length - 1] as number) * scale + CELL_RADIUS),
     rotate,
   };
-}
-
-function ringNodes(nodes: readonly SkeletonNode[], ring: number): SkeletonNode[] {
-  return nodes.filter((n) => n.ring === ring);
-}
-
-/**
- * Nodo más cercano en ángulo. Desempata por id ascendente para que sea determinista
- * incluso cuando dos nodos equidistan — cosa que ocurre a menudo por la simetría.
- */
-function nearestByAngle(candidates: readonly SkeletonNode[], angle: number): SkeletonNode {
-  let best = candidates[0] as SkeletonNode;
-  let bestDelta = angularDistance(best.angle, angle);
-  for (const node of candidates) {
-    const delta = angularDistance(node.angle, angle);
-    if (delta < bestDelta - 1e-9 || (Math.abs(delta - bestDelta) <= 1e-9 && node.id < best.id)) {
-      best = node;
-      bestDelta = delta;
-    }
-  }
-  return best;
-}
-
-function angularDistance(a: number, b: number): number {
-  const TAU = 2 * Math.PI;
-  const d = Math.abs(((a - b) % TAU + TAU) % TAU);
-  return Math.min(d, TAU - d);
 }
 
 function round2(n: number): number {

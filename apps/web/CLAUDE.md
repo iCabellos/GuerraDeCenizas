@@ -149,9 +149,62 @@ Que juegue turnos antes de pintar no es comodidad: en el T0 la fase es Parlament
 en la que no se puede mover, y con ella se revisaba un tablero donde ninguna orden era
 posible.
 
-**El mapa de campaña es SVG y se queda en SVG** ([ADR-035](../../docs/DECISIONS.md#adr-035)).
-El mundo 2.5D no lo puede representar: su tablero son 37 losas fijas y el mapa real es un
-grafo en polares de 45 a 96 regiones. No lo intentes otra vez sin leer el ADR.
+**El mapa de campaña se juega en relieve** ([ADR-042](../../docs/DECISIONS.md#adr-042),
+sustituye a [ADR-035](../../docs/DECISIONS.md#adr-035)). `<gdc-world scene="campaign">`
+extruye **las provincias reales**, no un tablero decorativo.
+
+**Los polígonos salen de `regionCells()` en `@gdc/core`: no los calcules aquí**
+([ADR-046](../../docs/DECISIONS.md#adr-046)). Cada provincia es un **hexágono regular** y
+entre unas y otras queda holgura, porque hexágonos iguales no cubren un disco con simetría
+C_5. Lo que garantiza que el tablero no mienta es que **el par no adyacente más cercano está
+más lejos que el par adyacente más lejano**, y eso sale de la adyacencia por distancia del
+motor. Partirlo en dos sitios es la forma de acabar ofreciendo movimientos que el motor
+rechaza.
+
+**Las cifras de tropas se enseñan enteras** (`troops()` en `lib/board.ts`). El combate
+reparte las bajas en proporción y un superviviente puede quedar en 2,609; el motor guarda
+el número exacto porque de él depende que la partida se reproduzca, pero «Línea 2,609» en
+pantalla no es una cifra de un juego.
+
+```
+□ El lienzo es telón: aria-hidden, y no decide nada
+□ Las cifras de fuerza son DOM con data-tile; el motor solo las coloca
+□ Hay una lista de provincias enfocable: el rayo no da foco ni orden de lectura
+□ Sin WebGL o con movimiento reducido queda MapFlat, la vista plana COMPLETA
+□ El motor emite (`gdc-pick`) y la pantalla decide
+```
+
+`MapView` monta el mundo; `MapFlat` es la vista plana y el respaldo. Las dos reciben las
+mismas props, así que tocar en relieve y tocar en plano acaban en el mismo `onSelect`.
+
+**La cámara se mide en provincias** ([ADR-044](../../docs/DECISIONS.md#adr-044)). El
+encuadre de salida es un número fijo de provincias en pantalla, no una fracción del mapa:
+a tres jugadores hay 45 y a cinco 96, así que la misma fracción da provincias del doble de
+tamaño en una partida que en otra. Y el objetivo se recorta a lo que hay mapa — no se puede
+arrastrar hasta quedarse mirando el vacío, ni alejarse más allá del mundo.
+
+**El lenguaje visual sale del mockup, no de tu criterio**
+([ADR-045](../../docs/DECISIONS.md#adr-045)). El proyecto tiene un `world3d.js` de
+referencia que ya define cómo se ve el tablero. Antes de cambiar cómo se pinta el mapa,
+**míralo renderizado**. Se puede: sirve la carpeta y apunta el `importmap` de `three` al
+`node_modules` del repo.
+
+```
+□ El terreno va a COLOR PLENO. De quién es lo dice el filo, no la meseta teñida
+□ Filo de dominio del color del asiento, y por encima del velo: el control es público
+□ Estandarte en cada provincia con dueño que no sea Bastión
+□ Las fuerzas son PIEZAS con silueta por arma; la cifra sigue en el DOM
+□ Junta (`GAP`), bisel y alturas son los del mockup. No los ajustes a ojo
+```
+
+Cada vez que se desvió de ahí hubo una razón escrita y ninguna resistió mirar el mockup:
+apagar el terreno «para que no compitiera con el dominio» cuando el problema era teñir la
+meseta, o comprimir las alturas para arreglar un amontonamiento que venía de la cámara.
+
+**El mundo se reconstruye una vez por turno y ni una más.** Lo que cambia en cada tap
+—selección, destinos, amenazas, flechas— va por `setOverlay()`, que solo cambia materiales.
+Si metes un callback en las dependencias del montaje, vuelves a extruir 96 provincias y a
+pedir un contexto WebGL en cada render; ya pasó.
 
 ### La campaña se juega tocando el mapa
 

@@ -4,7 +4,7 @@ import type { Buildable, CombatPreview as Preview, Seat, VisibleForce } from '@g
 import {
   Ash, Bridge, Close, Fire, Fortified, Hold, Industry, Intel, Line, Move, Sky, Supply, Support,
 } from '@/components/art/generated';
-import { dominantArm, sizeOf, type RegionBrief } from '@/lib/board';
+import { dominantArm, sizeOf, troops, type RegionBrief } from '@/lib/board';
 import { seatColor } from '@/lib/theme';
 
 /**
@@ -215,7 +215,7 @@ function ForceRow({
       <Icon size={16} className={enemy ? 'text-danger' : 'text-muted'} />
       <span className="flex-1 truncate text-sm">
         {known
-          ? `${t('arm.line')} ${force.line} · ${t('arm.fire')} ${force.fire} · ${t('arm.sky')} ${force.sky}`
+          ? `${t('arm.line')} ${troops(force.line)} · ${t('arm.fire')} ${troops(force.fire)} · ${t('arm.sky')} ${troops(force.sky)}`
           : t('region.unknownForce')}
       </span>
       {force.unsupplied !== null && force.unsupplied > 0 && (

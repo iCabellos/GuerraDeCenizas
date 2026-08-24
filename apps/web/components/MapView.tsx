@@ -1,679 +1,217 @@
 'use client';
 
-import {
-  useCallback, useEffect, useImperativeHandle, useRef,
-  type PointerEvent as ReactPointerEvent, type Ref,
-} from 'react';
-import type { PlayerView, RegionId, Seat, TerrainKind, VisibleForce } from '@gdc/core';
-import { SEAT_PATTERN, TERRAIN_FILL, TERRAIN_NAME, seatColor } from '@/lib/theme';
+import { useCallback, useImperativeHandle, useMemo, useRef } from 'react';
+import { regionCells, type PlayerView, type RegionId, type Seat } from '@gdc/core';
+import World, { type WorldHandle } from '@/components/world/World';
+import { MapFlat, type MapHandle, type MapProps } from '@/components/MapFlat';
+import type { CampaignMap, CampaignMark, CampaignOverlay } from '@/components/world/engine';
+import { troops } from '@/lib/board';
+import { TERRAIN_NAME, seatColor } from '@/lib/theme';
 
-const NODE_R = 32;
-
-/**
- * Radio por tipo de región. No es decoración: el Núcleo es el objetivo de la partida
- * entera y en un grafo de nodos idénticos se pierde entre los demás. La jerarquía visual
- * tiene que contar la jerarquía del juego.
- */
-const RADIUS: Partial<Record<TerrainKind, number>> = {
-  core: NODE_R * 1.35,
-  bastion: NODE_R * 1.12,
-};
-
-const radiusOf = (kind: TerrainKind) => RADIUS[kind] ?? NODE_R;
-
-const MIN_SCALE = 0.45;
-const MAX_SCALE = 3.2;
+export type { MapHandle } from '@/components/MapFlat';
 
 /**
- * Una región, dibujada como hexágono.
+ * El mapa de la campaña, en relieve.
  *
- * Punta arriba, la misma orientación que usa el mundo 2.5D, para que el mapa plano y el
- * de relieve enseñen la misma pieza ([ADR-037](../../../docs/DECISIONS.md#adr-037)).
+ * Monta el mundo 2.5D de [ADR-034](../../../docs/DECISIONS.md#adr-034) sobre el mapa
+ * **real**: el motor extruye las provincias que devuelve `regionCells()` de `@gdc/core`,
+ * no un tablero decorativo. Por eso deja de valer la objeción de
+ * [ADR-035](../../../docs/DECISIONS.md#adr-035) —«su tablero son 37 losas fijas»—: ahora
+ * dibuja las 45 a 96 regiones que hay, con la adyacencia que hay
+ * ([ADR-042](../../../docs/DECISIONS.md#adr-042)).
  *
- * **No tejen un panal.** Las regiones viven en coordenadas polares —`mapgen` las coloca
- * con `cos(θ)·r`— y la adyacencia son aristas explícitas, no losas que se tocan. Son
- * fichas hexagonales sobre un tablero, con junta entre ellas, y eso es deliberado: una
- * retícula hexagonal de verdad **no admite simetría de orden 5**, así que tejer el panal
- * costaría la equidad de las mesas de cinco, que es la premisa del juego entero.
+ * El reparto de capas sigue siendo el de ADR-034 y no se negocia:
  *
- * `radius` es el circunradio: la distancia del centro a cada vértice.
+ * | Capa | Qué es |
+ * |---|---|
+ * | Mundo | `<gdc-world scene="campaign">`, `aria-hidden`. **No decide nada** |
+ * | Rótulos | DOM con `data-tile`: las fichas de fuerza. El motor solo los coloca |
+ * | Acceso | Una lista de provincias enfocable, para teclado y lector de pantalla |
+ * | Respaldo | `MapFlat`, la vista plana completa, sin WebGL o con movimiento reducido |
+ *
+ * El motor **emite** (`gdc-pick`) y esta pantalla decide: tocar una provincia en relieve
+ * llama exactamente al mismo `onSelect` que tocarla en el plano, así que todo lo que
+ * cuelga de un tap —ficha de región, apuntado, órdenes— es el mismo código.
  */
-function hexPath(cx: number, cy: number, radius: number): string {
-  let path = '';
-  for (let corner = 0; corner < 6; corner += 1) {
-    const angle = Math.PI / 6 + (corner * Math.PI) / 3;
-    const x = cx + Math.cos(angle) * radius;
-    const y = cy + Math.sin(angle) * radius;
-    path += `${corner === 0 ? 'M' : 'L'}${x.toFixed(2)} ${y.toFixed(2)}`;
-  }
-  return `${path}Z`;
-}
+export function MapView(props: MapProps) {
+  const {
+    view, selected, reachable, ordered, onSelect, label, supports, spotlight = null, threats, ref,
+  } = props;
 
-/** Lo que la pantalla puede pedirle a la cámara. Nada de esto pasa por el estado de React. */
-export interface MapHandle {
-  /** Lleva la cámara a una región. `bias` la desplaza hacia el Núcleo, de 0 a 1. */
-  focus: (regionId: RegionId, options?: { bias?: number; scale?: number }) => void;
-  /** Acerca (`> 1`) o aleja (`< 1`) sin mover el centro. */
-  zoomBy: (factor: number) => void;
-}
-
-interface Props {
-  view: PlayerView;
-  selected: RegionId | null;
-  reachable: readonly RegionId[];
-  ordered: ReadonlyMap<RegionId, RegionId>;
-  onSelect: (regionId: RegionId) => void;
-  /** Cómo se anuncia el mapa a un lector de pantalla. Llega traducido. */
-  label: string;
-  /** Apoyos de Fuego del borrador: origen → región apoyada. */
-  supports?: ReadonlyMap<RegionId, RegionId>;
-  /** Asiento resaltado desde el reparto: su territorio se enciende y el resto se apaga. */
-  spotlight?: Seat | null;
-  /** Regiones propias con una fuerza enemiga al lado. */
-  threats?: ReadonlySet<RegionId>;
-  ref?: Ref<MapHandle>;
-}
-
-/** Encuadra el centroide de un conjunto de regiones. */
-function centroid(view: PlayerView, ids: readonly RegionId[]): { x: number; y: number } | null {
-  const points = ids.map((id) => view.map.regions[id]).filter(Boolean);
-  if (points.length === 0) return null;
-  return {
-    x: points.reduce((s, r) => s + r!.x, 0) / points.length,
-    y: points.reduce((s, r) => s + r!.y, 0) / points.length,
-  };
-}
-
-/**
- * Mapa en SVG. Ver ADR-012 y ADR-035: no es Canvas ni WebGL a propósito.
- *
- * Cada región es un `<g role="button" tabindex="0">`, así que el mapa es navegable con
- * teclado y anunciable por un lector de pantalla sin escribir una sola línea extra.
- * Con Canvas, cada uno de esos dos puntos costaría una implementación paralela.
- *
- * El zoom y el desplazamiento se aplican por `transform` sobre el `<g>` raíz, manipulado
- * por ref: durante un gesto NO hay re-render de React (docs/UX_MOBILE.md §9). Por el mismo
- * motivo la cámara se expone como un `MapHandle` imperativo: un botón que la mueva no
- * puede costar un render del mapa entero.
- */
-export function MapView({
-  view, selected, reachable, ordered, onSelect, label, supports, spotlight = null, threats, ref,
-}: Props) {
-  const rootRef = useRef<SVGGElement | null>(null);
-  const svgRef = useRef<SVGSVGElement | null>(null);
-  const camera = useRef({ x: 0, y: 0, scale: 1 });
-  const flight = useRef(0);
-  const gesture = useRef<{
-    pointers: Map<number, { x: number; y: number }>;
-    startDist: number;
-    startScale: number;
-    /** Distancia recorrida en el gesto. Un arrastre no puede acabar seleccionando. */
-    travel: number;
-  }>({ pointers: new Map(), startDist: 0, startScale: 1, travel: 0 });
-
-  const apply = useCallback(() => {
-    const { x, y, scale } = camera.current;
-    rootRef.current?.setAttribute('transform', `translate(${x} ${y}) scale(${scale})`);
-  }, []);
-
-  /** Coloca la cámara sobre un punto del mundo. `x`/`y` son coordenadas de región. */
-  const place = useCallback((x: number, y: number, scale: number) => {
-    // Sin límite, un arrastre largo deja el mapa fuera de la pantalla y no hay forma de
-    // volver: la libertad de movimiento acaba en un lienzo vacío.
-    const limit = view.map.extent * 1.15;
-    const cx = clamp(x, -limit, limit);
-    const cy = clamp(y, -limit, limit);
-    camera.current = { x: -cx * scale, y: -cy * scale, scale };
-    apply();
-  }, [apply, view.map.extent]);
-
-  /** Dónde mira la cámara ahora, en coordenadas del mundo. */
-  const look = () => ({
-    x: -camera.current.x / camera.current.scale,
-    y: -camera.current.y / camera.current.scale,
-  });
+  const flat = useRef<MapHandle | null>(null);
+  const world = useRef<WorldHandle | null>(null);
 
   /**
-   * Vuelo suave hasta un punto.
+   * El mapa que se extruye. Las provincias son las del motor, no un decorado: `regionCells`
+   * es la misma función que define qué se toca con qué.
    *
-   * Un salto instantáneo obliga a reorientarse: se pierde de vista de dónde venías, que
-   * en un mapa de 96 regiones es justo lo que hay que conservar. Va por `requestAnimationFrame`
-   * sobre el `transform`, así que cuesta cero renders de React.
+   * Se recalcula una vez por turno —cambia el control, cambia la niebla— y eso reconstruye
+   * el mundo. Es el único momento en que se reconstruye: el resaltado va por `overlay`.
    */
-  const flyTo = useCallback((x: number, y: number, scale?: number) => {
-    cancelAnimationFrame(flight.current);
-    const from = { ...look(), scale: camera.current.scale };
-    const target = { x, y, scale: clamp(scale ?? from.scale, MIN_SCALE, MAX_SCALE) };
-    const instant = typeof window !== 'undefined'
-      && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (instant) { place(target.x, target.y, target.scale); return; }
-
-    const start = performance.now();
-    const step = (now: number) => {
-      const k = Math.min(1, (now - start) / 320);
-      const ease = 1 - (1 - k) ** 3;
-      place(
-        from.x + (target.x - from.x) * ease,
-        from.y + (target.y - from.y) * ease,
-        from.scale + (target.scale - from.scale) * ease,
-      );
-      if (k < 1) flight.current = requestAnimationFrame(step);
+  const campaign = useMemo<CampaignMap>(() => {
+    const cells = regionCells(view.map);
+    const seen = new Set(view.visible);
+    return {
+      seat: view.seat,
+      extent: view.map.extent,
+      regions: view.map.regions.map((region) => ({
+        id: region.id,
+        kind: region.kind,
+        x: region.x,
+        y: region.y,
+        cell: cells[region.id] ?? [],
+        owner: view.control[region.id] ?? null,
+        seen: seen.has(region.id),
+        fort: view.fortification[region.id] ?? 0,
+      })),
+      // Las fuerzas son piezas sobre el tablero. De las ajenas solo se sabe el tamaño
+      // aproximado, así que su arma va en `null` y el motor pone una peana sin insignia:
+      // ponerles silueta de Línea sería enseñar lo que el motor no sabe.
+      forces: view.forces.map((force) => ({
+        regionId: force.regionId,
+        seat: force.seat,
+        arm: force.own ? dominant(force) : null,
+      })),
     };
-    flight.current = requestAnimationFrame(step);
-  }, [place]);
+  }, [view]);
+
+  /**
+   * Lo que se resalta. Una sola marca por provincia y gana la más fuerte: si se
+   * acumularan, una provincia acabaría iluminada y apagada a la vez.
+   */
+  const overlay = useMemo<CampaignOverlay>(() => {
+    const marks: Record<number, CampaignMark> = {};
+    const aiming = reachable.length > 0;
+
+    for (const region of view.map.regions) {
+      const owner = view.control[region.id] ?? null;
+      if (aiming && !reachable.includes(region.id) && region.id !== selected) {
+        marks[region.id] = 'dim';
+      } else if (spotlight !== null && owner !== spotlight && region.id !== selected) {
+        marks[region.id] = 'dim';
+      }
+    }
+    const home = view.map.bastions[view.seat];
+    if (home !== undefined) marks[home] = 'home';
+    for (const regionId of threats ?? []) marks[regionId] = 'threat';
+    for (const regionId of reachable) marks[regionId] = 'reachable';
+    if (selected !== null) marks[selected] = 'selected';
+
+    return {
+      marks,
+      arrows: [
+        ...[...ordered.entries()].map(([from, to]) => ({ from, to })),
+        ...[...(supports?.entries() ?? [])].map(([from, to]) => ({ from, to, support: true })),
+      ],
+    };
+  }, [ordered, reachable, selected, spotlight, supports, threats, view]);
+
+  const handle = useCallback((next: WorldHandle | null) => { world.current = next; }, []);
 
   useImperativeHandle(ref, () => ({
     focus(regionId, options) {
-      const region = view.map.regions[regionId];
-      if (!region) return;
-      const core = view.map.regions[view.map.coreId];
-      // El Bastión está en el anillo exterior: centrarlo exactamente deja medio encuadre
-      // fuera del mapa. Se sesga hacia el Núcleo, que es hacia donde se juega.
-      const bias = options?.bias ?? 0;
-      flyTo(
-        region.x + ((core?.x ?? 0) - region.x) * bias,
-        region.y + ((core?.y ?? 0) - region.y) * bias,
-        options?.scale,
-      );
+      if (world.current) world.current.focusRegion(regionId, options?.bias ?? 0);
+      else flat.current?.focus(regionId, options);
     },
     zoomBy(factor) {
-      const here = look();
-      flyTo(here.x, here.y, camera.current.scale * factor);
+      if (world.current) world.current.zoomBy(factor);
+      else flat.current?.zoomBy(factor);
     },
-  }), [flyTo, view.map.coreId, view.map.regions]);
+  }), []);
 
-  /**
-   * Zoom inicial derivado del ancho REAL del viewport, no de una constante.
-   *
-   * Un mapa de 5 jugadores no cabe entero en 360 px con regiones tocables: a escala 1
-   * cada región mide 21 px, menos de la mitad del mínimo de 44 px. En vez de encoger el
-   * mapa (que lo volvería trivial) o de fingir que cumple, se entra con el zoom
-   * necesario para que una región mida ~52 px y se centra en el Bastión propio. El
-   * jugador ve su sector y el Núcleo, y navega desde ahí (docs/UX_MOBILE.md §1.4).
-   */
-  useEffect(() => {
-    const width = svgRef.current?.getBoundingClientRect().width ?? 360;
-    const TARGET_PX = 52;
-    const scale = clamp(
-      (TARGET_PX * 2 * view.map.extent) / (2 * NODE_R * width),
-      MIN_SCALE,
-      MAX_SCALE,
-    );
-    const bastion = view.map.bastions[view.seat];
-    const home = bastion !== undefined ? view.map.regions[bastion] : undefined;
-    const core = view.map.regions[view.map.coreId];
-    if (home) {
-      place(home.x + ((core?.x ?? 0) - home.x) * 0.42, home.y + ((core?.y ?? 0) - home.y) * 0.42, scale);
-    } else {
-      place(0, 0, scale);
-    }
-    // Solo al montar el mapa de esta partida: después manda el jugador.
-  }, [place, view.map.bastions, view.map.coreId, view.map.extent, view.map.regions, view.seat]);
-
-  /**
-   * Al apuntar con una fuerza, se encuadra su vecindario.
-   *
-   * Sin esto, algunos destinos alcanzables quedaban **fuera de la pantalla** al zoom por
-   * defecto y el jugador tenía que desplazar el mapa a ciegas para poder ordenar un
-   * movimiento que el juego ya le estaba ofreciendo. Resaltar una opción que no se puede
-   * tocar es peor que no ofrecerla.
-   */
-  const aimKey = reachable.length > 0 && selected !== null ? `${selected}` : '';
-  useEffect(() => {
-    if (aimKey === '') return;
-    const focus = centroid(view, [Number(aimKey), ...reachable]);
-    if (focus) flyTo(focus.x, focus.y);
-    // `aimKey` cambia solo al entrar en una selección nueva: mover la cámara en cada
-    // render pelearía con el dedo del jugador.
-
-  }, [aimKey]);
-
-  useEffect(() => () => cancelAnimationFrame(flight.current), []);
-
-  const onPointerDown = (event: ReactPointerEvent<SVGSVGElement>) => {
-    cancelAnimationFrame(flight.current);
-    gesture.current.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-    if (gesture.current.pointers.size === 1) gesture.current.travel = 0;
-    if (gesture.current.pointers.size === 2) {
-      const [a, b] = [...gesture.current.pointers.values()];
-      gesture.current.startDist = Math.hypot(a!.x - b!.x, a!.y - b!.y);
-      gesture.current.startScale = camera.current.scale;
-    }
-    (event.target as Element).setPointerCapture?.(event.pointerId);
-  };
-
-  const onPointerMove = (event: ReactPointerEvent<SVGSVGElement>) => {
-    const previous = gesture.current.pointers.get(event.pointerId);
-    if (!previous) return;
-    const next = { x: event.clientX, y: event.clientY };
-    gesture.current.pointers.set(event.pointerId, next);
-    gesture.current.travel += Math.hypot(next.x - previous.x, next.y - previous.y);
-
-    if (gesture.current.pointers.size === 2) {
-      const [a, b] = [...gesture.current.pointers.values()];
-      const distance = Math.hypot(a!.x - b!.x, a!.y - b!.y);
-      if (gesture.current.startDist > 0) {
-        const here = look();
-        place(
-          here.x, here.y,
-          clamp(
-            (gesture.current.startScale * distance) / gesture.current.startDist,
-            MIN_SCALE, MAX_SCALE,
-          ),
-        );
-      }
-      return;
-    }
-
-    const rect = svgRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const unitsPerPixel = (view.map.extent * 2) / rect.width / camera.current.scale;
-    const here = look();
-    place(here.x - (next.x - previous.x) * unitsPerPixel, here.y - (next.y - previous.y) * unitsPerPixel,
-      camera.current.scale);
-  };
-
-  const onPointerUp = (event: ReactPointerEvent<SVGSVGElement>) => {
-    gesture.current.pointers.delete(event.pointerId);
-  };
-
-  const onWheel = (event: React.WheelEvent<SVGSVGElement>) => {
-    const here = look();
-    place(here.x, here.y, clamp(camera.current.scale * (event.deltaY < 0 ? 1.12 : 0.89), MIN_SCALE, MAX_SCALE));
-  };
-
-  /** Un arrastre que termina sobre una región no puede seleccionarla. */
-  const tap = (regionId: RegionId) => {
-    if (gesture.current.travel > 8) return;
-    onSelect(regionId);
-  };
-
-  const extent = view.map.extent;
-  const visible = new Set(view.visible);
-  const reachableSet = new Set(reachable);
-  const aiming = reachableSet.size > 0;
-  const forcesByRegion = new Map<RegionId, VisibleForce[]>();
+  const forcesByRegion = new Map<RegionId, { own: number; enemies: { seat: Seat; total: number; exact: boolean }[] }>();
   for (const force of view.forces) {
-    const list = forcesByRegion.get(force.regionId) ?? [];
-    list.push(force);
-    forcesByRegion.set(force.regionId, list);
+    const entry = forcesByRegion.get(force.regionId) ?? { own: 0, enemies: [] };
+    if (force.own) entry.own += troops(force.approxTotal);
+    else entry.enemies.push({ seat: force.seat, total: troops(force.approxTotal), exact: force.line !== null });
+    forcesByRegion.set(force.regionId, entry);
   }
 
   return (
-    <svg
-      ref={svgRef}
-      className="map-surface h-full w-full"
-      viewBox={`${-extent} ${-extent} ${extent * 2} ${extent * 2}`}
-      role="application"
-      aria-label={label}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerCancel={onPointerUp}
-      onWheel={onWheel}
+    <World
+      scene="campaign"
+      seat={view.seat}
+      // Sin `zoom`: el mundo se abre a un número fijo de **provincias** en pantalla, que es
+      // lo que hace que se vean igual de grandes en una partida de tres y en una de cinco.
+      // Sobre tu Bastión —tu territorio y quien te rodea, que es por donde empieza un 4X—,
+      // y el mando de alejar llega hasta el mapa completo.
+      focus="bastion"
+      elevation={0.78}
+      azimuth={-1.05}
+      campaign={campaign}
+      overlay={overlay}
+      onPick={onSelect}
+      handle={handle}
+      fallback={<MapFlat {...props} ref={flat} />}
     >
-      <defs>
-        <Patterns />
-        <marker
-          id="arrow-head" viewBox="0 0 10 10" refX="8" refY="5"
-          markerWidth="4" markerHeight="4" orient="auto-start-reverse"
+      {/*
+        Las cifras de fuerza son DOM de verdad: el motor solo las coloca proyectando el
+        mundo. Si vivieran dentro del lienzo, para media clase de jugadores no existirían.
+      */}
+      {[...forcesByRegion.entries()].map(([regionId, entry]) => (
+        <div
+          key={regionId}
+          data-tile={`r${regionId}`}
+          data-lift="0.75"
+          data-edge="hide"
+          className="type-figure pointer-events-none absolute flex items-center gap-1
+            whitespace-nowrap border bg-void/90 px-1.5 py-0.5 text-xs"
+          style={{ borderColor: seatColor(entry.own > 0 ? view.seat : entry.enemies[0]?.seat ?? null) }}
         >
-          <path d="M0 0 10 5 0 10Z" fill="var(--color-ash-glow)" />
-        </marker>
-      </defs>
+          {entry.own > 0 && (
+            <span style={{ color: seatColor(view.seat) }}>{entry.own}</span>
+          )}
+          {entry.enemies.map((enemy, index) => (
+            <span key={index} style={{ color: seatColor(enemy.seat) }}>
+              {enemy.exact ? enemy.total : `~${enemy.total}`}
+            </span>
+          ))}
+        </div>
+      ))}
 
-      <g ref={rootRef}>
-        {/* La cuadrícula del plano. Se desplaza con el mapa: es lo que hace que un
-            arrastre se note aunque el dedo pase por encima del vacío. */}
-        <rect
-          x={-extent * 2} y={-extent * 2} width={extent * 4} height={extent * 4}
-          fill="url(#pat-chart)" pointerEvents="none"
-        />
-
-        {/* Rutas primero: siempre por debajo de las regiones, y muy por debajo en peso.
-            Dibujadas al grosor de antes tejían una telaraña que competía con el mapa. */}
-        <g stroke="var(--color-line)" strokeWidth={2} strokeLinecap="round">
-          {view.map.edges.map((edge) => {
-            const a = view.map.regions[edge.a];
-            const b = view.map.regions[edge.b];
-            if (!a || !b) return null;
-            const lit = visible.has(edge.a) || visible.has(edge.b);
-            return (
-              <line
-                key={`${edge.a}-${edge.b}`}
-                x1={a.x} y1={a.y} x2={b.x} y2={b.y}
-                opacity={lit ? 0.5 : 0.22}
-              />
-            );
-          })}
-        </g>
-
-        {/* Flechas de las órdenes ya dadas: adónde va cada fuerza, sin abrir un panel. */}
-        <g
-          stroke="var(--color-ash-glow)" strokeWidth={5} strokeLinecap="round"
-          markerEnd="url(#arrow-head)" opacity={0.9}
-        >
-          {[...ordered.entries()].map(([from, to]) => {
-            const a = view.map.regions[from];
-            const b = view.map.regions[to];
-            if (!a || !b) return null;
-            return <line key={`o-${from}`} x1={a.x} y1={a.y} {...shortened(a, b, radiusOf(b.kind) + 10)} />;
-          })}
-        </g>
-
-        {/* Apoyos de Fuego: trazo discontinuo, porque no es un avance. */}
-        <g
-          stroke="var(--color-rust)" strokeWidth={4} strokeLinecap="round"
-          strokeDasharray="10 8" opacity={0.85}
-        >
-          {[...(supports?.entries() ?? [])].map(([from, to]) => {
-            const a = view.map.regions[from];
-            const b = view.map.regions[to];
-            if (!a || !b) return null;
-            return <line key={`s-${from}`} x1={a.x} y1={a.y} {...shortened(a, b, radiusOf(b.kind) + 6)} />;
-          })}
-        </g>
-
-        {view.map.regions.map((region) => {
-          const owner = view.control[region.id] ?? null;
-          const observed = visible.has(region.id);
-          const isSelected = selected === region.id;
-          const isReachable = reachableSet.has(region.id);
-          const forces = forcesByRegion.get(region.id) ?? [];
-          const mine = forces.filter((f) => f.own);
-          const enemies = forces.filter((f) => !f.own);
-          const radius = radiusOf(region.kind);
-          // Tres apagados posibles, y solo el más fuerte manda: la niebla, el foco sobre un
-          // rival y el modo de apuntar. Si se multiplicaran, una región quedaría invisible.
-          const dim = aiming && !isReachable && !isSelected ? 0.45
-            : spotlight !== null && owner !== spotlight ? 0.36
-              : observed ? 1 : 0.5;
-
-          return (
-            <g
-              key={region.id}
-              className="region"
-              role="button"
-              tabIndex={0}
+      {/*
+        La capa de acceso. El relieve se toca con el dedo por raycasting, que no da foco ni
+        orden de lectura; esto sí. Aparece al tabular, así que un teclado sin ratón sigue
+        pudiendo recorrer el mapa y ordenar.
+      */}
+      <ul aria-label={label} className="absolute inset-x-0 bottom-0 flex flex-wrap gap-1">
+        {view.map.regions.map((region) => (
+          <li key={region.id}>
+            <button
+              type="button"
               data-region={region.id}
-              data-reachable={isReachable ? 'true' : undefined}
-              data-enemy={enemies.length > 0 ? 'true' : undefined}
-              aria-label={describe(region.kind, owner, view.seat, observed, forces.length)}
-              opacity={dim}
-              onClick={() => tap(region.id)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault();
-                  onSelect(region.id);
-                }
-              }}
+              data-reachable={reachable.includes(region.id) ? 'true' : undefined}
+              onClick={() => onSelect(region.id)}
+              className="sr-only focus:not-sr-only focus:relative focus:z-10 focus:m-1
+                focus:border focus:border-rust focus:bg-panel focus:px-2 focus:py-1
+                focus:text-xs"
             >
-              <path
-                className="region-shape"
-                d={hexPath(region.x, region.y, radius)}
-                fill={TERRAIN_FILL[region.kind]}
-                stroke={owner === null ? 'var(--color-line)' : seatColor(owner)}
-                strokeWidth={owner === null ? 2 : 5}
-                strokeLinejoin="miter"
-              />
-              {owner !== null && (
-                <>
-                  {/* Quién manda aquí se lee del color del relleno, no de repasar bordes.
-                      Es la diferencia entre ver un frente y contar hexágonos. */}
-                  <path
-                    d={hexPath(region.x, region.y, radius)}
-                    fill={seatColor(owner)} opacity={0.2} pointerEvents="none"
-                  />
-                  <path
-                    d={hexPath(region.x, region.y, radius)}
-                    fill={`url(#pat-${SEAT_PATTERN[owner]})`}
-                    opacity={0.22}
-                    pointerEvents="none"
-                  />
-                </>
-              )}
-              {/* Anillo de registro del Núcleo. Es el objetivo de la campaña: se ve desde
-                  cualquier parte del mapa sin tener que buscarlo. */}
-              {region.kind === 'core' && (
-                <path
-                  d={hexPath(region.x, region.y, radius + 7)}
-                  fill="none" stroke="var(--color-ash)" strokeWidth={1.5}
-                  strokeDasharray="10 7" opacity={0.75} pointerEvents="none"
-                />
-              )}
-              {/* Tu Bastión, marcado siempre: es a donde vuelve la cámara. */}
-              {view.map.bastions[view.seat] === region.id && (
-                <path
-                  d={hexPath(region.x, region.y, radius + 7)}
-                  fill="none" stroke={seatColor(view.seat)} strokeWidth={2}
-                  opacity={0.9} pointerEvents="none"
-                />
-              )}
-              {/* Amenaza: región tuya con enemigo al lado. */}
-              {threats?.has(region.id) && (
-                <path
-                  d={hexPath(region.x, region.y, radius + 4)}
-                  fill="none" stroke="var(--color-danger)" strokeWidth={3}
-                  strokeDasharray="4 6" opacity={0.85} pointerEvents="none"
-                />
-              )}
-
-              {isReachable && (
-                <>
-                  <path
-                    d={hexPath(region.x, region.y, radius)}
-                    fill="var(--color-ash-glow)" opacity={0.12} pointerEvents="none"
-                  />
-                  <path
-                    d={hexPath(region.x, region.y, radius + 8)}
-                    fill="none" stroke="var(--color-ash-glow)" strokeWidth={3}
-                    strokeDasharray="8 6" opacity={0.9} pointerEvents="none"
-                  />
-                </>
-              )}
-              {isSelected && (
-                <path
-                  d={hexPath(region.x, region.y, radius + 12)}
-                  fill="none" stroke="var(--color-rust)" strokeWidth={5}
-                  strokeLinejoin="miter" pointerEvents="none"
-                />
-              )}
-
-              <TerrainMark kind={region.kind} x={region.x} y={region.y} />
-
-              {mine.length > 0 && (
-                <ForceBadge
-                  x={region.x} y={region.y - radius - 6} seat={view.seat} own
-                  label={String(mine.reduce((s, f) => s + (f.approxTotal ?? 0), 0))}
-                />
-              )}
-              {enemies.map((force, index) => (
-                <ForceBadge
-                  key={force.id}
-                  x={region.x + (index - (enemies.length - 1) / 2) * 34}
-                  y={region.y + radius + 22}
-                  seat={force.seat}
-                  label={force.line === null ? `~${force.approxTotal}` : String(force.approxTotal)}
-                />
-              ))}
-            </g>
-          );
-        })}
-      </g>
-    </svg>
+              {describe(region.kind, view.control[region.id] ?? null, view.seat, region.id)}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </World>
   );
 }
 
-/** Acorta un segmento para que la punta de flecha no se meta bajo el hexágono de destino. */
-function shortened(
-  a: { x: number; y: number }, b: { x: number; y: number }, margin: number,
-): { x2: number; y2: number } {
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  const length = Math.hypot(dx, dy) || 1;
-  const k = Math.max(0, (length - margin) / length);
-  return { x2: a.x + dx * k, y2: a.y + dy * k };
+/** El arma que más pesa en una fuerza propia: la que le da silueta sobre el tablero. */
+function dominant(force: PlayerView['forces'][number]): 'line' | 'fire' | 'sky' {
+  const line = force.line ?? 0;
+  const fire = force.fire ?? 0;
+  const sky = force.sky ?? 0;
+  if (fire > line && fire >= sky) return 'fire';
+  if (sky > line && sky > fire) return 'sky';
+  return 'line';
 }
 
-/**
- * Marca de fuerza.
- *
- * Las propias van arriba y las ajenas abajo, siempre: en un vistazo se ve de qué lado
- * está cada cifra sin leer el color. Y la ajena lleva la trama de su asiento, porque el
- * color nunca es el único distintivo (UX_MOBILE §7).
- */
-function ForceBadge({
-  x, y, seat, label, own = false,
-}: { x: number; y: number; seat: Seat; label: string; own?: boolean }) {
-  return (
-    <g pointerEvents="none">
-      <rect
-        x={x - 19} y={y - 12} width={38} height={23} rx={3}
-        fill="var(--color-void)" stroke={seatColor(seat)} strokeWidth={2.5}
-      />
-      {!own && (
-        <rect x={x - 19} y={y - 12} width={5} height={23} fill={seatColor(seat)} />
-      )}
-      <text
-        x={own ? x : x + 2} y={y + 5} textAnchor="middle"
-        fontSize={15} fontWeight={700} fill="var(--color-ink)"
-      >
-        {label}
-      </text>
-    </g>
-  );
-}
-
-/** Tramas por asiento: la identidad nunca depende solo del color. */
-function Patterns() {
-  return (
-    <>
-      <pattern id="pat-stripes" width="8" height="8" patternUnits="userSpaceOnUse">
-        <path d="M0 0 L0 8" stroke="#fff" strokeWidth="3" />
-      </pattern>
-      <pattern id="pat-grid" width="8" height="8" patternUnits="userSpaceOnUse">
-        <path d="M0 0 L8 0 M0 0 L0 8" stroke="#fff" strokeWidth="2" />
-      </pattern>
-      <pattern id="pat-diagonal" width="8" height="8" patternUnits="userSpaceOnUse">
-        <path d="M0 8 L8 0" stroke="#fff" strokeWidth="3" />
-      </pattern>
-      <pattern id="pat-dots" width="8" height="8" patternUnits="userSpaceOnUse">
-        <circle cx="4" cy="4" r="2" fill="#fff" />
-      </pattern>
-      <pattern id="pat-solid" width="8" height="8" patternUnits="userSpaceOnUse">
-        <rect width="8" height="8" fill="#fff" />
-      </pattern>
-      {/* La retícula de la carta de situación. Muy tenue: si se ve, compite con el mapa. */}
-      <pattern id="pat-chart" width="48" height="48" patternUnits="userSpaceOnUse">
-        <path d="M0 0 L48 0 M0 0 L0 48" stroke="var(--color-line)" strokeWidth="1" opacity="0.5" />
-      </pattern>
-    </>
-  );
-}
-
+/** Cómo se anuncia una provincia. El mismo texto que usaba el mapa plano. */
 function describe(
   kind: keyof typeof TERRAIN_NAME,
   owner: Seat | null,
   seat: Seat,
-  observed: boolean,
-  forceCount: number,
+  id: RegionId,
 ): string {
-  const parts = [TERRAIN_NAME[kind]];
-  parts.push(owner === null ? 'neutral' : owner === seat ? 'tuya' : `del asiento ${owner + 1}`);
-  if (!observed) parts.push('sin observación');
-  else if (forceCount > 0) parts.push(`${forceCount} fuerza${forceCount > 1 ? 's' : ''} visible${forceCount > 1 ? 's' : ''}`);
-  return parts.join(', ');
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
-
-/**
- * Marca de terreno.
- *
- * El terreno **no lleva iconos**: lleva marcas geométricas dibujadas con el mismo
- * lenguaje que el resto del arte —trazo constante, ángulos construidos, sin perspectiva—
- * ([ASSET_PIPELINE §3.2](../../../docs/ASSET_PIPELINE.md#32-regiones-8)). Antes eran
- * glifos Unicode, que dependían de la fuente del sistema y se veían distintos en cada
- * dispositivo: en un juego donde leer el mapa es la mitad de la decisión, eso no vale.
- */
-function TerrainMark({ kind, x, y }: { kind: TerrainKind; x: number; y: number }) {
-  const common = {
-    fill: 'none' as const,
-    stroke: 'var(--color-ink)',
-    strokeWidth: 2.5,
-    strokeLinecap: 'square' as const,
-    opacity: 0.55,
-    pointerEvents: 'none' as const,
-  };
-
-  switch (kind) {
-    case 'urban':
-      // Manzana de tres bloques.
-      return (
-        <g {...common}>
-          <rect x={x - 11} y={y - 5} width={7} height={10} />
-          <rect x={x - 2} y={y - 8} width={7} height={13} />
-          <rect x={x + 7} y={y - 3} width={5} height={8} />
-        </g>
-      );
-    case 'high':
-      // Curvas de nivel.
-      return (
-        <g {...common}>
-          <path d={`M${x - 12} ${y + 6} ${x} ${y - 8} ${x + 12} ${y + 6}`} />
-          <path d={`M${x - 6} ${y + 8} ${x} ${y + 1} ${x + 6} ${y + 8}`} />
-        </g>
-      );
-    case 'forest':
-      return (
-        <g {...common}>
-          <path d={`M${x - 9} ${y + 7} ${x - 9} ${y - 7}`} />
-          <path d={`M${x} ${y + 9} ${x} ${y - 9}`} />
-          <path d={`M${x + 9} ${y + 7} ${x + 9} ${y - 7}`} />
-        </g>
-      );
-    case 'water':
-      return (
-        <g {...common} strokeDasharray="7 5">
-          <path d={`M${x - 12} ${y - 4} H${x + 12}`} />
-          <path d={`M${x - 12} ${y + 4} H${x + 12}`} />
-        </g>
-      );
-    case 'seam':
-      // Yacimiento de Ceniza: la única marca con el color de la Ceniza.
-      return (
-        <path
-          d={`M${x} ${y - 12} ${x + 3.5} ${y - 3.5} ${x + 12} ${y} ${x + 3.5} ${y + 3.5} ${x} ${y + 12} ${x - 3.5} ${y + 3.5} ${x - 12} ${y} ${x - 3.5} ${y - 3.5}Z`}
-          fill="var(--color-ash)"
-          opacity={0.85}
-          pointerEvents="none"
-        />
-      );
-    case 'bastion':
-      // Almena.
-      return (
-        <g {...common} opacity={0.7}>
-          <path d={`M${x - 12} ${y + 8} V${y - 4} h4 v-4 h4 v4 h4 v-4 h4 v4 h4 V${y + 8}Z`} />
-        </g>
-      );
-    case 'core':
-      // El Núcleo, con la simetría de orden 3 del emblema.
-      return (
-        <g pointerEvents="none">
-          <path
-            d={`M${x} ${y - 11} ${x + 11} ${y} ${x} ${y + 11} ${x - 11} ${y}Z`}
-            fill="var(--color-ash)"
-            opacity={0.9}
-          />
-          <path
-            d={`M${x} ${y - 5} ${x + 5} ${y} ${x} ${y + 5} ${x - 5} ${y}Z`}
-            fill="var(--color-void)"
-          />
-        </g>
-      );
-    default:
-      return null;
-  }
+  const who = owner === null ? 'neutral' : owner === seat ? 'tuya' : `del asiento ${owner + 1}`;
+  return `${TERRAIN_NAME[kind]} ${id}, ${who}`;
 }
