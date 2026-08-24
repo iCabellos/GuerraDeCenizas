@@ -95,8 +95,37 @@ Hay un test que enumera todas las funciones `security definer` invocables por
 `authenticated` y exige que sean exactamente las tres ayudantes de política. Al añadir
 una función nueva, ese test falla hasta que decidas a propósito quién puede llamarla.
 
+## El mapa no debería viajar en cada vista
+
+Hallazgo del análisis del refactor RTS, y **vale igual si el refactor no se hace**:
+`player_views` guarda una fila `(game_id, turn, seat)` con la vista entera, y `PlayerView`
+incluye `map: GameMap`. El mismo objeto **inmutable durante toda la partida** se serializa
+una vez por asiento y por turno: 60 copias en una campaña de cinco a 12 turnos.
+
+Con 96 regiones se aguanta (~0,9 MB por campaña). Con las 271 que propone el refactor son
+⚖️ ~7,4 MB, es decir **~67 campañas archivadas en los 500 MB del free tier** en vez de
+~550 — y con ello se cae el objetivo de 0 €/mes durante la beta.
+
+La salida está en [ADR-044](../docs/DECISIONS.md#adr-044): `game_maps` con el mapa una vez
+por partida, y `mapId` en la vista. Al hacerlo, cuidado con lo de siempre:
+
+```
+□ game_maps es legible por CUALQUIER asiento de esa partida, y por nadie más
+□ La topología es pública entre los cinco; lo secreto son las fuerzas. Escríbelo
+  como política, no lo des por hecho
+□ Un asiento de OTRA partida no puede leer este mapa  ← test de seguridad nuevo
+```
+
+Y la regla que no se toca ni con el refactor: **el estado de juego sigue en un solo
+`jsonb`**. Partir `buildings`, `stock` o `colossi` en tablas propias las expondría a
+PostgREST y tiraría la niebla de guerra por el desagüe ([ADR-007](../docs/DECISIONS.md#adr-007)).
+
 ## Estado actual
 
 **v0.3 en curso.** Esquema completo, RLS y funciones de resolución implementadas y
 verificadas contra Postgres real: 43 tests en `apps/web/tests/security/`, entre ellos los
 siete bloqueantes.
+
+El refactor RTS ([`docs/RTS_ZONES_REFACTOR.md`](../docs/RTS_ZONES_REFACTOR.md)) añadiría
+tres migraciones —`game_maps`, zonas y adelgazamiento de la vista— pero **está sin aprobar**
+y ninguna se escribe todavía.

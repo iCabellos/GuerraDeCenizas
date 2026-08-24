@@ -47,3 +47,27 @@ que dice.
 
 **Sin implementar.** Llega en v0.8 (ver [ROADMAP](../../docs/ROADMAP.md)). Se puede
 adelantar parcialmente en cuanto el motor tenga combate y economía (v0.2).
+
+## Si entra el refactor RTS, este paquete deja de ser opcional
+
+[`docs/RTS_ZONES_REFACTOR.md`](../../docs/RTS_ZONES_REFACTOR.md) —propuesta, sin aprobar—
+pasa el balance de ~20 constantes a ~50, y varias de las nuevas **no se pueden calibrar a
+mano** porque su efecto es de segundo orden y aparece en el turno 14: el Despojo del
+Coloso, el coste real de abrir una Puerta, los multiplicadores de grado y la duración de
+la campaña.
+
+> Con ese refactor, el simulador se adelanta de v0.8 a **prerrequisito de la primera
+> versión**. Sin él no se empieza.
+
+Las tres métricas que deciden si el diseño funciona, y que tienen que estar en el informe
+desde el primer día ([§13.3](../../docs/RTS_ZONES_REFACTOR.md#133-métricas-nuevas-del-informe)):
+
+| Métrica | Qué dice si falla |
+|---|---|
+| % de Puertas pagadas por ≥ 2 asientos > 55 % | El Coloso es un peaje, no un problema diplomático |
+| Turno de apertura del primer Cerco: 7–10 | Los actos no caben en la duración elegida |
+| % de campañas que llegan a la Corona > 85 % | La partida se atasca antes del premio |
+
+Y sigue valiendo el límite de siempre, aquí más que nunca: el simulador mide si la
+**aritmética** de la Puerta funciona. No mide si pelear contra un Coloso es divertido. Eso
+solo lo dice el playtesting, y presentarlo como si lo dijera sería mentir con números.

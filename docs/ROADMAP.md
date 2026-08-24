@@ -199,6 +199,31 @@ motor   juego   online  diplo   Núcleo   meta   anom.  balance  móvil    beta 
 
 ---
 
+## ⚠️ Antes de empezar la v0.4: hay un refactor propuesto que la reordena
+
+[`RTS_ZONES_REFACTOR.md`](RTS_ZONES_REFACTOR.md) propone partir el mapa en tres zonas
+concéntricas con fronteras cerradas, triplicar su tamaño y añadir extracción de materiales,
+edificios con niveles, grados de tropa, Políticas y guardianes deterministas. Si se acepta,
+**v0.4 deja de ser Diplomacia** y el orden pasa a ser:
+
+```
+v0.4 Zonas → v0.5 Extracción → v0.6 Colosos → v0.7 Ciudad de campaña → v0.8 Balance
+   └─ y Diplomacia, Núcleo, Metaprogresión y Anomalías se corren cuatro números
+```
+
+La razón del orden es que la diplomacia se construye **sobre** la economía y el mapa:
+hacerla antes obliga a hacerla dos veces.
+
+**Ninguna de sus seis decisiones está aceptada** ([ADR-041 a ADR-046](DECISIONS.md#adr-041));
+la única que bloquea es [ADR-045](DECISIONS.md#adr-045), sobre si la metaprogresión puede
+tocar números. Mientras no se decida, **lo que sigue en este documento es el plan vigente**.
+
+Y un detalle de calendario que no admite aplazamiento: el refactor sube `ENGINE_VERSION` y
+`MAPGEN_VERSION` de forma incompatible, y **una partida en curso nunca cambia de motor**.
+Hoy no hay nada que migrar; el día del despliegue público, sí.
+
+---
+
 ## v0.4 — Diplomacia
 
 > **Ya construido en v0.3:** el **reparto** ([ADR-040](DECISIONS.md#adr-040)) enseña

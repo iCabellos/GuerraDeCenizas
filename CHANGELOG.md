@@ -12,6 +12,51 @@ Este proyecto sigue [SemVer](https://semver.org/lang/es/).
 
 ## [Sin publicar] — v0.3 en curso
 
+### Añadido
+
+- **`docs/RTS_ZONES_REFACTOR.md` — la propuesta de refactor a mecánicas de RTS.** Nada de
+  ella está implementado: es la especificación de un cambio que partiría el mapa en tres
+  zonas concéntricas —Solar, Marca y Corona— separadas por Cercos que solo se cruzan por
+  Puertas, triplicaría su tamaño (de 45–96 regiones a 109–271) y añadiría extracción de
+  materiales, cinco edificios con tres niveles, grados de tropa, Políticas y Colosos.
+
+  Lo que hace el refactor viable es que **las zonas son bandas de anillos**: la rotación
+  C<sub>n</sub> conserva el anillo, así que la equidad exacta por construcción —el activo
+  del que cuelga la premisa entera del juego— no se toca
+  ([ADR-041](docs/DECISIONS.md#adr-041)).
+
+  Y lo que lo hace caro está dicho sin adornos en el propio documento: la vista de jugador
+  se multiplica por cuatro, 271 hexágonos no caben en 360 px, 24 turnos amenazan la
+  cadencia asíncrona y el balance vuelve a cero con ~50 constantes.
+
+- **Seis ADR nuevas, todas en estado `propuesta`** ([ADR-041 a ADR-046](docs/DECISIONS.md#adr-041)):
+  zonas como bandas de anillos, mapa que se recorre por zonas en vez de abarcarse, el
+  Coloso como problema diplomático, el mapa fuera de la vista de jugador, la regla de oro
+  de la metaprogresión extendida a los sistemas nuevos, y la campaña en tres actos.
+
+  **Solo [ADR-045](docs/DECISIONS.md#adr-045) bloquea trabajo**, y es la que decide si la
+  metaprogresión puede tocar números. Hoy no puede, y hay un test de CI que lo verifica;
+  la petición que originó el refactor pedía lo contrario. El documento propone mantener la
+  regla —la cuenta guarda **qué** puedes llevar, no **en qué nivel** lo dejaste— y deja
+  registrada la alternativa con su coste, porque la decisión no es técnica.
+
+- **`--only` en `tools/docs-pdf/build.mjs`**: extrae un capítulo a su propio PDF
+  conservando portada y numeración. Un documento de 1 100 líneas que hay que enseñar a
+  alguien no debería obligarle a abrir las 130 páginas del documento completo.
+
+### Corregido en documentación
+
+- **El índice de `DECISIONS.md` se había quedado en la ADR-033.** Las siete siguientes
+  existían con su ancla y su contenido pero no aparecían en la tabla de la cabecera, que es
+  por donde entra todo el mundo.
+
+- Hallazgo del análisis, y **vale se haga o no el refactor**: `PlayerView` incluye
+  `map: GameMap` y `player_views` guarda una fila por asiento y turno, así que el mapa
+  —inmutable durante toda la partida— se serializa **60 veces por campaña**. Con 96
+  regiones se aguanta; con 271 son ⚖️ ~7,4 MB por campaña y ~67 campañas archivadas en los
+  500 MB del free tier. Registrado como [ADR-044](docs/DECISIONS.md#adr-044) y como lección
+  en `CLAUDE.md`.
+
 ### Cambiado
 
 - **La campaña se juega tocando el mapa** ([ADR-040](docs/DECISIONS.md#adr-040)). La

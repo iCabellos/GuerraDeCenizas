@@ -197,6 +197,7 @@ guerra-de-cenizas/
 │   ├── GAME_DESIGN.md           ← GDD
 │   ├── TECHNICAL_DESIGN.md      ← TDD
 │   ├── MAP_GENERATION.md        ← generación procedural + scoring
+│   ├── RTS_ZONES_REFACTOR.md    ← PROPUESTA: zonas, extracción y progresión
 │   ├── DIPLOMACY.md
 │   ├── METAPROGRESSION.md
 │   ├── MULTIPLAYER.md
@@ -405,6 +406,7 @@ reconstruir entera reproduciéndola. Ese es el truco que mantiene el coste plano
 | [GAME_DESIGN.md](docs/GAME_DESIGN.md) | Lore, facciones, recursos, combate, victoria, tutorial |
 | [TECHNICAL_DESIGN.md](docs/TECHNICAL_DESIGN.md) | Arquitectura, BD, RLS, API, concurrencia, seguridad |
 | [MAP_GENERATION.md](docs/MAP_GENERATION.md) | Generador procedural, métricas, scoring, pseudocódigo |
+| [RTS_ZONES_REFACTOR.md](docs/RTS_ZONES_REFACTOR.md) | **Propuesta**: zonas, extracción, edificios, Colosos y progresión |
 | [DIPLOMACY.md](docs/DIPLOMACY.md) | Las 3 primitivas vinculantes, reputación, traición |
 | [METAPROGRESSION.md](docs/METAPROGRESSION.md) | Progresión permanente vs. de partida, la Ciudad |
 | [FACTIONS.md](docs/FACTIONS.md) | Facciones ligadas a la cuenta, desbloqueos, Cisma, Concordia |
@@ -415,7 +417,7 @@ reconstruir entera reproduciéndola. Ese es el truco que mantiene el coste plano
 | [ROADMAP.md](docs/ROADMAP.md) | v0.1 → v1.0 con criterios de aceptación |
 | [DECISIONS.md](docs/DECISIONS.md) | Registro de decisiones arquitectónicas (ADR) |
 
-**PDF:** [`docs/GuerraDeCenizas.pdf`](docs/GuerraDeCenizas.pdf) — 129 páginas con portada,
+**PDF:** [`docs/GuerraDeCenizas.pdf`](docs/GuerraDeCenizas.pdf) — 190 páginas con portada,
 índice y paginación. Se regenera con `npm run docs:pdf` usando solo herramientas del
 repositorio (markdown-it + el Chromium de Playwright). Pipeline documentado en
 [tools/docs-pdf/](tools/docs-pdf/README.md).
@@ -457,7 +459,7 @@ Criterios de aceptación por versión: **[docs/ROADMAP.md](docs/ROADMAP.md)**.
 **v0.2 — Núcleo jugable completado y verificado.**
 
 - ✅ Fase 0 (Discovery): 7 contradicciones resueltas, 21 riesgos catalogados.
-- ✅ Documentación de diseño completa (13 documentos + PDF de 130 páginas).
+- ✅ Documentación de diseño completa (14 documentos + PDF de 190 páginas).
 - ✅ **Motor** (`@gdc/core`): estado, PRNG determinista, `reduce()` con validación,
   movimiento simultáneo, control territorial, visibilidad y eventos filtrados por asiento.
 - ✅ **Generador de mapas**: esqueleto C<sub>n</sub>, decoración y replicación por

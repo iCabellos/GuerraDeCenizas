@@ -63,5 +63,27 @@ va a clonar el repositorio.
 | `UX_MOBILE.md` | Cualquier cosa con interfaz |
 | `ASSET_PIPELINE.md` | Cualquier cosa visual |
 | `TESTING_AND_SIMULATION.md` | Antes de escribir tests |
+| `RTS_ZONES_REFACTOR.md` | Mapa, economía, producción o progresión. **Es propuesta, no está implementada** |
 | `ROADMAP.md` | Antes de empezar cualquier tarea |
 | `DECISIONS.md` | Antes de contradecir algo |
+
+## Un documento en estado «propuesta» se marca en su primera línea
+
+[`RTS_ZONES_REFACTOR.md`](RTS_ZONES_REFACTOR.md) describe un juego que **todavía no
+existe**: zonas, extracción, edificios con niveles, Colosos. El resto de esta carpeta
+describe uno que sí existe, o que existirá tal cual está escrito.
+
+Confundir los dos registros es la forma más rápida de que alguien implemente algo que no
+se ha decidido. Por eso:
+
+```
+□ Un documento propuesto lo dice en su cita de apertura, antes del índice
+□ Y enumera las ADR que lo bloquean, con su estado
+□ Ninguna de esas ADR se marca `aceptada` sin que lo diga el dueño del proyecto
+□ Cuando se acepten, el documento pierde la marca y los documentos que invalida
+  se corrigen EN EL MISMO commit — no después
+```
+
+Ese último punto es la regla de esta carpeta aplicada a un cambio grande: si el código y
+el documento discrepan, uno de los dos está mal. Un refactor a medio documentar deja
+**catorce** documentos discrepando a la vez.
