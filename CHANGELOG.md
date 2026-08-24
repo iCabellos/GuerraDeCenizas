@@ -14,6 +14,37 @@ Este proyecto sigue [SemVer](https://semver.org/lang/es/).
 
 ### Cambiado
 
+- **Cada provincia es un hexágono regular, y la vecindad se decide por distancia**
+  ([ADR-046](docs/DECISIONS.md#adr-046), sustituye a [ADR-041](docs/DECISIONS.md#adr-041)).
+  El tablero se dibujaba como el dual baricéntrico del grafo, y medido resultó que **ni una
+  sola provincia era un hexágono**: en un dual una celda tiene tantos lados como vecinos su
+  región, y el grafo tenía grado medio 3,9. Salían cuadriláteros y pentágonos con los lados
+  desiguales de media al doble, cuando el diseño del proyecto son hexágonos iguales.
+
+  Ahora cada provincia es el mismo hexágono regular. Como hexágonos iguales no cubren un
+  disco con simetría C_5 —eso es imposible, y de esa simetría depende el 5 jugadores—,
+  entre provincias queda holgura, así que la garantía de que el mapa no miente cambia de
+  forma: **el par no adyacente más cercano está más lejos que el par adyacente más lejano**.
+  Lo que parece vecino, lo es.
+
+  Para que eso sea cierto por construcción, la adyacencia sale de la distancia. La regla
+  anterior unía cada nodo con el más próximo **en ángulo** del anillo vecino, y ante dos
+  nodos a la misma distancia dejaba a uno vecino y al otro no — sobre el tablero los dos se
+  veían igual de juntos.
+
+  Los recuentos de anillo y los radios se recalculan juntos para que la distancia entre
+  vecinos sea casi uniforme: la dispersión baja de ×2,41 a ×1,30. Los mapas pasan a 59, 61
+  y 86 regiones, y el grado medio de 3,9 a 4,2 sin salirse del invariante de siempre.
+
+  `MAPGEN_VERSION` sube a 0.3.0 y **cambia el balance**: hay que volver a pasar el
+  simulador. Las partidas en curso guardan su mapa y siguen exactamente igual.
+
+- **Las cifras de tropas se enseñan enteras.** El combate reparte las bajas en proporción y
+  un superviviente podía quedar en 2,609; en pantalla salía «Línea 2.609», que no es una
+  cifra de un juego sino una fuga de la implementación. El motor sigue guardando el número
+  exacto, que es de lo que depende que la partida se reproduzca desde (semilla, órdenes).
+  Venía de antes de este cambio.
+
 - **El mapa de campaña usa el lenguaje visual del mockup**
   ([ADR-045](docs/DECISIONS.md#adr-045)). El proyecto tiene un mockup que ya define cómo se
   ve el tablero, y al llevar la campaña al relieve **no se aplicó**: se inventó un lenguaje

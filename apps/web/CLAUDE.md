@@ -154,9 +154,17 @@ sustituye a [ADR-035](../../docs/DECISIONS.md#adr-035)). `<gdc-world scene="camp
 extruye **las provincias reales**, no un tablero decorativo.
 
 **Los polígonos salen de `regionCells()` en `@gdc/core`: no los calcules aquí**
-([ADR-041](../../docs/DECISIONS.md#adr-041)). La teselación define la adyacencia que se ve
-—dos provincias se tocan si y solo si son adyacentes— y partirla en dos sitios es la forma
-de acabar ofreciendo movimientos que el motor rechaza.
+([ADR-046](../../docs/DECISIONS.md#adr-046)). Cada provincia es un **hexágono regular** y
+entre unas y otras queda holgura, porque hexágonos iguales no cubren un disco con simetría
+C_5. Lo que garantiza que el tablero no mienta es que **el par no adyacente más cercano está
+más lejos que el par adyacente más lejano**, y eso sale de la adyacencia por distancia del
+motor. Partirlo en dos sitios es la forma de acabar ofreciendo movimientos que el motor
+rechaza.
+
+**Las cifras de tropas se enseñan enteras** (`troops()` en `lib/board.ts`). El combate
+reparte las bajas en proporción y un superviviente puede quedar en 2,609; el motor guarda
+el número exacto porque de él depende que la partida se reproduzca, pero «Línea 2,609» en
+pantalla no es una cifra de un juego.
 
 ```
 □ El lienzo es telón: aria-hidden, y no decide nada

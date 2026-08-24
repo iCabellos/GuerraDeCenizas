@@ -246,6 +246,18 @@ No las repitas. Cada una salió de un fallo real de este repositorio:
    haberlo decidido. Hizo falta una columna aparte (`sworn_at`) para poder saberlo
    ([ADR-039](docs/DECISIONS.md#adr-039)).
 
+18. **En un dual, una celda tiene tantos lados como vecinos su región.** El mapa se dibujó
+   como dual baricéntrico para garantizar que «tocarse = ser adyacente», y con grado medio
+   3,9 eso condenaba el tablero a cuadriláteros y pentágonos: **ni una sola provincia era
+   un hexágono**, cuando el diseño del proyecto son hexágonos iguales. La forma de las
+   piezas no se elige en el render — sale de la estructura del grafo
+   ([ADR-046](docs/DECISIONS.md#adr-046)).
+19. **«El más próximo en ángulo» convierte un empate en una mentira.** Las aristas radiales
+   unían cada nodo con el más cercano en ángulo del anillo vecino; cuando dos estaban a la
+   **misma** distancia, uno quedaba vecino y el otro no, y sobre el tablero los dos se veían
+   igual de juntos. La adyacencia por distancia no puede hacer eso: «verse juntas» y «ser
+   vecinas» pasan a ser la misma condición.
+
 ## Idioma
 
 - **Código, identificadores, nombres de archivo y claves i18n**: inglés.

@@ -20,21 +20,37 @@ export interface SectorSpec {
   terrainBag: Readonly<Record<Exclude<TerrainKind, 'bastion' | 'core'>, number>>;
 }
 
+/**
+ * Los recuentos de anillo **no son de estilo: son geometría**.
+ *
+ * Cada provincia se dibuja como un hexágono regular del mismo tamaño
+ * ([ADR-046](../../../../docs/DECISIONS.md#adr-046)), y para que hexágonos iguales quepan
+ * unos junto a otros hace falta que **todos los vecinos estén a la misma distancia**. En
+ * una disposición por anillos eso ata el número de nodos de un anillo a su radio: el paso
+ * dentro del anillo es `2πρ/n`, así que `n` crece con `ρ` o el paso se dispara.
+ *
+ * Estos recuentos, con los radios de `RING_RADII` en `skeleton.ts`, salen de una búsqueda
+ * que minimiza la dispersión de la distancia entre vecinos. Fija ×1,16 a dos y tres
+ * jugadores y ×1,23 a cinco; con los valores anteriores era ×2,34, ×1,78 y ×2,41, y con
+ * esa horquilla no hay hexágono igual que no se solape con alguno de sus vecinos.
+ *
+ * **Si tocas un recuento, toca su radio y vuelve a medir.** Los dos van juntos.
+ */
 export const SECTOR_SPEC: Readonly<Record<PlayerCount, SectorSpec>> = {
   2: {
-    rings: [4, 5, 6, 7],
+    rings: [3, 6, 9, 11],
     bastionRing: 3,
-    terrainBag: { seam: 3, urban: 3, high: 3, water: 2, forest: 3, plain: 7 },
+    terrainBag: { seam: 4, urban: 4, high: 4, water: 2, forest: 4, plain: 10 },
   },
   3: {
-    rings: [3, 4, 5, 6],
+    rings: [2, 4, 6, 8],
     bastionRing: 3,
-    terrainBag: { seam: 3, urban: 3, high: 2, water: 1, forest: 3, plain: 5 },
+    terrainBag: { seam: 3, urban: 3, high: 3, water: 1, forest: 4, plain: 5 },
   },
   5: {
-    rings: [3, 4, 6, 6],
-    bastionRing: 3,
-    terrainBag: { seam: 3, urban: 3, high: 3, water: 1, forest: 3, plain: 5 },
+    rings: [1, 2, 3, 5, 6],
+    bastionRing: 4,
+    terrainBag: { seam: 3, urban: 3, high: 2, water: 1, forest: 3, plain: 4 },
   },
 } as const;
 

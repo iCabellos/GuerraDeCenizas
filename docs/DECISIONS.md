@@ -48,7 +48,7 @@
 | [038](#adr-038) | La interfaz enseña **y** nombra | aceptada |
 | [039](#adr-039) | Se jura una vez, y hasta entonces la facción no significa nada | aceptada |
 | [040](#adr-040) | El mapa es la interfaz: se ordena tocándolo, y nada flota encima | aceptada |
-| [041](#adr-041) | El mapa se tesela: territorio continuo, no un grafo dibujado | aceptada |
+| [041](#adr-041) | El mapa se tesela: territorio continuo, no un grafo dibujado | **sustituida por [ADR-046](#adr-046)** |
 | [042](#adr-042) | La campaña se juega en el mundo 3D, sobre el mapa real | aceptada |
 | [043](#adr-043) | El mapa se reparte por área: todas las provincias miden lo mismo | aceptada |
 | [044](#adr-044) | La cámara se mide en provincias, y el mapa enseña el frente | **parcialmente sustituida por [ADR-045](#adr-045)** |
@@ -1868,6 +1868,87 @@ permiten cuando la geometría obliga —la provincia es un polígono irregular, 
   de la provincia y devuelve el mosaico de colores de asiento.
 - *Teselar en hexágonos para poder copiar el mockup literalmente.* Es [ADR-041](#adr-041)
   otra vez: la simetría de orden 5 no admite panal, y de ella depende el reparto justo.
+
+---
+
+<a id="adr-046"></a>
+
+## ADR-046 — Cada provincia es un hexágono regular; la vecindad, por distancia
+**Estado:** aceptada · 2026-08-24 · **sustituye a [ADR-041](#adr-041)**
+
+**Contexto.** [ADR-041](#adr-041) dibujaba el mapa como el **dual baricéntrico** del grafo,
+que tesela sin huecos y garantiza que dos celdas se tocan si y solo si son adyacentes. La
+garantía era buena y el resultado no se parecía al diseño del proyecto, donde el tablero
+son hexágonos iguales. Medido, el motivo no era de estilo:
+
+> **en el dual, una celda tiene tantos lados como vecinos tiene su región.**
+
+Y el grafo del juego tenía grado medio 3,9. O sea que el dual **no podía** dar hexágonos:
+
+```
+              cuadriláteros   pentágonos   otros
+2 jugadores        24             20         1     desigualdad de lados ×1,98
+3 jugadores        27             27         1                          ×1,74
+5 jugadores        50             45         1                          ×2,29
+```
+
+Ni una sola provincia era un hexágono, y sus lados eran desiguales de media al doble.
+
+Un panal de hexágonos regulares tampoco valía: la restricción cristalográfica **no admite
+simetría de orden 5**, y de ella depende que los cinco sectores sean idénticos por
+construcción. Pero un panal no es lo que hace falta — el propio mockup separa sus losas con
+`GAP`. Lo que hace falta es que **cada pieza** sea un hexágono regular.
+
+**Decisión.** Cada provincia es un **hexágono regular del mismo tamaño**, centrado en su
+nodo y orientado según su anillo. El Núcleo es el mismo hexágono con su cuota `CORE_SHARE`.
+Hexágonos iguales no cubren un disco con simetría C_5, así que **entre provincias queda
+holgura**, y eso obliga a sustituir la garantía de ADR-041 por otra que sí se sostiene:
+
+> **el par de provincias NO adyacentes más cercano está más lejos que el par adyacente más
+> lejano.** Lo que parece vecino, lo es.
+
+Para que eso sea cierto **por construcción** y no por suerte, la adyacencia pasa a salir de
+la distancia: dos provincias son vecinas si sus centros están a menos de `LINK_RANGE`. Con
+la regla anterior —Núcleo con todo el anillo interior, ciclo de anillo, y radial *al más
+próximo en ángulo*— dos nodos a la **misma** distancia podían acabar uno vecino y el otro
+no, que es exactamente la trampa que ADR-037 llamó «no hay vecindad implícita».
+
+Y como la distancia entre vecinos es ahora lo que fija el tamaño de la pieza, los recuentos
+de anillo de `SECTOR_SPEC` y los radios de `RING_RADII` se calculan **juntos**, minimizando
+la dispersión de esa distancia.
+
+```
+                    antes            ahora
+dispersión         ×2,34 ×1,78 ×2,41    ×1,27 ×1,16 ×1,30   (2 · 3 · 5 jugadores)
+lados por celda    4, 5, 9              6, 6, 6
+lados iguales      ×1,74 – ×2,29        ×1,0003  (el redondeo a dos decimales)
+regiones           45, 55, 96           59, 61, 86
+grado medio        3,9                  4,2      (mínimo 3, máximo 6: sin cambios)
+```
+
+**Consecuencias.**
+- ✅ El tablero son piezas iguales sobre una mesa, que es el diseño del proyecto.
+- ✅ Se conserva el 5 jugadores **con simetría C_5 exacta**: la distancia no cambia al girar.
+- ✅ El mapa no puede mentir, y ahora hay un test que lo fija con esa desigualdad.
+- ⚠️ **Se pierde la teselación.** Entre provincias hay holgura, y por tanto no hay «frontera
+  compartida». Lo que la sustituye es la desigualdad de arriba, que es más débil como
+  propiedad geométrica y suficiente como propiedad de lectura.
+- ⚠️ `MAPGEN_VERSION` sube a **0.3.0** y cambian los tamaños de mapa y las bolsas de terreno.
+  Es un cambio de balance: hay que volver a pasar el simulador. Las partidas en curso
+  guardan su mapa y siguen igual.
+- ⚠️ El grado medio sube de 3,9 a 4,2. Sigue dentro del invariante de siempre —ningún nodo
+  es un callejón ni una encrucijada— pero el mapa es algo más conectado.
+
+**Descartado.**
+- *Un panal hexagonal de verdad.* Imposible con simetría de orden 5, y esa simetría es la
+  premisa del juego ([ADR-002](#adr-002)).
+- *Retirar el 5 jugadores para poder teselar.* Se planteó y **se descartó explícitamente**:
+  es una modalidad anunciada.
+- *Sectores como racimos de rejilla girados 72°.* Da hexágonos perfectos y C_5 exacta, pero
+  las rejillas no casan en la costura entre racimos y ahí sí habría que inventar aristas
+  que no se ven.
+- *Dejar la adyacencia como estaba y solo cambiar el dibujo.* Medido: el par no adyacente
+  más cercano quedaba a 117,8 y el adyacente más lejano a 119,6. El mapa mentía.
 
 ---
 

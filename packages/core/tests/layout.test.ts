@@ -1,16 +1,16 @@
 /**
  * El mapa dibujado no puede mentir sobre el mapa jugado.
  *
- * La teselación existe para que el tablero se lea como territorio y no como un árbol de
- * investigación, pero eso solo vale si **tocarse significa poder moverse**. Una teselación
- * cualquiera —un Voronoi sobre los mismos centros, por ejemplo— haría que regiones sin
- * arista entre ellas compartieran frontera en pantalla, y el mapa estaría ofreciendo
- * movimientos que `reduce()` rechaza. Eso es lo que se fija aquí, y no las coordenadas.
+ * Cada provincia es un **hexágono regular del mismo tamaño**: piezas iguales, del mismo
+ * valor, sobre una mesa. Hexágonos iguales no teselan un disco con simetría C_5 —es
+ * imposible—, así que entre provincias queda holgura, y esa holgura es justo lo que podría
+ * hacer que el tablero mintiera: dos provincias que se ven igual de juntas y solo una es
+ * vecina. Eso es lo que fija este archivo, y no las coordenadas.
  */
 
 import { describe, expect, it } from 'vitest';
 import { generateMap } from '../src/mapgen/generate';
-import { buildAdjacency, buildSkeleton } from '../src/mapgen/skeleton';
+import { CELL_RADIUS, buildAdjacency, buildSkeleton } from '../src/mapgen/skeleton';
 import { regionCells, type Point } from '../src/mapgen/layout';
 import type { PlayerCount, RegionId } from '../src/types/index';
 
@@ -19,28 +19,11 @@ const SEEDS = [1, 424242, 90210];
 
 const key = (p: Point) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`;
 
-/** Qué par de celdas comparte cada segmento de frontera. */
-function borders(cells: readonly Point[][]): Set<string> {
-  const owners = new Map<string, RegionId[]>();
-  cells.forEach((cell, id) => {
-    for (let i = 0; i < cell.length; i += 1) {
-      const a = cell[i]!;
-      const b = cell[(i + 1) % cell.length]!;
-      if (key(a) === key(b)) continue;
-      const segment = [key(a), key(b)].sort().join('|');
-      const list = owners.get(segment) ?? [];
-      list.push(id);
-      owners.set(segment, list);
-    }
-  });
-
-  const shared = new Set<string>();
-  for (const ids of owners.values()) {
-    if (ids.length !== 2) continue;
-    const [a, b] = [ids[0]!, ids[1]!].sort((x, y) => x - y);
-    shared.add(`${a}-${b}`);
-  }
-  return shared;
+/** Distancia entre los centros de dos regiones. */
+function apart(map: ReturnType<typeof generateMap>['map'], a: RegionId, b: RegionId): number {
+  const p = map.regions[a]!;
+  const q = map.regions[b]!;
+  return Math.hypot(p.x - q.x, p.y - q.y);
 }
 
 function area(polygon: readonly Point[]): number {
@@ -68,19 +51,73 @@ function contains(polygon: readonly Point[], point: Point): boolean {
 }
 
 describe('teselación del mapa', () => {
-  it.each(COUNTS)('dos celdas comparten frontera si y solo si son adyacentes (%i jugadores)', (n) => {
+  it.each(COUNTS)('cada provincia es un hexágono regular (%i jugadores)', (n) => {
+    // Lo que se pidió, literalmente: «hexágonos perfectamente equitativos por los lados».
+    // Se comprueba la figura, no las coordenadas: seis lados iguales y seis ángulos de
+    // 120°. La tolerancia es la del redondeo a dos decimales con que se guardan.
     for (const seed of SEEDS) {
       const { map } = generateMap(seed, n);
-      const shared = borders(regionCells(map));
+      for (const [id, cell] of regionCells(map).entries()) {
+        expect(cell, `región ${id}`).toHaveLength(6);
+
+        const sides = cell.map((p, i) => {
+          const q = cell[(i + 1) % cell.length]!;
+          return Math.hypot(q.x - p.x, q.y - p.y);
+        });
+        const longest = Math.max(...sides);
+        const shortest = Math.min(...sides);
+        expect((longest - shortest) / longest, `lados de la región ${id}`).toBeLessThan(0.01);
+
+        for (let i = 0; i < cell.length; i += 1) {
+          const before = cell[(i + cell.length - 1) % cell.length]!;
+          const here = cell[i]!;
+          const after = cell[(i + 1) % cell.length]!;
+          const u = Math.atan2(before.y - here.y, before.x - here.x);
+          const v = Math.atan2(after.y - here.y, after.x - here.x);
+          const inner = Math.abs(((u - v + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+          expect(inner, `ángulo de la región ${id}`).toBeCloseTo((2 * Math.PI) / 3, 2);
+        }
+      }
+    }
+  });
+
+  it.each(COUNTS)('el mapa no puede mentir sobre quién es vecino de quién (%i jugadores)', (n) => {
+    // La garantía que sustituye a «se tocan si y solo si son adyacentes», que valía cuando
+    // las celdas teselaban. Con holgura entre provincias, lo que tiene que sostenerse es:
+    //
+    //   el par NO adyacente más cercano está más lejos que el par adyacente más lejano.
+    //
+    // O sea: **lo que parece vecino, lo es**. Si esto se rompe, el tablero enseña dos
+    // provincias igual de juntas de las que solo una es alcanzable, y hay que leerse un
+    // manual para jugar — que es exactamente el problema que tenía el mapa de aristas.
+    for (const seed of SEEDS) {
+      const { map } = generateMap(seed, n);
       const edges = new Set(map.edges.map((edge) => `${edge.a}-${edge.b}`));
 
-      // Las dos direcciones del «si y solo si», por separado: si solo se comprobara una,
-      // una teselación que uniera medio mapa seguiría pasando.
-      for (const edge of edges) {
-        expect(shared.has(edge), `arista ${edge} sin frontera dibujada`).toBe(true);
+      let farthestNeighbour = 0;
+      let closestStranger = Infinity;
+      for (let a = 0; a < map.regions.length; a += 1) {
+        for (let b = a + 1; b < map.regions.length; b += 1) {
+          const distance = apart(map, a, b);
+          if (edges.has(`${a}-${b}`)) farthestNeighbour = Math.max(farthestNeighbour, distance);
+          else closestStranger = Math.min(closestStranger, distance);
+        }
       }
-      for (const border of shared) {
-        expect(edges.has(border), `frontera ${border} sin arista en el motor`).toBe(true);
+
+      expect(closestStranger, `${n} jugadores, semilla ${seed}`).toBeGreaterThan(farthestNeighbour);
+    }
+  });
+
+  it.each(COUNTS)('dos provincias vecinas nunca se solapan (%i jugadores)', (n) => {
+    // Todos los hexágonos son iguales, así que basta con que ningún par de centros esté
+    // más cerca que el ancho de un hexágono. Es lo que fija el tamaño de la pieza.
+    for (const seed of SEEDS) {
+      const { map } = generateMap(seed, n);
+      const across = CELL_RADIUS * Math.sqrt(3);
+      for (let a = 1; a < map.regions.length; a += 1) {
+        for (let b = a + 1; b < map.regions.length; b += 1) {
+          expect(apart(map, a, b), `regiones ${a} y ${b}`).toBeGreaterThanOrEqual(across - 0.5);
+        }
       }
     }
   });
@@ -197,9 +234,8 @@ describe('teselación del mapa', () => {
 });
 
 describe('adyacencia y celdas salen de la misma fuente', () => {
-  it.each(COUNTS)('el número de fronteras es el número de aristas (%i jugadores)', (n) => {
+  it.each(COUNTS)('ninguna región se queda aislada (%i jugadores)', (n) => {
     const { map } = generateMap(2718, n);
-    expect(borders(regionCells(map)).size).toBe(map.edges.length);
     expect(buildAdjacency(map.regions.length, map.edges).every((list) => list.length > 0)).toBe(true);
   });
 });

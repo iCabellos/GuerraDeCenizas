@@ -5,6 +5,7 @@ import { regionCells, type PlayerView, type RegionId, type Seat } from '@gdc/cor
 import World, { type WorldHandle } from '@/components/world/World';
 import { MapFlat, type MapHandle, type MapProps } from '@/components/MapFlat';
 import type { CampaignMap, CampaignMark, CampaignOverlay } from '@/components/world/engine';
+import { troops } from '@/lib/board';
 import { TERRAIN_NAME, seatColor } from '@/lib/theme';
 
 export type { MapHandle } from '@/components/MapFlat';
@@ -121,8 +122,8 @@ export function MapView(props: MapProps) {
   const forcesByRegion = new Map<RegionId, { own: number; enemies: { seat: Seat; total: number; exact: boolean }[] }>();
   for (const force of view.forces) {
     const entry = forcesByRegion.get(force.regionId) ?? { own: 0, enemies: [] };
-    if (force.own) entry.own += force.approxTotal ?? 0;
-    else entry.enemies.push({ seat: force.seat, total: force.approxTotal ?? 0, exact: force.line !== null });
+    if (force.own) entry.own += troops(force.approxTotal);
+    else entry.enemies.push({ seat: force.seat, total: troops(force.approxTotal), exact: force.line !== null });
     forcesByRegion.set(force.regionId, entry);
   }
 

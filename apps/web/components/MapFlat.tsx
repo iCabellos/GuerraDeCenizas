@@ -8,6 +8,7 @@ import {
   regionCells,
   type PlayerView, type Point, type RegionId, type Seat, type TerrainKind, type VisibleForce,
 } from '@gdc/core';
+import { troops } from '@/lib/board';
 import { SEAT_PATTERN, TERRAIN_FILL, TERRAIN_NAME, seatColor } from '@/lib/theme';
 
 // A escala 1 el disco del mapa cabe justo en el `viewBox`: alejar más solo deja negro.
@@ -521,7 +522,7 @@ export function MapFlat({
                 {mine.length > 0 && (
                   <ForceBadge
                     x={region.x} y={region.y - reach * 0.52} seat={view.seat} own
-                    label={String(mine.reduce((s, f) => s + (f.approxTotal ?? 0), 0))}
+                    label={String(troops(mine.reduce((s, f) => s + (f.approxTotal ?? 0), 0)))}
                   />
                 )}
                 {enemies.map((force, index) => (
@@ -530,7 +531,7 @@ export function MapFlat({
                     x={region.x + (index - (enemies.length - 1) / 2) * 34}
                     y={region.y + reach * 0.52}
                     seat={force.seat}
-                    label={force.line === null ? `~${force.approxTotal}` : String(force.approxTotal)}
+                    label={force.line === null ? `~${troops(force.approxTotal)}` : String(troops(force.approxTotal))}
                   />
                 ))}
               </g>

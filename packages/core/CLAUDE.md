@@ -141,17 +141,34 @@ anomalías, Sombra, doctrinas activas, investigación, perturbación y evaluaci�
 | `rules/movement.ts` | Validación de todas las órdenes + movimiento simultáneo. |
 | `rules/standing.ts` | Órdenes Permanentes y Mando Automático. **La ausencia nunca daña a un tercero.** |
 | `rules/views.ts` | Proyección de vistas sin resolver: la necesita el turno 0, que no pasa por `reduce()`. |
-| `mapgen/skeleton.ts` | Nodos, aristas y el **reparto por área** de los anillos ([ADR-043](../../docs/DECISIONS.md#adr-043)). |
-| `mapgen/layout.ts` | Las **provincias**: el grafo plano convertido en teselación ([ADR-041](../../docs/DECISIONS.md#adr-041)). |
+| `mapgen/skeleton.ts` | Nodos, radios por anillo y **adyacencia por distancia** ([ADR-046](../../docs/DECISIONS.md#adr-046)). |
+| `mapgen/layout.ts` | Las **provincias**: un hexágono regular por región ([ADR-046](../../docs/DECISIONS.md#adr-046)). |
 
-Los anillos se reparten **por área**, no por un hueco fijo: `b[r+1]² = b[r]² + CELL_RADIUS²·n(r)`,
-y el nodo va en la mitad **por superficie** de su banda. Todas las provincias miden
-aproximadamente lo mismo, que además de verse bien es lo que hace que capturar una región
-valga lo mismo caiga donde caiga. Si tocas `ringGeometry()`, el test que lo caza fija la
-dispersión (< ×2), no los números.
+**Cada provincia es un hexágono regular del mismo tamaño**, y eso ata tres cosas que hay
+que tocar juntas o no tocar ninguna:
 
-`layout.ts` parece cosa de la interfaz y no lo es. La teselación **define la adyacencia que
-el jugador ve**: dos provincias comparten frontera si y solo si sus regiones son adyacentes.
+| | Qué es | Dónde |
+|---|---|---|
+| Recuentos de anillo | Cuántos nodos por anillo y sector | `SECTOR_SPEC` |
+| Radios de anillo | A qué distancia va cada anillo, en unidades de paso | `RING_RADII` |
+| Alcance de vecindad | Hasta dónde dos provincias son vecinas | `LINK_RANGE` |
+
+Para que hexágonos iguales quepan unos junto a otros, lo uniforme tiene que ser la
+**distancia entre vecinos** — no el área de la banda, que era el criterio anterior. Los
+recuentos y los radios salen de minimizar la dispersión de esa distancia; hoy está en
+×1,16–×1,30. Si cambias uno, recalcula el otro y vuelve a medir.
+
+La escala **se mide, no se supone**: `buildSkeleton` busca el par de vecinos más apretado
+del mapa ya construido y estira todo hasta que esos dos hexágonos encajan lado con lado. Por
+eso `CELL_RADIUS` se puede cambiar sin retocar nada más.
+
+`layout.ts` parece cosa de la interfaz y no lo es. La adyacencia **es** geométrica: dos
+provincias son vecinas si sus centros están a menos de `LINK_RANGE`. De ahí sale la
+propiedad que impide que el tablero mienta, y que tiene test:
+
+> el par de provincias NO adyacentes más cercano está más lejos que el par adyacente más
+> lejano. **Lo que parece vecino, lo es.**
+
 Si la geometría viviera en `apps/web` y la adyacencia aquí, el día que una de las dos cambie
 el mapa ofrecería movimientos que `reduce()` rechaza. Misma razón que `previewAttack`.
 
