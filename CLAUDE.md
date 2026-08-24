@@ -13,6 +13,9 @@ reglas locales que amplían a estas.
 3. Comprueba en [`docs/ROADMAP.md`](docs/ROADMAP.md) en qué versión estamos y qué entra.
 4. **No contradigas una decisión documentada.** Si hay que cambiarla, añade una entrada
    nueva en [`docs/DECISIONS.md`](docs/DECISIONS.md); nunca edites la histórica.
+5. Si lo que vas a tocar es el mapa, la economía, la producción o la progresión, lee antes
+   [`docs/RTS_ZONES_REFACTOR.md`](docs/RTS_ZONES_REFACTOR.md). Es una **propuesta**, no está
+   implementada, y puede que lo que ibas a escribir se tire dentro de dos versiones.
 
 ## El juego en cinco líneas
 
@@ -52,6 +55,12 @@ Ver [`docs/TECHNICAL_DESIGN.md §6`](docs/TECHNICAL_DESIGN.md#6-niebla-de-guerra
 Ningún desbloqueo permanente —ni de cuenta, ni de facción, ni de distrito— puede
 modificar una constante de `BALANCE`. Hay un test de CI que lo verifica.
 Ver [`docs/METAPROGRESSION.md §2`](docs/METAPROGRESSION.md#2-la-regla-de-oro).
+
+**Y sigue valiendo con los sistemas del refactor RTS.** Niveles de edificio, grados de
+tropa y Políticas son **progresión de campaña**: suben durante la partida y se pierden al
+terminarla. Lo que la cuenta guarda es **qué** puedes llevar, no **en qué nivel** lo
+dejaste ([ADR-045](docs/DECISIONS.md#adr-045)). Si alguna vez lees «permanente» en un
+documento de progresión, significa *el resto de la campaña*.
 
 ### 5. Todos los assets son originales y viven en el repositorio como SVG
 
@@ -138,6 +147,7 @@ versión estamos, qué entra y qué deuda consciente arrastra.
 |---|---|
 | Última versión cerrada | **v0.2** — economía, producción, combate determinista y captura |
 | En curso | v0.3 — esquema, RLS, autoridad, resolución, auth, despliegue e interfaz |
+| Sobre la mesa | **Refactor RTS** — zonas, extracción y progresión. Propuesta sin aprobar |
 | Tests | `npm test` (motor) **y** `npm run test:security` (RLS + autoridad) deben estar en verde |
 
 **Ya se puede jugar una campaña entera en solitario**: buscar partida sienta rivales
@@ -147,6 +157,28 @@ Ceniza. Es lo que hay que usar para probar el juego mientras no haya gente.
 **Lo que todavía NO existe** (no lo des por hecho al leer los documentos, que describen
 la v1.0): diplomacia, Núcleo y consagración, anomalías, Sombra, doctrinas activas,
 investigación y metaprogresión persistente.
+
+### Hay un refactor grande sobre la mesa y no está aprobado
+
+[`docs/RTS_ZONES_REFACTOR.md`](docs/RTS_ZONES_REFACTOR.md) propone partir el mapa en tres
+zonas concéntricas con fronteras cerradas, triplicar su tamaño, añadir extracción de
+materiales, edificios con niveles, grados de tropa, Políticas y guardianes deterministas.
+Reordena el roadmap de v0.4 a v0.8 y sube `ENGINE_VERSION` y `MAPGEN_VERSION` de forma
+incompatible.
+
+**Ninguna de sus seis decisiones está aceptada** ([ADR-041 a ADR-046](docs/DECISIONS.md#adr-041)).
+Hasta que lo estén:
+
+```
+□ No implementes nada de ese documento
+□ Pero tampoco escribas código que dé por eterno lo que propone cambiar:
+  4 recursos fijos, 12 turnos, un solo espacio de mapa continuo
+□ Si tu tarea toca mapa, economía, producción o progresión, dilo en el PR
+```
+
+Y una cosa que sí depende del calendario: el refactor **tiene que entrar antes del
+despliegue público**. Una partida en curso nunca cambia de motor, así que el día que
+alguien real esté jugando, romper `ENGINE_VERSION` deja de ser gratis.
 
 ### Todo el arte 3D es un v0
 
@@ -176,9 +208,31 @@ en [`docs/GAME_DESIGN.md §18`](docs/GAME_DESIGN.md#18-glosario-bilingüe).
 | Facción | `faction`, `allegiance`, `schism` | Facción, Juramento, Cisma |
 | Fases | `parley` `war` `ashfall` | Parlamento, Guerra, Reposo |
 
+Y el vocabulario del refactor RTS, todavía **propuesto**
+([RTS_ZONES_REFACTOR §18](docs/RTS_ZONES_REFACTOR.md#18-vocabulario-nuevo)):
+
+| Concepto | Código (inglés) | Texto (español) |
+|---|---|---|
+| Zonas | `zone`, `holding` `march` `crown` | Zona; Solar, Marca, Corona |
+| Fronteras | `ward` `gate` | Cerco, Puerta |
+| Guardián | `colossus` | Coloso |
+| Materiales | `ore` `ember` | Mineral, Brasa |
+| Depósito | `vein` | Mena |
+| Edificios | `extractor` `foundry` `arsenal` `depot` `watch` | Extractora, Fundición, Arsenal, Acopio, Atalaya |
+| Progresión | `tier` `policy` `act` | Grado, Política, Acto |
+| Saqueo | `spoils` `plunder` | Despojo, Botín |
+
 **Cuidado con las colisiones**: `Yunque` es una **doctrina**; la capacidad estratégica de
 tier III se llama **Yermo**. `Velo` es una **anomalía**; la doctrina de ocultación se
-llama **Mortaja**.
+llama **Mortaja**. Y las que trae el refactor:
+
+- **Yacimiento** (`seam`) da Ceniza por controlarlo; **Mena** (`vein`) da material solo si
+  construyes una Extractora encima.
+- **Cerco** (`ward`) es la frontera de zona; **Mortaja** (`shroud`) es la doctrina.
+- **Corona** es la zona 3; **Núcleo** es la región que hay dentro de ella.
+- **Brasa** (`ember`) es material, **Fuego** (`fire`) es arma, **Ceniza** (`ash`) es la
+  moneda de la victoria. Tres cosas, tres palabras.
+- **Grado** (`tier`) es de tropa; **Nivel** (`level`) es de edificio. Nunca al revés.
 
 ## Lecciones que ya han costado caras
 
@@ -236,7 +290,13 @@ No las repitas. Cada una salió de un fallo real de este repositorio:
    existe para mirar la campaña sin base de datos y se caía en el montaje al suscribirse a
    Realtime; además montaba el T0, la única fase en la que no se puede mover, así que
    enseñaba un tablero donde ninguna orden era posible.
-16. **Un valor por defecto no distingue «elegido» de «nunca preguntado».**
+16. **El mapa viaja 60 veces por partida sin necesidad.** `PlayerView` incluye
+   `map: GameMap` y `player_views` guarda una fila por asiento y turno: el mismo objeto
+   **inmutable** se serializa una vez por asiento y por turno. Con 96 regiones se aguanta;
+   con las 271 del refactor son ~7,4 MB por campaña y ~67 campañas en el free tier de 500 MB.
+   Que un dato no cambie nunca durante la partida es justo la razón para no volver a
+   enviarlo ([ADR-044](docs/DECISIONS.md#adr-044)).
+17. **Un valor por defecto no distingue «elegido» de «nunca preguntado».**
    `faction_id not null default 'vantera'` hacía que toda cuenta fuera de Vantera sin
    haberlo decidido. Hizo falta una columna aparte (`sworn_at`) para poder saberlo
    ([ADR-039](docs/DECISIONS.md#adr-039)).

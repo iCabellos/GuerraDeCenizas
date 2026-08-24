@@ -177,6 +177,38 @@ componente — ahí no se pueden probar.
 muevas por estado de React**: un botón de cámara no puede costar un render del mapa entero,
 y el gesto tampoco.
 
+### Si el mapa crece, se recorre — no se dibuja más pequeño
+
+[`docs/RTS_ZONES_REFACTOR.md`](../../docs/RTS_ZONES_REFACTOR.md) propone —**sin aprobar
+todavía**— pasar de 96 regiones a 271. El número que decide aquí ya está medido y está en
+las lecciones del repositorio: con 96 regiones, a escala 1 cada una mide **21 px**, la
+mitad del objetivo táctil. Con 271 caen a ~12.
+
+No es un problema de zoom. La respuesta es **dejar de dibujarlo entero**
+([ADR-042](../../docs/DECISIONS.md#adr-042)):
+
+| Nivel | Qué es | ¿DOM? |
+|---|---|---|
+| 1 · Zonas | Tres anillos esquemáticos con cifras. Sin hexágonos | No |
+| 2 · Zona | Una zona o un Solar: 33–90 hexágonos a ≥ 44 px | **Sí, y solo esto** |
+| 3 · Ficha | Lo de hoy: acciones con nombre, pronóstico, obras | Sí |
+
+Con eso, **como mucho ~90 regiones enfocables a la vez: menos que las 96 de hoy**. El
+presupuesto de render no se relaja porque el mapa triplique — es justo al revés: triplica,
+y por eso hay que recorrerlo.
+
+```
+□ El nivel 1 NO es un menú: es el mapa alejado. Cambiar de zona mueve la cámara
+□ Ningún panel nuevo flota sobre el mapa. Políticas y Obras ocupan sitio en la columna
+□ Seis recursos no caben en 360 px: Mineral y Brasa se enseñan DONDE se gastan,
+  no en la barra permanente
+□ Un destino en otra zona tiene que poder llevar la cámara allí, o no existe
+```
+
+Lo que se pierde con esto —y hay que decirlo en vez de descubrirlo— es la panorámica: hoy
+se abarca el mapa de un vistazo y después de esto no. Es el precio de que cada hexágono
+sea tocable de verdad.
+
 **No hay estado «con sesión pero sin perfil».** El perfil lo crea un trigger sobre
 `auth.users` ([ADR-030](../../docs/DECISIONS.md#adr-030)), no la API. No añadas una ruta de
 alta: la que había —ninguna— dejaba la cuenta rebotando entre `/` y `/sign-in` para

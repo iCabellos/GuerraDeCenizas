@@ -131,6 +131,31 @@ y el criterio de auditabilidad de v0.3 se caería.
 **Todavía no** (ver [ROADMAP](../../docs/ROADMAP.md)): diplomacia, Núcleo y consagración,
 anomalías, Sombra, doctrinas activas, investigación, perturbación y evaluación de mapas.
 
+### El refactor RTS toca este paquete más que a ningún otro
+
+[`docs/RTS_ZONES_REFACTOR.md`](../../docs/RTS_ZONES_REFACTOR.md) es una **propuesta sin
+aprobar**. Si se acepta, aquí entran cinco módulos nuevos (`zones`, `colossus`,
+`extraction`, `buildings`, `research`), seis etapas más en el pipeline, dos recursos más y
+7 anillos por sector en vez de 4.
+
+Tres cosas que hay que saber **antes** de escribir nada en `rules/`, se apruebe o no:
+
+1. **Los Colosos van en su propio array, no en `Force`.** Hacer `Force.seat` anulable para
+   meter neutrales obliga a revisar `control.ts`, `economy.ts`, `views.ts` y todos los
+   desempates por asiento del paquete. Un array aparte con su etapa cuesta 40 líneas y no
+   toca nada. Si algún día metes otro actor no-jugador, hazlo igual.
+2. **`combat.ts` sigue sin ver el turno.** El multiplicador de grado puede entrar ahí
+   porque es un dato del asiento; cualquier cosa que dependa del turno rompe que el
+   pronóstico coincida exactamente con el resultado. Eso va en `battle.ts`.
+3. **La zona es una función del anillo**, y por eso la equidad C_n sale gratis
+   ([ADR-041](../../docs/DECISIONS.md#adr-041)). Si alguna vez alguien propone derivar las
+   zonas de la distancia al centro, es que no ha leído por qué la rotación conserva el
+   anillo.
+
+No implementes nada de ese documento hasta que sus ADR estén aceptadas. Pero tampoco
+escribas código que dé por eterno lo que propone cambiar: 4 campos en `Resources`, 12
+turnos en `BALANCE.campaign`, un solo espacio de mapa continuo.
+
 ### Dónde va cada cosa
 
 | Módulo | Responsabilidad |

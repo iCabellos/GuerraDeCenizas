@@ -41,6 +41,19 @@
 | [031](#adr-031) | Invitado = sesión anónima de Supabase, no una cuenta aparte | aceptada |
 | [032](#adr-032) | La configuración del proyecto Supabase se versiona y se despliega | aceptada |
 | [033](#adr-033) | La comprobación previa del despliegue valida forma, no presencia | aceptada |
+| [034](#adr-034) | El relieve es WebGL; lo que se lee y se toca sigue siendo DOM | aceptada |
+| [035](#adr-035) | El mapa de campaña se queda en SVG; el relieve es para la Ciudad | aceptada |
+| [036](#adr-036) | Un bot no es un humano ausente, y por eso no comparten código | aceptada |
+| [037](#adr-037) | El mapa se dibuja en hexágonos, pero no teje un panal | aceptada |
+| [038](#adr-038) | La interfaz enseña **y** nombra | aceptada |
+| [039](#adr-039) | Se jura una vez, y hasta entonces la facción no significa nada | aceptada |
+| [040](#adr-040) | El mapa es la interfaz: se ordena tocándolo | aceptada |
+| [041](#adr-041) | Las zonas son bandas de anillos; la equidad C<sub>n</sub> no se toca | **propuesta** |
+| [042](#adr-042) | Solo una zona vive en el DOM: el mapa grande se recorre | **propuesta** |
+| [043](#adr-043) | El Coloso es un problema diplomático disfrazado de monstruo | **propuesta** |
+| [044](#adr-044) | El mapa deja de viajar en cada vista | **propuesta** |
+| [045](#adr-045) | La metaprogresión sigue sin tocar números: sube el árbol, no el nivel | **propuesta** |
+| [046](#adr-046) | La campaña se juega en tres actos; la duración la fija el simulador | **propuesta** |
 
 ---
 
@@ -1486,6 +1499,330 @@ de que la partida deje de parecer un juego.
 - *Cinco casillas de orden fijas, como el mockup.* El motor admite una orden por fuerza
   hasta seis fuerzas. Enseñar cinco huecos con cuatro fuerzas ofrece una decisión que no
   existe; con seis, esconde una que sí.
+
+---
+
+<a id="adr-041"></a>
+
+## ADR-041 — Las zonas son bandas de anillos, y por eso la equidad C_n no se toca
+**Estado:** propuesta · 2026-08-24 · amplía [ADR-037](#adr-037) · ver [Refactor RTS §2](RTS_ZONES_REFACTOR.md#2-la-topología-de-zonas)
+
+**Contexto.** El refactor pide un mapa mucho más grande partido en tres zonas con fronteras
+cerradas: un Solar por jugador, una Marca compartida con recursos y guardianes, y una
+Corona con el premio final.
+
+La forma evidente de implementarlo —dibujar las zonas sobre el mapa, o derivarlas de la
+distancia al centro— cuesta lo único que este proyecto no puede pagar. La premisa entera
+del juego es *«consagrar cuesta más Ceniza de la que produce el reparto justo de un
+jugador»*, y esa frase solo significa algo si el reparto es exacto. Hoy lo es **por
+construcción**: el mapa es un sector replicado por rotación C<sub>n</sub>
+([ADR-002](#adr-002)), no por una heurística que se comprueba después.
+
+**Decisión.** Una zona es una **función del anillo**: `zoneOf(ring)`. Nada más.
+
+La rotación C<sub>n</sub> mapea `(sector, ring, slot) → (sector+k, ring, slot)` y por tanto
+**conserva el anillo**. Conserva por tanto la zona. Los n Solares son idénticos entre sí por
+la misma razón por la que hoy lo son los sectores, la Marca se ve igual desde cualquier
+Solar, y la Corona es equidistante de los n Bastiones.
+
+`SECTOR_SPEC` pasa de 4 anillos a 7 y la bolsa de terrenos se declara **por zona** en vez
+de por sector, o el generador podría sembrar una Mena de grado 3 dentro de un Solar.
+
+**Consecuencias.**
+- ✅ La garantía de equidad no se degrada ni un punto: sigue siendo estructural, no medida.
+- ✅ El generador no cambia de algoritmo. Cambia una constante y gana una función de una
+  línea.
+- ✅ La asimetría deliberada de Menas dentro de la Marca ([Refactor §4.3](RTS_ZONES_REFACTOR.md#43-reparto-de-menas-por-zona))
+  se replica por rotación, así que crea **geografía diplomática sin crear ventaja**.
+- ⚠️ Las zonas quedan atadas a la topología radial para siempre. Un mapa futuro con otra
+  forma tendría que redefinir `zoneOf`, y con ella la equidad.
+- ⚠️ Cuatro invariantes nuevos que verificar en `mapgen.test.ts`, entre ellos que el Núcleo
+  sea **inalcanzable** ignorando las aristas de Cerco.
+
+**Descartado.**
+- *Zonas dibujadas a mano sobre el mapa.* Convierte una garantía por construcción en una
+  comprobada por test, y encima en las mesas de cinco, que son el modo de referencia.
+- *Zonas por distancia euclídea al centro.* Igual de frágil, y además hace que la frontera
+  dependa de los radios de render, que existen para que los nodos no se solapen y no para
+  decidir reglas.
+- *Un mapa por zona, cosidos por portales.* Tres grafos que mantener, tres proyecciones de
+  vista y ningún beneficio: la topología radial ya da exactamente esta forma.
+
+---
+
+<a id="adr-042"></a>
+
+## ADR-042 — Solo una zona vive en el DOM: el mapa grande se recorre, no se abarca
+**Estado:** propuesta · 2026-08-24 · matiza [ADR-040](#adr-040) · ver [Refactor RTS §12](RTS_ZONES_REFACTOR.md#12-impacto-en-la-interfaz)
+
+**Contexto.** Ya está medido y está en las lecciones del repositorio: con 96 regiones, a
+escala 1 cada región mide **21 px**, la mitad del objetivo táctil de 44. Con las 271 del
+refactor caerían a ~12 px.
+
+No es un problema de zoom. Es que la vista «mapa entero» deja de servir para lo único para
+lo que sirve un mapa en este juego, que es tocarlo: [ADR-040](#adr-040) decidió que **toda
+orden empieza con un tap en una región**. Un mapa que no se puede tocar no es un mapa, es
+una ilustración.
+
+**Decisión.** El mapa se lee en tres niveles y **solo el intermedio tiene regiones en el
+DOM**:
+
+| Nivel | Qué es | DOM |
+|---|---|---|
+| 1 · Zonas | Tres anillos esquemáticos con cifras agregadas. Sin hexágonos | No |
+| 2 · Zona | Una zona o un Solar: 33–90 hexágonos a ≥ 44 px | **Sí, y solo esto** |
+| 3 · Ficha | Lo de hoy: acciones con nombre, pronóstico, obras | Sí |
+
+El nivel 1 **no es un menú**: es el mapa alejado. Cambiar de zona es mover la cámara, no
+navegar a otra pantalla — [ADR-026](#adr-026) sigue en pie y no hay peaje nuevo entre el
+jugador y su turno.
+
+**Consecuencias.**
+- ✅ Como mucho ~90 regiones enfocables a la vez: **menos que las 96 de hoy**. El
+  presupuesto de render no empeora aunque el mapa triplique.
+- ✅ [ADR-012](#adr-012) y [ADR-034](#adr-034) se conservan enteros: cada región sigue
+  siendo un `<path>` enfocable y anunciable por lector de pantalla.
+- ✅ El encuadre deja de ser un problema. «Ir a mi Solar», «ir a la Marca», «ir a la Puerta
+  norte» son destinos con nombre, no arrastres. El botón de volver al Bastión pasa a ser un
+  caso particular de algo general.
+- ⚠️ **Se pierde la panorámica.** Hoy se abarca el mapa de un vistazo y después de esto no.
+  Es el precio de que cada hexágono sea tocable de verdad.
+- ⚠️ Un destino de movimiento puede estar en otra zona de la que se mira. La ficha de fuerza
+  tiene que poder llevar la cámara allí, o el jugador se queda sin saber a dónde puede ir.
+
+**Descartado.**
+- *Dibujar las 271 regiones y dejar que el jugador haga zoom.* Es exactamente el fallo que
+  ya se cometió en v0.1 y que obligó a calcular el zoom desde el ancho real del viewport:
+  parecen grandes en unidades de `viewBox` y miden 21 px en la pantalla.
+- *Un minimapa flotante sobre el mapa.* Un panel flotante sobre el mapa vuelve a traer el
+  fallo de siempre —un destino resaltado debajo— y `pointer-events: none` resuelve los
+  taps, no la visibilidad ([ADR-040](#adr-040)).
+- *Renderizar el mapa entero en el lienzo WebGL.* [ADR-035](#adr-035) sigue vigente y por
+  el mismo motivo: lo que se lee y se toca es DOM, o la accesibilidad se pierde y no se
+  recupera.
+
+---
+
+<a id="adr-043"></a>
+
+## ADR-043 — El Coloso es un problema diplomático disfrazado de monstruo
+**Estado:** propuesta · 2026-08-24 · contradice «sin PvE» de [DISCOVERY §3](DISCOVERY.md) · ver [Refactor RTS §3](RTS_ZONES_REFACTOR.md#3-fronteras-cercos-puertas-y-colosos)
+
+**Contexto.** El refactor pide un «boss de zona» que guarde la frontera. El brief había
+descartado el PvE explícitamente, y con buen criterio: un juego que se define por la
+negociación entre cinco personas no gana nada añadiendo un enemigo que no negocia.
+
+Antes de dejarlo entrar hay que responder a la pregunta que `CLAUDE.md` exige de todo
+sistema nuevo: **¿qué decisión interesante permite tomar al jugador?** «Pelear contra un
+monstruo» no es una respuesta; es contenido.
+
+**Decisión.** Entra el Coloso, y entra **por su aritmética, no por su combate**: guarda una
+Puerta, y al morir la abre **para los cinco**, mientras que su coste lo paga quien lo mata.
+
+```
+Despojo(Coloso)  <  coste de matarlo en solitario
+```
+
+⚖️ Calibrado para que matarlo solo deje al matador un 15–25 % por debajo de donde estaba, y
+que entre dos salga a favor de los dos. Es un problema de bien público colocado en el punto
+exacto del mapa donde el juego quiere que la gente hable, con un precio que el motor
+calcula y todos pueden ver. Es decir: *la diplomacia es aritmética, no social*, aplicada a
+una puerta.
+
+Mecánicamente es lo más aburrido posible, y a propósito: no se mueve nunca, pelea con la
+**misma** fórmula de `combat.ts`, reparte daño en proporción a la potencia de cada bando y
+empata por número de asiento ascendente. Sin dados, sin tabla aparte, sin IA.
+
+**Consecuencias.**
+- ✅ El PvE no compite con el PvP: **lo provoca.** La pregunta que deja en la mesa es «¿quién
+  paga la puerta?», que es la pregunta del juego.
+- ✅ Determinismo intacto. Un Coloso es previsible, y por tanto se puede **prometer** ayuda
+  para matarlo y se puede comprobar si la diste.
+- ✅ Los Colosos viven en su propio array y **no reutilizan `Force`**: hacer `Force.seat`
+  anulable obligaría a revisar cada desempate por asiento del paquete.
+- ⚠️ Riesgo real de que el Coloso degenere en peaje: si la mayoría de las Puertas las abre un
+  solo asiento, el sistema no está haciendo su trabajo. La métrica «% de Puertas pagadas por
+  ≥ 2 asientos > 55 %» entra en el informe del simulador desde el primer día.
+- ⚠️ Riesgo contrario: si gorronear siempre gana, nadie abre y la partida se atasca. Por eso
+  el tercer test de la Puerta comprueba que quien no paga y entra después **sigue por
+  detrás** al cierre del acto.
+- ⚠️ Es contenido nuevo que balancear: composición, regeneración y Despojo por zona.
+
+**Descartado.**
+- *Abrir la Puerta pagando recursos, sin monstruo.* Funciona y es más barato, pero se paga
+  en silencio y en privado: desaparece el momento público —la batalla contra el Coloso, que
+  todos ven— que es lo que convierte el pago en una carta de negociación.
+- *Que la Puerta se abra sola en un turno fijo.* Ahorra el sistema entero y elimina la
+  decisión: no hay nada que negociar sobre un calendario.
+- *Que la Puerta se abra solo para quien mató al Coloso.* Es lo intuitivo y destruye el
+  diseño: convierte al Coloso en una carrera y al primero en llegar en el ganador. El bien
+  público **es** la mecánica.
+- *Un Coloso que se mueva y ataque territorio.* Un tercer bando que no negocia y que reparte
+  daño según su propia lógica: exactamente el PvE que el brief descartó.
+
+---
+
+<a id="adr-044"></a>
+
+## ADR-044 — El mapa deja de viajar en cada vista
+**Estado:** propuesta · 2026-08-24 · ver [Refactor RTS §11](RTS_ZONES_REFACTOR.md#11-impacto-en-la-base-de-datos)
+
+**Contexto.** `player_views` guarda una fila `(game_id, turn, seat)` con la vista entera en
+`jsonb`, y `PlayerView` incluye `map: GameMap`. Es decir: **el mapa completo se serializa
+una vez por asiento y por turno** — 60 copias del mismo objeto inmutable en una campaña de
+cinco a 12 turnos.
+
+Con 96 regiones es tolerable. Con 271 y 24 turnos deja de serlo: ⚖️ ~7,4 MB por campaña
+frente a los ~0,9 de hoy, que sobre los 500 MB del free tier son ~67 campañas archivadas en
+vez de ~550. El objetivo declarado de 0 €/mes durante la beta depende de este número.
+
+**Decisión.** El mapa se guarda **una vez por partida** en `game_maps` y la vista lleva un
+`mapId` en su lugar. El cliente lo pide una vez y lo cachea.
+
+`game_maps` es legible por cualquier asiento de esa partida y por nadie más. La topología
+es pública entre los cinco —lo secreto son las fuerzas, no el terreno—, pero eso se escribe
+como política RLS, no se da por hecho.
+
+**Consecuencias.**
+- ✅ La vista baja ~60 %: de ⚖️ ~62 KB a ~24 KB por asiento y turno con el mapa nuevo.
+- ✅ **Es independiente del refactor.** Merece hacerse igualmente, y hoy es gratis: hacerla
+  con partidas en producción no lo sería.
+- ✅ El estado de juego sigue en un solo `jsonb` dentro de `game_states`. Partir `buildings`
+  o `stock` en tablas propias las expondría a PostgREST y tiraría la niebla de guerra por
+  el desagüe — sigue en pie [ADR-007](#adr-007) y la regla nº 3 del proyecto.
+- ⚠️ Una tabla más con RLS propia, y por tanto un test de seguridad más: un asiento de otra
+  partida no puede leer este mapa.
+- ⚠️ El cliente gana un estado de carga que hoy no tiene. Sin el mapa no se puede pintar
+  nada, así que la ruta de partida necesita su propio *fallback*.
+
+**Descartado.**
+- *Comprimir la vista.* Ataca el síntoma: seguiría enviándose 120 veces lo mismo, y encima
+  con `jsonb` de Postgres el ahorro es menor de lo que parece.
+- *Vistas por delta desde el turno anterior.* Es la siguiente parada si §11.1 no baja de los
+  30 KB de presupuesto, pero complica la reconexión —hay que poder reconstruir desde
+  cualquier punto— y no hace falta todavía.
+- *Que el cliente genere el mapa desde `(seed, MAPGEN_VERSION)`.* Elegante y peligroso: pone
+  al cliente a **derivar estado**, y de ahí a que decida algo hay un paso. El cliente no
+  decide nada (regla nº 2).
+
+---
+
+<a id="adr-045"></a>
+
+## ADR-045 — La metaprogresión sigue sin tocar números: sube el árbol, no el nivel
+**Estado:** propuesta · 2026-08-24 · confirma [ADR-009](#adr-009) y [METAPROGRESSION §2](METAPROGRESSION.md#2-la-regla-de-oro) · ver [Refactor RTS §9](RTS_ZONES_REFACTOR.md#9-las-dos-progresiones-y-la-regla-de-oro)
+
+**Contexto.** El refactor pide que las tropas se mejoren «con metaprogresión» y que las
+Políticas «se apliquen de forma permanente». Leído literalmente: una cuenta veterana empieza
+la campaña con números mejores que una cuenta nueva.
+
+Eso no choca con una preferencia estética. Choca con un **test bloqueante de CI**:
+
+```
+✓ cuenta al 100 % vs. cuenta vacía, misma doctrina y anomalías
+  ⇒ winrate 48-52 % en 2 000 partidas
+```
+
+Si la metaprogresión toca números, ese test no puede pasar **por definición** y hay que
+borrarlo. Y borrado, el juego deja de poder prometer que una mesa de cinco es una mesa
+justa — que es la premisa de la que cuelga todo lo demás, porque nadie negocia un reparto
+justo si el reparto de salida ya no lo era.
+
+**Decisión.** La regla de oro se mantiene y **se extiende a los sistemas nuevos**. Toda
+campaña empieza con todos los edificios a nivel 1, todas las tropas a grado 1 y cero
+Políticas investigadas, para la cuenta nueva y para la veterana.
+
+| La campaña da (números) | La cuenta guarda (opciones) |
+|---|---|
+| Niveles de edificio 1→3 | **Qué** edificios puedes construir |
+| Grados de tropa 1→3 | **Qué** especializaciones de grado existen para ti |
+| Niveles de Política | **Qué** Políticas aparecen en tu árbol |
+| Materiales acumulados | Nada: se pierden |
+
+«Permanente» significa **el resto de la campaña**, no el resto de la cuenta. El veterano
+tiene un abanico más ancho —elige 6 Políticas de un catálogo de 12 en vez de tener 6
+fijas—, que es una ventaja de conocimiento y de adaptación, no una ventaja numérica que se
+compra con tiempo. Es el modelo que el proyecto ya eligió para doctrinas y anomalías,
+aplicado a los sistemas nuevos.
+
+**Consecuencias.**
+- ✅ El test bloqueante sobrevive, y con él la afirmación de que la mesa es justa.
+- ✅ `research.ts` y `buildings.ts` **no pueden importar** `factions/` ni el estado de
+  cuenta: el techo no depende de quién juega. Verificable por `check-deps.mjs`, como ya lo
+  es que `factions/` no vea `balance/`.
+- ✅ La sensación de progresión se conserva de verdad, porque **la hay**: dentro de la
+  campaña se sube de nivel 24 turnos seguidos.
+- ⚠️ No es lo que pide la lectura literal de la petición. Quien quiera que su Ciudad de la
+  campaña 40 pegue más fuerte que la de la campaña 1, aquí no lo tiene.
+- ⚠️ La palabra «metaprogresión» va a seguir sugiriendo lo contrario. Hay que decir en la
+  interfaz **qué** se lleva la cuenta, o el jugador esperará números.
+
+**Descartado.**
+- *Progresión numérica persistente sin más.* Borra el test bloqueante y con él la premisa.
+  No es una opción disponible mientras el juego afirme lo que afirma.
+- *Dos ligas: «Guerra» con la regla de oro y «Guerra de Legado» con progresión numérica y
+  emparejamiento obligatorio por franja de Renombre.* Es la **única** forma de tener las dos
+  cosas sin que se contaminen, y está descartada por coste, no por principio: son dos
+  conjuntos de constantes que calibrar, un emparejamiento por franjas que hoy no existe y
+  que necesita un volumen de jugadores que una beta cerrada no tiene, y una segunda liga que
+  parte una comunidad pequeña. **Si el dueño del proyecto prefiere esta vía, es esta ADR la
+  que hay que rechazar** — no hay una tercera opción que evite elegir.
+- *Que los desbloqueos den números pequeños «que no desequilibran».* Es la forma más común de
+  llegar al mismo sitio sin decidirlo: nadie sabe dónde está la raya y el test que la
+  vigilaba ya no existe.
+
+---
+
+<a id="adr-046"></a>
+
+## ADR-046 — La campaña se juega en tres actos, y la duración la fija el simulador
+**Estado:** propuesta · 2026-08-24 · ver [Refactor RTS §14.3](RTS_ZONES_REFACTOR.md#143-duración)
+
+**Contexto.** Doce turnos bastan para el juego de hoy. No bastan para una economía con
+extracción, edificios de tres niveles y Políticas: la primera Extractora de nivel 3 no
+existiría hasta el turno 9 y la partida terminaría cuatro turnos después.
+
+Pero alargar tiene un coste que no es de diseño sino de producto: en cadencia diaria, 24
+turnos son **24 días**, y una campaña asíncrona de 24 días no la termina nadie.
+
+**Decisión.** La campaña se estructura en **tres actos**, uno por zona, y la duración total
+es la variable que se ajusta para que los tres quepan — no al revés.
+
+```
+Acto I    Solar         economía propia, sin contacto            ~T1-T8
+Acto II   Marca         primera Puerta, Menas ricas, la guerra   ~T9-T18
+Acto III  Corona        segunda Puerta, Núcleo, consagración      ~T19-T24
+```
+
+⚖️ 24 turnos es la cifra con la que este documento dimensiona todo lo demás, y es
+**provisional a propósito**: lo primero que el simulador tiene que atacar es si con 18 se
+abren igual los dos Cercos y se disputa la Corona. Si con 18 se cumple, 18 es mejor número
+por razones que no tienen nada que ver con el diseño.
+
+La cadencia se ajusta con la duración, no después: Blitz baja a 3 min/turno; la Diaria pasa
+a **dos turnos al día** o desaparece.
+
+**Consecuencias.**
+- ✅ Los actos dan al juego una estructura que hoy no tiene: la partida cambia de forma dos
+  veces, y las dos veces por una decisión de los jugadores, no por un calendario.
+- ✅ El Parlamento vuelve a tener sentido en cada acto: cada Puerta abre una negociación
+  nueva.
+- ⚠️ **Riesgo alto de abandono.** Es el peor de los siete riesgos del refactor. La tasa de
+  abandono < 20 % que exige la beta se mide contra esta cifra, no contra la de hoy.
+- ⚠️ Dos turnos al día cambian el contrato con el jugador —«juego una vez al día»— que es de
+  donde sale el asíncrono. Si se elige esa vía, hay que decirlo en el lobby, no descubrirlo
+  jugando.
+- ⚠️ `BALANCE.campaign.turns`, `turns2p` y `coreActivatesAfterTurn` cambian, y con ellos toda
+  la calibración de la Consagración.
+
+**Descartado.**
+- *Mantener 12 turnos y acelerar la economía.* Los tres actos caben, pero cada uno dura
+  cuatro turnos: no da tiempo a que una Puerta se negocie, que es para lo que existe.
+- *Duración variable según se abran las Puertas.* Atractivo y venenoso en asíncrono: nadie
+  puede planificar su semana con una partida que no sabe cuándo acaba.
+- *Fijar la duración ahora por diseño.* Es exactamente lo que este proyecto ya aprendió a no
+  hacer con `diminishingK`: el número documentado daba 1,08× donde el diseño pedía 1,55×.
+  La intención se fija en el test; la cifra la calibra el simulador.
 
 ---
 

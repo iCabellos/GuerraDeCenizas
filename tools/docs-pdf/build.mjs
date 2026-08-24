@@ -8,6 +8,11 @@
  * Chromium se toma de la instalación local de Playwright. Ver README del tool.
  *
  *   node tools/docs-pdf/build.mjs [--out docs/GuerraDeCenizas.pdf] [--html-only]
+ *   node tools/docs-pdf/build.mjs --only docs/RTS_ZONES_REFACTOR.md --out docs/Refactor.pdf
+ *
+ * `--only` extrae UN capítulo a su propio PDF, para compartir un documento suelto con
+ * quien no necesita los otros catorce. Sus enlaces a otros documentos quedan sin
+ * destino dentro del archivo: es un extracto, no el documento completo.
  *
  * El PDF se versiona en el repositorio (es un entregable); el HTML intermedio va a
  * dist/ y está ignorado por git.
@@ -35,6 +40,7 @@ const CHAPTERS = [
   { file: 'docs/MAP_GENERATION.md',          title: 'Generación procedural',       part: 'III · Sistemas' },
   { file: 'docs/MULTIPLAYER.md',             title: 'Multijugador',                part: 'III · Sistemas' },
   { file: 'docs/TECHNICAL_DESIGN.md',        title: 'Technical Design Document',   part: 'III · Sistemas' },
+  { file: 'docs/RTS_ZONES_REFACTOR.md',      title: 'Refactor RTS — zonas y progresión', part: 'III · Sistemas' },
   { file: 'docs/UX_MOBILE.md',               title: 'UX / UI — Mobile first',      part: 'IV · Producción' },
   { file: 'docs/ASSET_PIPELINE.md',          title: 'Pipeline de assets',          part: 'IV · Producción' },
   { file: 'docs/TESTING_AND_SIMULATION.md',  title: 'Testing y simulación',        part: 'IV · Producción' },
@@ -46,6 +52,20 @@ const CHAPTERS = [
 const args = process.argv.slice(2);
 const outPath = path.resolve(ROOT, valueOf('--out') ?? 'docs/GuerraDeCenizas.pdf');
 const htmlOnly = args.includes('--html-only');
+const only = valueOf('--only');
+
+/**
+ * Capítulos que entran en esta ejecución. `--only` deja uno solo, conservando su título y
+ * su parte: un extracto tiene que ser reconocible como parte del documento grande.
+ */
+const SELECTED = only
+  ? CHAPTERS.filter((c) => c.file === only || c.file === `docs/${only}`)
+  : CHAPTERS;
+
+if (SELECTED.length === 0) {
+  console.error(`✗ --only ${only}: no es un capítulo de CHAPTERS`);
+  process.exit(1);
+}
 
 function valueOf(flag) {
   const i = args.indexOf(flag);
@@ -82,7 +102,7 @@ function rewriteInternalLinks(html, chapterIndex) {
 
     const [target, frag] = href.split('#');
     const normalized = target.replace(/^\.\.\//, '').replace(/^\.\//, '');
-    const idx = CHAPTERS.findIndex(
+    const idx = SELECTED.findIndex(
       (c) => c.file === normalized || c.file === `docs/${normalized}`,
     );
     if (idx < 0) return whole;
@@ -104,7 +124,7 @@ async function main() {
   const version = JSON.parse(await readFile(path.join(ROOT, 'package.json'), 'utf8')).version;
 
   const chapters = [];
-  for (const [i, ch] of CHAPTERS.entries()) {
+  for (const [i, ch] of SELECTED.entries()) {
     const abs = path.join(ROOT, ch.file);
     if (!existsSync(abs)) {
       console.error(`✗ falta ${ch.file}`);
@@ -165,9 +185,9 @@ async function main() {
   <p class="cover-sub">War of Ashes</p>
   <p class="cover-tag">4X multijugador por turnos · mobile-first · la guerra como idioma de la negociación</p>
   <div class="cover-meta">
-    <div><span>Documento</span><strong>Diseño y arquitectura</strong></div>
+    <div><span>Documento</span><strong>${esc(only ? SELECTED[0].title : 'Diseño y arquitectura')}</strong></div>
     <div><span>Versión</span><strong>${esc(version)}</strong></div>
-    <div><span>Fase</span><strong>1 — Diseño</strong></div>
+    <div><span>Fase</span><strong>${esc(only ? 'Propuesta' : '1 — Diseño')}</strong></div>
     <div><span>Fecha</span><strong>${today}</strong></div>
   </div>
   <p class="cover-foot">Universo, mecánicas y assets originales.<br>Documento generado desde el repositorio.</p>

@@ -77,6 +77,18 @@ Faltan las anomalías (8), la diplomacia (6) y buena parte de estados e interfaz
 con los sistemas que las usan, no antes. Un asset sin sistema detrás es un asset que se
 dibuja dos veces.
 
+Y por esa misma razón, **nada del refactor RTS se dibuja todavía**. Sus zonas, materiales,
+edificios y Colosos ([`docs/RTS_ZONES_REFACTOR.md`](../docs/RTS_ZONES_REFACTOR.md)) suman
+unos 20 iconos más, pero el documento es una propuesta sin aprobar: dibujarlos ahora es
+comprometerse a dibujarlos dos veces. Cuando entren, dos cosas de su inventario tocan a
+esta carpeta más de lo que parece:
+
+- **Mena y Yacimiento tienen que distinguirse a 16 px**, y son dos cosas parecidas
+  (depósito en el suelo) que hacen cosas distintas. Es exactamente el fallo que ya cazó la
+  Galería con Koldvik: se ven bien sueltas y mal en fila.
+- **Seis recursos** en vez de cuatro. La fila de recursos es el sitio donde el inventario
+  congelado en 55 se rompe primero.
+
 **Lo que ya cazó la Galería:** el emblema de Koldvik parecía una copa de cóctel y la
 Mortaja de Oshara, una señal de peligro. Ninguno de los dos se veía mal en el archivo
 suelto — se vieron mal al ponerlos a 16 px al lado de los demás. Para eso está.

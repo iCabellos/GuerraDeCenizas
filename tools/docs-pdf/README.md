@@ -6,7 +6,16 @@ portada, índice y paginación.
 ```bash
 npm run docs:pdf         # → docs/GuerraDeCenizas.pdf
 npm run docs:check       # verifica los enlaces internos entre documentos
+
+# Un capítulo suelto, para compartir con quien no necesita los otros catorce:
+node tools/docs-pdf/build.mjs --only docs/RTS_ZONES_REFACTOR.md --out docs/RefactorRTS.pdf
 ```
+
+**Sobre `--only`.** Extrae un capítulo a su propio PDF conservando portada, título y parte,
+para que el extracto siga siendo reconocible como parte del documento grande. Sus enlaces a
+los otros documentos se quedan **sin destino dentro del archivo**: es un extracto, y no
+puede resolver una referencia a un capítulo que no ha impreso. Si el documento va a viajar
+solo, dilo en su primera línea.
 
 ## Pipeline
 
@@ -34,7 +43,7 @@ Playwright para los tests E2E.
 |---|---|
 | I · Visión | El proyecto (README) · Discovery |
 | II · Diseño de juego | GDD · Diplomacia · Metaprogresión |
-| III · Sistemas | Generación procedural · Multijugador · TDD |
+| III · Sistemas | Generación procedural · Multijugador · TDD · Refactor RTS |
 | IV · Producción | UX/UI · Assets · Testing |
 | V · Ejecución | Roadmap · Decisiones |
 
