@@ -9,7 +9,16 @@
 export * from './types/index';
 
 export { Rng, makeRng } from './rng/index';
-export { canonicalJson, checksum, deepFreeze, round4 } from './util/canonical';
+export {
+  canonicalJson, checksum, deepFreeze, round4,
+  /**
+   * El checksum de un estado de partida se calcula **siempre** con `stateChecksum`, no
+   * con `checksum`: el mapa entra por su propio checksum en vez de volver a serializarse
+   * entero cada turno. Dan valores distintos, así que mezclarlos es comparar peras con
+   * manzanas — y eso ya cazó un test de reproducibilidad.
+   */
+  stateChecksum,
+} from './util/canonical';
 
 export { BALANCE, TERRAIN_YIELD, TERRAIN_COMBAT, type Balance } from './balance/constants';
 

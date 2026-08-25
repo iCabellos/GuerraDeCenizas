@@ -1,9 +1,9 @@
 'use client';
 
-import type { FactionId, Phase, Resources, Seat } from '@gdc/core';
+import type { FactionId, Phase, Resources, Seat, Zone } from '@gdc/core';
 import { City, Core, Minus, Plus } from '@/components/art/generated';
 import { FactionEmblem, ResourceRow } from '@/components/GameChrome';
-import type { LedgerRow } from '@/lib/board';
+import type { LedgerRow, ZoneId, ZoneSummary } from '@/lib/board';
 import { SEAT_PATTERN, seatColor } from '@/lib/theme';
 
 /**
@@ -94,13 +94,22 @@ function Countdown({ deadlineAt, t }: { deadlineAt: string | null; t: T }) {
 }
 
 /** Raíl de fases. Es un indicador, no un control: no intercepta un solo gesto. */
-export function PhaseRail({ phase, label, t }: { phase: Phase; label: string; t: T }) {
+export function PhaseRail(
+  { phase, label, t, act }: { phase: Phase; label: string; t: T; act?: Zone },
+) {
   return (
     <ol
       aria-label={label}
       className="pointer-events-none flex flex-col border border-line/70 bg-panel/70 p-1
         backdrop-blur-sm"
     >
+      {/* El acto en curso, arriba del todo. La campaña cambia de forma dos veces y las
+          dos por una decisión de los jugadores; saber en cuál estás no es decoración. */}
+      {act !== undefined && (
+        <li className="type-label border-b border-line/50 px-1.5 pb-1 !text-[10px] !text-ash">
+          {t(`zone.act${act}`)}
+        </li>
+      )}
       {PHASES.map((step) => {
         const now = step === phase;
         return (
@@ -269,5 +278,63 @@ function Figure({
       </span>
       <span className="type-label block !text-[9px] !tracking-normal">{label}</span>
     </span>
+  );
+}
+
+/**
+ * El raíl de zonas: el **nivel 1 del mapa**.
+ *
+ * No es un menú y no debe parecerlo. Es el mapa visto de lejos: tres bandas con lo que
+ * hay en cada una —cuánto es tuyo, cuántas Menas explotas, cuántas Puertas quedan por
+ * pagar— y tocar una lleva la cámara allí. La razón de que exista está medida: con 271
+ * hexágonos, dibujarlos todos deja cada uno en ~12 px, la cuarta parte del objetivo
+ * táctil ([ADR-042](../../../docs/DECISIONS.md#adr-042)).
+ *
+ * Ocupa sitio en la columna, no flota sobre el mapa. Un panel flotante vuelve a traer el
+ * fallo de siempre: un destino resaltado que queda debajo.
+ */
+export function ZoneRail({
+  zones, active, onZone, t,
+}: {
+  zones: readonly ZoneSummary[];
+  active: ZoneId;
+  onZone: (zone: ZoneId) => void;
+  t: T;
+}) {
+  return (
+    <nav aria-label={t('zone.rail')} className="flex border-b border-line/60 bg-panel">
+      {zones.map((zone) => {
+        const now = zone.zone === active;
+        const sealed = zone.gates > 0 && zone.gatesOpen === 0;
+
+        return (
+          <button
+            key={zone.zone}
+            type="button"
+            aria-current={now ? 'true' : undefined}
+            onClick={() => onZone(zone.zone)}
+            className={`min-h-11 flex-1 border-r border-line/40 px-2 py-1 text-left
+              last:border-r-0 ${now ? 'bg-rust/15' : ''}`}
+          >
+            {/* Nombre primero: un control que solo se distingue por su glifo no enseña,
+                esconde ([ADR-038]). Dos líneas y no cuatro: cada píxel que se lleva este
+                raíl se lo quita al mapa, y el mapa es la interfaz ([ADR-040]). */}
+            <span className={`type-label block !text-[11px] ${now ? '!text-rust' : '!text-ash'}`}>
+              {t(`zone.${zone.zone}`)}
+            </span>
+            <span className="type-figure block text-[11px] tabular-nums">
+              <span className="text-faint">{zone.mine}/{zone.total}</span>
+              {zone.gates > 0 && (
+                // Cuántas Puertas quedan por abrir es la cifra que decide la partida: es
+                // lo que hay que pagar para entrar, y lo pagará alguien delante de todos.
+                <span className={`ml-1.5 ${sealed ? 'text-danger' : 'text-faint'}`}>
+                  {t('zone.gates', { open: zone.gatesOpen, total: zone.gates })}
+                </span>
+              )}
+            </span>
+          </button>
+        );
+      })}
+    </nav>
   );
 }

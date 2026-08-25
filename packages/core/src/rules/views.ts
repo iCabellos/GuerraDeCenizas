@@ -10,7 +10,7 @@
 
 import type { GameEvent, GameState, PlayerView, Seat } from '../types/index';
 import { buildAdjacency } from '../mapgen/skeleton';
-import { checksum } from '../util/canonical';
+import { stateChecksum } from '../util/canonical';
 import { computeObservers, projectView } from './control';
 
 export function projectViews(
@@ -19,7 +19,7 @@ export function projectViews(
 ): Record<Seat, PlayerView> {
   const adjacency = buildAdjacency(state.map.regions.length, state.map.edges);
   const observers = computeObservers(state, state.forces, state.control, adjacency);
-  const stateChecksum = checksum(state);
+  const sum = stateChecksum(state);
 
   const views = {} as Record<Seat, PlayerView>;
   for (const seatState of [...state.seats].sort((a, b) => a.seat - b.seat)) {
@@ -30,7 +30,7 @@ export function projectViews(
       state.control,
       observers.get(seatState.seat) ?? new Set(),
       events.filter((event) => event.visibleTo.includes(seatState.seat)),
-      stateChecksum,
+      sum,
     );
   }
   return views;

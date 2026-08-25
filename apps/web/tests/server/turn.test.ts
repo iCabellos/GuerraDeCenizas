@@ -417,8 +417,12 @@ describe('reproducibilidad', () => {
 
     // El checksum no depende de `now`: el estado no lo guarda. Si algún día lo guardara,
     // este test lo cazaría de inmediato.
-    const { checksum } = await import('@gdc/core');
-    expect(checksum(replay)).toBe(stored);
+    //
+    // `stateChecksum` y no `checksum`: el mapa entra por su propio checksum en vez de
+    // volver a serializarse entero en cada turno, y las dos funciones dan valores
+    // distintos. Comparar una con la otra no detecta una divergencia — inventa una.
+    const { stateChecksum } = await import('@gdc/core');
+    expect(stateChecksum(replay)).toBe(stored);
   });
 
   it('el estado guardado no incluye el reloj', async () => {

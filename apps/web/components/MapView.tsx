@@ -59,6 +59,14 @@ export interface MapHandle {
 
 interface Props {
   view: PlayerView;
+  /**
+   * Las regiones que se pintan. **Nunca el mapa entero**: con 271 hexágonos cada uno
+   * caería a ~12 px, la cuarta parte del objetivo táctil, y un mapa que no se puede
+   * tocar no es un mapa sino una ilustración ([ADR-042]).
+   *
+   * Ausente = píntalo todo. Sirve para mapas pequeños y para las pantallas de QA.
+   */
+  district?: ReadonlySet<RegionId>;
   selected: RegionId | null;
   reachable: readonly RegionId[];
   ordered: ReadonlyMap<RegionId, RegionId>;
@@ -97,8 +105,14 @@ function centroid(view: PlayerView, ids: readonly RegionId[]): { x: number; y: n
  * puede costar un render del mapa entero.
  */
 export function MapView({
-  view, selected, reachable, ordered, onSelect, label, supports, spotlight = null, threats, ref,
+  view, district, selected, reachable, ordered, onSelect, label, supports, spotlight = null,
+  threats, ref,
 }: Props) {
+  /** Está en el distrito, o no hay distrito y entonces está todo. */
+  const shown = useCallback(
+    (regionId: RegionId) => district === undefined || district.has(regionId),
+    [district],
+  );
   const rootRef = useRef<SVGGElement | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const camera = useRef({ x: 0, y: 0, scale: 1 });
@@ -337,12 +351,24 @@ export function MapView({
             const a = view.map.regions[edge.a];
             const b = view.map.regions[edge.b];
             if (!a || !b) return null;
+            if (!shown(edge.a) && !shown(edge.b)) return null;
             const lit = visible.has(edge.a) || visible.has(edge.b);
+            // Un Cerco no es una ruta: es una frontera cerrada. Se dibuja distinto —
+            // no hay vecindad implícita en este mapa y hay que decirlo dibujándolo.
+            const sealed = edge.ward === true
+              && !view.map.gates.some(
+                (gate) => view.gatesOpen[gate.id]
+                  && ((gate.inner === edge.a && gate.outer === edge.b)
+                    || (gate.inner === edge.b && gate.outer === edge.a)),
+              );
             return (
               <line
                 key={`${edge.a}-${edge.b}`}
                 x1={a.x} y1={a.y} x2={b.x} y2={b.y}
-                opacity={lit ? 0.5 : 0.22}
+                opacity={sealed ? 0.9 : lit ? 0.5 : 0.22}
+                strokeWidth={sealed ? 6 : undefined}
+                strokeDasharray={sealed ? '2 12' : undefined}
+                stroke={sealed ? 'var(--color-danger)' : undefined}
               />
             );
           })}
@@ -375,6 +401,9 @@ export function MapView({
         </g>
 
         {view.map.regions.map((region) => {
+          // Fuera del distrito no se pinta, y por tanto tampoco entra en el DOM: el
+          // presupuesto de render no se relaja porque el mapa haya triplicado.
+          if (!shown(region.id)) return null;
           const owner = view.control[region.id] ?? null;
           const observed = visible.has(region.id);
           const isSelected = selected === region.id;

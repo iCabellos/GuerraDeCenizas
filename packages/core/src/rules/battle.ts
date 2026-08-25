@@ -12,7 +12,7 @@ import type {
 } from '../types/index';
 import { EventLog } from './events';
 import { resolveCombat, totalOf, type CombatSide } from './combat';
-import { buildWardIndex, canCross } from './zones';
+import { buildWardIndex, canCross, type WardIndex } from './zones';
 
 export interface BattleResult {
   forces: Force[];
@@ -131,8 +131,12 @@ export function applyBattles(
 
   // Las retiradas se aplican después de resolver todo: una fuerza no puede retirarse
   // a una región cuyo combate aún no se ha resuelto.
+  //
+  // El índice de Cercos se construye UNA vez: recorrerlo por cada fuerza que se retira
+  // era recorrer las ~700 aristas del mapa nuevo tantas veces como retiradas hubiera.
+  const wards = buildWardIndex(state.map);
   for (const { force, from } of retreating) {
-    const destination = retreatDestination(state, force.seat, from, adjacency);
+    const destination = retreatDestination(state, force.seat, from, adjacency, wards);
     if (destination === null) {
       force.line = 0;
       force.fire = 0;
@@ -191,8 +195,8 @@ function retreatDestination(
   seat: Seat,
   from: RegionId,
   adjacency: Adjacency,
+  wards: WardIndex,
 ): RegionId | null {
-  const wards = buildWardIndex(state.map);
   const candidates = [...(adjacency[from] as readonly RegionId[])]
     .filter((r) => state.control[r] === seat && canCross(wards, state.gatesOpen, from, r))
     .sort((a, b) => a - b);

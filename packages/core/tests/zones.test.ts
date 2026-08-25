@@ -189,3 +189,31 @@ describe('los actos', () => {
     expect(actOfTurn(BALANCE.campaign.turns)).toBe(3);
   });
 });
+
+describe('el checksum sigue distinguiendo mapas', () => {
+  it('dos estados iguales con mapas distintos NO comparten checksum', async () => {
+    // El mapa se sustituye por su propio checksum para no volver a serializar 271
+    // regiones en cada turno ([ADR-044]). La garantía que no puede perderse es ésta: un
+    // mapa distinto sigue dando un estado distinto. Si algún día alguien «optimiza»
+    // sacando el mapa del checksum del todo, este test lo caza.
+    const { stateChecksum } = await import('../src/util/canonical');
+
+    const a = generateMap(1, 5).map;
+    const b = generateMap(2, 5).map;
+    const base = { turn: 3, seats: [], map: a };
+
+    expect(stateChecksum(base)).toBe(stateChecksum({ ...base, map: a }));
+    expect(stateChecksum(base)).not.toBe(stateChecksum({ ...base, map: b }));
+  });
+
+  it('el mismo mapa da el mismo checksum aunque sea otro objeto', async () => {
+    // La memoria es por identidad, así que dos objetos con el mismo contenido pasan por
+    // dos cálculos distintos. Tienen que coincidir, o el determinismo entre servidor,
+    // cliente y simulador se rompería en cuanto uno de los tres deserializara el mapa.
+    const { stateChecksum } = await import('../src/util/canonical');
+    const a = generateMap(77, 3).map;
+    const b = generateMap(77, 3).map;
+    expect(a).not.toBe(b);
+    expect(stateChecksum({ map: a })).toBe(stateChecksum({ map: b }));
+  });
+});

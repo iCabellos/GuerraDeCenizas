@@ -15,7 +15,7 @@ import type {
   GameEvent, GameState, OrdersBySeat, PlayerView, ResolveContext, ResolveResult, Seat,
 } from '../types/index';
 import { buildAdjacency } from '../mapgen/skeleton';
-import { checksum } from '../util/canonical';
+import { stateChecksum } from '../util/canonical';
 import { EventLog } from './events';
 import { applyMovement, validateOrders } from './movement';
 import { applyBattles } from './battle';
@@ -162,7 +162,7 @@ export function reduce(
   // 13 · Eventos, ya filtrados por asiento.
   const events: GameEvent[] = log.resolve(state.meta.turn, seats, observers);
 
-  const stateChecksum = checksum(next);
+  const sum = stateChecksum(next);
   const views = {} as Record<Seat, PlayerView>;
   for (const seat of seats) {
     views[seat] = projectView(
@@ -172,9 +172,9 @@ export function reduce(
       control,
       observers.get(seat) ?? new Set(),
       events,
-      stateChecksum,
+      sum,
     );
   }
 
-  return { state: next, events, views, checksum: stateChecksum };
+  return { state: next, events, views, checksum: sum };
 }
