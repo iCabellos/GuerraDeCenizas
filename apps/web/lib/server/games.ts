@@ -15,6 +15,7 @@ import {
 } from '@gdc/core';
 import type { Rpc } from './resolve';
 import { deadlineFor, type Cadence } from '../cadence';
+import { withoutMap } from './views';
 
 export interface CreatedGameRow {
   ok: boolean;
@@ -131,7 +132,7 @@ export async function startGame(
     p_checksum: views[0]!.checksum,
     p_views: Object.entries(views).map(([seat, view]) => ({
       seat: Number(seat),
-      view,
+      view: withoutMap(view),
       events: [],
     })),
     p_deadline: deadlineFor(lobby.cadence, 0, input.now).toISOString(),

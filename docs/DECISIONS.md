@@ -48,12 +48,13 @@
 | [038](#adr-038) | La interfaz enseña **y** nombra | aceptada |
 | [039](#adr-039) | Se jura una vez, y hasta entonces la facción no significa nada | aceptada |
 | [040](#adr-040) | El mapa es la interfaz: se ordena tocándolo | aceptada |
-| [041](#adr-041) | Las zonas son bandas de anillos; la equidad C<sub>n</sub> no se toca | **propuesta** |
-| [042](#adr-042) | Solo una zona vive en el DOM: el mapa grande se recorre | **propuesta** |
-| [043](#adr-043) | El Coloso es un problema diplomático disfrazado de monstruo | **propuesta** |
-| [044](#adr-044) | El mapa deja de viajar en cada vista | **propuesta** |
-| [045](#adr-045) | La metaprogresión sigue sin tocar números: sube el árbol, no el nivel | **propuesta** |
-| [046](#adr-046) | La campaña se juega en tres actos; la duración la fija el simulador | **propuesta** |
+| [041](#adr-041) | Las zonas son bandas de anillos; la equidad C<sub>n</sub> no se toca | aceptada |
+| [042](#adr-042) | Solo una zona vive en el DOM: el mapa grande se recorre | aceptada |
+| [043](#adr-043) | El Coloso es un problema diplomático disfrazado de monstruo | aceptada |
+| [044](#adr-044) | El mapa deja de viajar en cada vista | aceptada |
+| [045](#adr-045) | La metaprogresión sigue sin tocar números: sube el árbol, no el nivel | aceptada |
+| [046](#adr-046) | La campaña se juega en tres actos; la duración la fija el simulador | aceptada |
+| [047](#adr-047) | Ante el Coloso no hay guerra, y toda ciudad se funda sobre una veta | aceptada |
 
 ---
 
@@ -1505,7 +1506,7 @@ de que la partida deje de parecer un juego.
 <a id="adr-041"></a>
 
 ## ADR-041 — Las zonas son bandas de anillos, y por eso la equidad C_n no se toca
-**Estado:** propuesta · 2026-08-24 · amplía [ADR-037](#adr-037) · ver [Refactor RTS §2](RTS_ZONES_REFACTOR.md#2-la-topología-de-zonas)
+**Estado:** aceptada · 2026-08-24 · amplía [ADR-037](#adr-037) · ver [Refactor RTS §2](RTS_ZONES_REFACTOR.md#2-la-topología-de-zonas)
 
 **Contexto.** El refactor pide un mapa mucho más grande partido en tres zonas con fronteras
 cerradas: un Solar por jugador, una Marca compartida con recursos y guardianes, y una
@@ -1553,7 +1554,7 @@ de por sector, o el generador podría sembrar una Mena de grado 3 dentro de un S
 <a id="adr-042"></a>
 
 ## ADR-042 — Solo una zona vive en el DOM: el mapa grande se recorre, no se abarca
-**Estado:** propuesta · 2026-08-24 · matiza [ADR-040](#adr-040) · ver [Refactor RTS §12](RTS_ZONES_REFACTOR.md#12-impacto-en-la-interfaz)
+**Estado:** aceptada · 2026-08-24 · matiza [ADR-040](#adr-040) · ver [Refactor RTS §12](RTS_ZONES_REFACTOR.md#12-impacto-en-la-interfaz)
 
 **Contexto.** Ya está medido y está en las lecciones del repositorio: con 96 regiones, a
 escala 1 cada región mide **21 px**, la mitad del objetivo táctil de 44. Con las 271 del
@@ -1606,7 +1607,7 @@ jugador y su turno.
 <a id="adr-043"></a>
 
 ## ADR-043 — El Coloso es un problema diplomático disfrazado de monstruo
-**Estado:** propuesta · 2026-08-24 · contradice «sin PvE» de [DISCOVERY §3](DISCOVERY.md) · ver [Refactor RTS §3](RTS_ZONES_REFACTOR.md#3-fronteras-cercos-puertas-y-colosos)
+**Estado:** aceptada · 2026-08-24 · contradice «sin PvE» de [DISCOVERY §3](DISCOVERY.md) · ver [Refactor RTS §3](RTS_ZONES_REFACTOR.md#3-fronteras-cercos-puertas-y-colosos)
 
 **Contexto.** El refactor pide un «boss de zona» que guarde la frontera. El brief había
 descartado el PvE explícitamente, y con buen criterio: un juego que se define por la
@@ -1665,7 +1666,7 @@ empata por número de asiento ascendente. Sin dados, sin tabla aparte, sin IA.
 <a id="adr-044"></a>
 
 ## ADR-044 — El mapa deja de viajar en cada vista
-**Estado:** propuesta · 2026-08-24 · ver [Refactor RTS §11](RTS_ZONES_REFACTOR.md#11-impacto-en-la-base-de-datos)
+**Estado:** aceptada · 2026-08-24 · ver [Refactor RTS §11](RTS_ZONES_REFACTOR.md#11-impacto-en-la-base-de-datos)
 
 **Contexto.** `player_views` guarda una fila `(game_id, turn, seat)` con la vista entera en
 `jsonb`, y `PlayerView` incluye `map: GameMap`. Es decir: **el mapa completo se serializa
@@ -1710,7 +1711,7 @@ como política RLS, no se da por hecho.
 <a id="adr-045"></a>
 
 ## ADR-045 — La metaprogresión sigue sin tocar números: sube el árbol, no el nivel
-**Estado:** propuesta · 2026-08-24 · confirma [ADR-009](#adr-009) y [METAPROGRESSION §2](METAPROGRESSION.md#2-la-regla-de-oro) · ver [Refactor RTS §9](RTS_ZONES_REFACTOR.md#9-las-dos-progresiones-y-la-regla-de-oro)
+**Estado:** aceptada · 2026-08-24 · confirma [ADR-009](#adr-009) y [METAPROGRESSION §2](METAPROGRESSION.md#2-la-regla-de-oro) · ver [Refactor RTS §9](RTS_ZONES_REFACTOR.md#9-las-dos-progresiones-y-la-regla-de-oro)
 
 **Contexto.** El refactor pide que las tropas se mejoren «con metaprogresión» y que las
 Políticas «se apliquen de forma permanente». Leído literalmente: una cuenta veterana empieza
@@ -1776,7 +1777,7 @@ aplicado a los sistemas nuevos.
 <a id="adr-046"></a>
 
 ## ADR-046 — La campaña se juega en tres actos, y la duración la fija el simulador
-**Estado:** propuesta · 2026-08-24 · ver [Refactor RTS §14.3](RTS_ZONES_REFACTOR.md#143-duración)
+**Estado:** aceptada · 2026-08-24 · ver [Refactor RTS §14.3](RTS_ZONES_REFACTOR.md#143-duración)
 
 **Contexto.** Doce turnos bastan para el juego de hoy. No bastan para una economía con
 extracción, edificios de tres niveles y Políticas: la primera Extractora de nivel 3 no
@@ -1823,6 +1824,80 @@ a **dos turnos al día** o desaparece.
 - *Fijar la duración ahora por diseño.* Es exactamente lo que este proyecto ya aprendió a no
   hacer con `diminishingK`: el número documentado daba 1,08× donde el diseño pedía 1,55×.
   La intención se fija en el test; la cifra la calibra el simulador.
+
+---
+
+<a id="adr-047"></a>
+
+## ADR-047 — Ante el Coloso no hay guerra, y toda ciudad se funda sobre una veta
+**Estado:** aceptada · 2026-08-24 · corrige la mecánica de [ADR-043](#adr-043) · ver [Refactor RTS §3](RTS_ZONES_REFACTOR.md#3-fronteras-cercos-puertas-y-colosos)
+
+**Contexto.** [ADR-043](#adr-043) decidió *qué* es un Coloso —un problema de bien público
+puesto en una puerta— y acertó. Pero su mecánica, escrita sobre el papel, no funcionaba:
+al implementarla y **jugar 24 turnos completos con cinco rivales**, aparecieron tres
+cosas que ningún documento podía ver.
+
+1. **El Coloso estaba al otro lado del Cerco que guardaba.** El documento lo colocaba en
+   `gate.inner`, es decir en la zona a la que aún no se puede entrar. Nadie podía
+   llegar a él, nadie podía matarlo, la Puerta no se abría nunca y **la partida era
+   imposible de ganar**. En la campaña de prueba ningún bot pisó una Puerta en 24 turnos.
+
+2. **Dos asientos que asediaban al mismo Coloso se aniquilaban entre ellos.** La etapa
+   de combate entre asientos va antes que la del Coloso, así que «juntarse» significaba
+   pelearse. Medido: dos fuerzas de 40 de Línea cada una perdían las 40 enteras entre
+   ellas mientras el Coloso ni se despeinaba. La coordinación —que es **el único punto
+   del sistema**— era literalmente imposible, y encima no había forma de arreglarlo con
+   diplomacia porque los Sellos no existen todavía.
+
+3. **La economía tenía una trampa de arranque sin salida.** El material solo sale de
+   Extractoras y las Extractoras cuestan material. Quien gastara su capital inicial en
+   otra cosa se quedaba sin economía **para el resto de la partida**. Se comprobó
+   jugando: 24 turnos, cinco bots, cero Extractoras y cero material.
+
+**Decisión.** Tres reglas, una por hallazgo.
+
+**a) El Coloso está en el lado de fuera.** Guarda la puerta *desde delante*, que además
+es lo que significa guardar una puerta. Y las Puertas se colocan en la **frontera entre
+sectores**, no en la vertical del Bastión: las dos opciones son igual de simétricas bajo
+rotación, pero solo ésta pone la Puerta donde se tocan dos jugadores. Un problema de bien
+público no se le plantea a nadie si cada uno tiene el suyo en mitad de su casa.
+
+**b) Ante un Coloso vivo no hay guerra entre asientos.** Mientras el Coloso viva, dos
+asientos en su región no combaten. En cuanto cae, la tregua se acaba — y os deja a los
+dos de pie en la misma casilla. Cooperar para abrir la puerta y tener que resolver lo
+vuestro justo después es exactamente la partida que este juego quiere provocar, así que
+la regla no solo arregla el sistema: lo mejora.
+
+**c) Toda ciudad se funda sobre una veta.** Cada Bastión lleva su propia Mena de Mineral
+y nace con una Extractora de nivel 1. El Bastión es el único sitio del mapa donde esto no
+abre un agujero, porque **un Bastión no se captura nunca** ([ADR-013](#adr-013)): el
+suelo de la economía no se puede perder, solo se puede desperdiciar.
+
+**Consecuencias.**
+- ✅ El sistema hace lo que ADR-043 decía que haría. Con las tres reglas, las Puertas se
+  abren, los Colosos mueren y la Marca se disputa.
+- ✅ La tregua añade una tensión que no estaba diseñada y que sale gratis: el momento
+  exacto en que deja de haber tregua es el momento en que hay que haber decidido qué
+  hacer con quien te ayudó.
+- ✅ La veta del Bastión da un **suelo**, no una ventaja: es idéntica para todos por
+  construcción rotacional.
+- ⚠️ La tregua es una excepción en `battle.ts`, y las excepciones se acumulan. Está
+  escrita como una condición explícita con su razón al lado, y tiene test propio.
+- ⚠️ Un Coloso en la frontera entre sectores está en territorio que dos jugadores quieren
+  igualmente. Eso es deliberado, pero significa que la primera Puerta se pelea antes de
+  poder pagarse.
+
+**Descartado.**
+- *Dejar el Coloso dentro y abrir el Cerco «solo hasta su casilla».* Una excepción de
+  movimiento para una casilla concreta, que habría que respetar además en suministro,
+  visión, retirada y logística. Cinco sitios donde equivocarse para evitar mover un
+  monstruo un hexágono.
+- *Permitir alianzas ad hoc contra el Coloso.* Es diplomacia, y la diplomacia es v0.9.
+  Meterla por la puerta de atrás para arreglar un monstruo habría dejado media primitiva
+  implementada y sin tablas ni RLS que la sostengan.
+- *Subir el material inicial hasta que la trampa de arranque sea improbable.* Improbable
+  no es imposible, y una partida que se puede perder en el turno 1 por una decisión que
+  el juego no explica es peor que una constante mal calibrada.
 
 ---
 

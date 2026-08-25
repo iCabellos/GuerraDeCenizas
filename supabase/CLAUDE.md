@@ -95,25 +95,30 @@ Hay un test que enumera todas las funciones `security definer` invocables por
 `authenticated` y exige que sean exactamente las tres ayudantes de política. Al añadir
 una función nueva, ese test falla hasta que decidas a propósito quién puede llamarla.
 
-## El mapa no debería viajar en cada vista
+## El mapa ya no viaja en cada vista
 
-Hallazgo del análisis del refactor RTS, y **vale igual si el refactor no se hace**:
-`player_views` guarda una fila `(game_id, turn, seat)` con la vista entera, y `PlayerView`
-incluye `map: GameMap`. El mismo objeto **inmutable durante toda la partida** se serializa
-una vez por asiento y por turno: 60 copias en una campaña de cinco a 12 turnos.
-
-Con 96 regiones se aguanta (~0,9 MB por campaña). Con las 271 que propone el refactor son
-⚖️ ~7,4 MB, es decir **~67 campañas archivadas en los 500 MB del free tier** en vez de
-~550 — y con ello se cae el objetivo de 0 €/mes durante la beta.
-
-La salida está en [ADR-044](../docs/DECISIONS.md#adr-044): `game_maps` con el mapa una vez
-por partida, y `mapId` en la vista. Al hacerlo, cuidado con lo de siempre:
+`player_views` guardaba una fila `(game_id, turn, seat)` con la vista entera, mapa
+incluido. El mapa es **inmutable durante toda la partida**, así que eran 120 copias del
+mismo objeto en una campaña de cinco a 24 turnos. Medido con el mapa de zonas:
 
 ```
-□ game_maps es legible por CUALQUIER asiento de esa partida, y por nadie más
-□ La topología es pública entre los cinco; lo secreto son las fuerzas. Escríbelo
-  como política, no lo des por hecho
-□ Un asiento de OTRA partida no puede leer este mapa  ← test de seguridad nuevo
+mapa .................. 36,3 KB
+vista completa ........ 43,2 KB   ← el 84 % era el mapa
+vista sin el mapa ......  6,9 KB
+campaña entera ......... 5,2 MB → 0,85 MB
+```
+
+Sobre los 500 MB del free tier, ~95 campañas archivadas frente a ~580. De ese número
+depende que el objetivo de 0 €/mes durante la beta siga siendo posible.
+
+Desde `0012_map_store.sql` el mapa vive en **`game_maps`**, una fila por partida, y
+`lib/server/views.ts` lo quita al escribir y lo vuelve a pegar al leer
+([ADR-044](../docs/DECISIONS.md#adr-044)). Tres cosas que hay que respetar:
+
+```
+□ game_maps es legible por CUALQUIER jugador de esa partida (is_player), y por nadie más
+□ La topología es pública entre los de la mesa; lo secreto son las fuerzas
+□ Nadie escribe desde el cliente: lo pone start_game, una vez, con `do nothing`
 ```
 
 Y la regla que no se toca ni con el refactor: **el estado de juego sigue en un solo
@@ -126,6 +131,6 @@ PostgREST y tiraría la niebla de guerra por el desagüe ([ADR-007](../docs/DECI
 verificadas contra Postgres real: 43 tests en `apps/web/tests/security/`, entre ellos los
 siete bloqueantes.
 
-El refactor RTS ([`docs/RTS_ZONES_REFACTOR.md`](../docs/RTS_ZONES_REFACTOR.md)) añadiría
-tres migraciones —`game_maps`, zonas y adelgazamiento de la vista— pero **está sin aprobar**
-y ninguna se escribe todavía.
+El refactor RTS añadió `0012_map_store.sql`: la tabla `game_maps`, su política y un
+`start_game` que guarda el mapa una vez. Las zonas, los edificios y los Colosos **no
+tocaron el esquema** — viven dentro del `jsonb` del estado, que es donde tienen que estar.

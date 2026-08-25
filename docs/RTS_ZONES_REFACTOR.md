@@ -1,12 +1,15 @@
 # Refactor RTS — Zonas, extracción y progresión
 
-> **Versión:** 1.0 · **Estado: propuesta.** Nada de este documento está implementado.
-> Es la especificación de un cambio de alcance que toca el motor, el mapa, la economía,
-> la base de datos, la interfaz y el roadmap.
+> **Versión:** 2.0 · **Estado: implementado en el motor y en la interfaz.**
 >
-> Las decisiones que abre están registradas como
-> [ADR-041 a ADR-046](DECISIONS.md#adr-041), todas en estado **propuesta**. Ninguna se
-> aplica hasta que el dueño del proyecto las acepte una a una.
+> Las seis decisiones que abría están **aceptadas**
+> ([ADR-041 a ADR-046](DECISIONS.md#adr-041)), y construirlo forzó una séptima
+> ([ADR-047](DECISIONS.md#adr-047)) que corrige la mecánica del Coloso.
+>
+> **Lo que cambió al construirlo está en [§19](#19-lo-que-cambió-al-construirlo)**, con
+> los números medidos en vez de estimados. Leer solo la especificación y no esa sección
+> da una idea equivocada de cómo funciona el juego: cinco cosas de este documento
+> resultaron estar mal, y una de ellas hacía la partida imposible de ganar.
 
 ---
 
@@ -1116,3 +1119,84 @@ colisiones que ya tiene el proyecto.
 | **Brasa** (`ember`) vs **Fuego** (`fire`) vs **Ceniza** (`ash`) | Material · arma · moneda de victoria. Tres cosas, tres palabras |
 | **Despojo** (`spoils`) vs **Botín** (`plunder`) | El Despojo cae de un Coloso; el Botín se lo quitas a un jugador |
 | **Grado** (`tier`) vs **Nivel** (`level`) | El Grado es de tropa; el Nivel es de edificio. **Nunca al revés** |
+
+---
+
+## 19. Lo que cambió al construirlo
+
+Esta sección es el registro honesto de la distancia entre la especificación y el juego.
+Cinco cosas de las secciones anteriores estaban mal, y no se han borrado: se han
+corregido aquí, con lo que las cazó.
+
+### 19.1 Cinco correcciones
+
+| # | El documento decía | La realidad | Lo cazó |
+|:-:|---|---|---|
+| 1 | El Coloso ocupa `gate.inner` ([§3.3](#33-el-coloso)) | Ahí vive **al otro lado del Cerco que guarda**: nadie llega, nadie lo mata, la Puerta no se abre nunca y **la partida es imposible de ganar**. Ahora está en `gate.outer` | Una campaña de 24 turnos en la que ningún bot pisó una Puerta |
+| 2 | Las Puertas se alinean con el Bastión | Un problema de bien público no se le plantea a nadie si cada uno tiene el suyo en mitad de su casa. Van en la **frontera entre sectores** | Revisión al arreglar el punto 1 |
+| 3 | Coordinarse contra un Coloso abarata el asedio ([§3.4](#34-la-aritmética-de-la-puerta)) | Dos asientos en la misma región **se aniquilaban entre ellos** antes de tocarlo. Entra la tregua: ante un Coloso vivo no hay guerra ([ADR-047](DECISIONS.md#adr-047)) | El test «entre dos, cada uno pierde menos»: 40 de pérdida contra 6 |
+| 4 | La Marca reparte Menas de forma asimétrica por sector ([§4.3](#43-reparto-de-menas-por-zona)) | **Imposible.** Bajo rotación C<sub>n</sub> todo sector es idéntico por construcción: no puede haber asimetría entre jugadores, y eso *es* la garantía. El eje de comercio sale de que a todos les falte lo mismo: el Solar da Mineral, la Brasa vive fuera | Escribir `spec.ts` y ver que la afirmación no podía ser cierta |
+| 5 | El desgaste del asedio es simétrico | Salía a 45 % de bajas por turno: no era un problema diplomático, era un muro. Lo que le quitas y lo que te quita son ahora constantes distintas | Cero Puertas abiertas en dos campañas completas |
+
+Y una que el documento no vio en absoluto: **la economía tenía una trampa de arranque sin
+salida**. El material solo sale de Extractoras, las Extractoras cuestan material, y quien
+gastara su capital inicial en otra cosa se quedaba sin economía para el resto de la
+partida. Ahora toda ciudad se funda sobre una veta ([ADR-047](DECISIONS.md#adr-047)).
+
+### 19.2 Los números, ya medidos
+
+Lo que en el documento iba con ⚖️ como estimación, medido sobre el juego real:
+
+| Magnitud | Estimado | **Medido** |
+|---|:-:|:-:|
+| Regiones, 5 jugadores | 271 | **271** |
+| Vista de jugador, serializada | ~62 KB | **43,2 KB** |
+| …de los cuales, el mapa | — | **36,3 KB (84 %)** |
+| Vista sin el mapa | ~24 KB | **6,9 KB** |
+| Estado de partida | ≤ 180 KB | **53 KB** |
+| Vistas por campaña | ~7,4 MB | **5,2 MB → 0,85 MB** con [ADR-044](DECISIONS.md#adr-044) |
+| Regiones en el DOM a la vez | ≤ 96 | **46 (Solar) · 57 (Marca)** |
+
+El presupuesto de datos de [§14.1](#141-datos) se cumple **solo** con ADR-044 aplicado.
+Sin él, una campaña ocupa 5,2 MB contra los 3 MB de tope, y el free tier da para ~95
+campañas archivadas en vez de ~580. Por eso esa ADR dejó de ser una optimización y pasó a
+ser parte del refactor.
+
+### 19.3 Una constante recalibrada, por la razón de siempre
+
+`economy.diminishingK` baja de **0,015 a 0,0088**. La «parte justa» pasó de ser el sector
+entero (19 regiones con cinco jugadores) a ser el Solar (33), así que con la constante
+vieja la penalización empezaba mucho más tarde: doblar el territorio daba **1,24×** donde
+el diseño pide 1,55×.
+
+Lo cazó el mismo test que ya lo cazó en la v0.2 — el que fija la **intención declarada**
+en vez del número. Un test que comprobara `diminishingK === 0.015` habría bendecido el
+error las dos veces.
+
+### 19.4 Y un hallazgo que no era del refactor
+
+El checksum del estado volvía a serializar el mapa entero en cada turno: **4,5 ms de los
+5,6 que costaba resolver un turno**, sin aportar un bit de información nueva después del
+turno 0, porque el mapa es inmutable durante toda la partida. Ahora entra por su propio
+checksum, calculado una vez por mapa.
+
+La garantía no se toca —un mapa distinto sigue dando un estado distinto, y hay dos tests
+que lo fijan— y las campañas simuladas van dos veces y media más rápidas. Es la misma
+idea que [ADR-044](DECISIONS.md#adr-044), aplicada al checksum en vez de a la base de
+datos, y habría merecido la pena aunque este refactor no se hubiera hecho nunca.
+
+### 19.5 Lo que sigue sin existir
+
+Para que nadie lea este documento y dé por hecho lo que no está:
+
+```
+□ Diplomacia: Sellos, Rupturas, Coaliciones y ofertas
+□ Núcleo y Consagración: la Corona se puede alcanzar, pero no se consagra nada
+□ El simulador de balance (packages/sim) — sin él, las ~50 constantes son provisionales
+□ Anomalías, Sombra y doctrinas activas
+□ Que la Corona se alcance de verdad en 24 turnos: con los rivales actuales no pasa
+```
+
+Ese último punto es una cuestión de calibración, no de motor, y la decide el simulador.
+Fingirlo en un test habría sido exactamente el tipo de humo que este documento existe
+para evitar.

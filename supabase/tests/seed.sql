@@ -9,7 +9,7 @@
 begin;
 
 truncate table public.messages, public.orders, public.player_views,
-               public.game_states, public.game_players, public.games,
+               public.game_states, public.game_maps, public.game_players, public.games,
                public.account_unlocks, public.reputation_events,
                public.cities, public.profiles restart identity cascade;
 delete from auth.users;
@@ -75,6 +75,13 @@ insert into public.player_views (game_id, turn, seat, view, events) values
   ('11111111-1111-4111-8111-111111111111', 4, 0, '{"marca":"SECRETO_ASIENTO_0"}'::jsonb, '[]'::jsonb),
   ('11111111-1111-4111-8111-111111111111', 4, 1, '{"marca":"SECRETO_ASIENTO_1"}'::jsonb, '[]'::jsonb),
   ('11111111-1111-4111-8111-111111111111', 4, 2, '{"marca":"SECRETO_ASIENTO_2"}'::jsonb, '[]'::jsonb);
+
+-- El mapa vive aparte desde ADR-044: es inmutable y guardarlo en cada vista eran 120
+-- copias del mismo objeto por campaña. Es público **entre los jugadores de la partida**
+-- —la topología no es secreta, las fuerzas sí— y de nadie más.
+insert into public.game_maps (game_id, map) values
+  ('11111111-1111-4111-8111-111111111111',
+   '{"marca":"MAPA_DE_ESTA_PARTIDA"}'::jsonb);
 
 insert into public.orders (game_id, turn, seat, payload, submitted_at) values
   ('11111111-1111-4111-8111-111111111111', 4, 1,

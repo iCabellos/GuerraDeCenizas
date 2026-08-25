@@ -48,16 +48,21 @@ que dice.
 **Sin implementar.** Llega en v0.8 (ver [ROADMAP](../../docs/ROADMAP.md)). Se puede
 adelantar parcialmente en cuanto el motor tenga combate y economía (v0.2).
 
-## Si entra el refactor RTS, este paquete deja de ser opcional
+## Con el refactor RTS dentro, este paquete es lo que más falta hace
 
-[`docs/RTS_ZONES_REFACTOR.md`](../../docs/RTS_ZONES_REFACTOR.md) —propuesta, sin aprobar—
-pasa el balance de ~20 constantes a ~50, y varias de las nuevas **no se pueden calibrar a
+El balance pasó de ~20 constantes a ~50, y varias de las nuevas **no se pueden calibrar a
 mano** porque su efecto es de segundo orden y aparece en el turno 14: el Despojo del
 Coloso, el coste real de abrir una Puerta, los multiplicadores de grado y la duración de
 la campaña.
 
-> Con ese refactor, el simulador se adelanta de v0.8 a **prerrequisito de la primera
-> versión**. Sin él no se empieza.
+> **Todas las constantes del refactor están sin calibrar.** Salieron de jugar dos
+> campañas y de que los tests de intención pasaran, no de un barrido. Eso es suficiente
+> para que el juego funcione y no lo es para que esté equilibrado — y la diferencia hay
+> que decirla, no dejarla implícita.
+
+Lo primero que tiene que atacar, y está medido: **con los rivales actuales no se llega a
+la Corona en 24 turnos.** Si con 18 se abren igual los dos Cercos, 18 es mejor número por
+razones que no tienen nada que ver con el diseño ([ADR-046](../../docs/DECISIONS.md#adr-046)).
 
 Las tres métricas que deciden si el diseño funciona, y que tienen que estar en el informe
 desde el primer día ([§13.3](../../docs/RTS_ZONES_REFACTOR.md#133-métricas-nuevas-del-informe)):

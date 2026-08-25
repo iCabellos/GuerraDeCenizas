@@ -14,8 +14,9 @@ reglas locales que amplían a estas.
 4. **No contradigas una decisión documentada.** Si hay que cambiarla, añade una entrada
    nueva en [`docs/DECISIONS.md`](docs/DECISIONS.md); nunca edites la histórica.
 5. Si lo que vas a tocar es el mapa, la economía, la producción o la progresión, lee antes
-   [`docs/RTS_ZONES_REFACTOR.md`](docs/RTS_ZONES_REFACTOR.md). Es una **propuesta**, no está
-   implementada, y puede que lo que ibas a escribir se tire dentro de dos versiones.
+   [`docs/RTS_ZONES_REFACTOR.md`](docs/RTS_ZONES_REFACTOR.md), y **empieza por su
+   [§19](docs/RTS_ZONES_REFACTOR.md#19-lo-que-cambió-al-construirlo)**: cinco cosas de la
+   especificación resultaron estar mal al implementarlas, y ahí está cuáles.
 
 ## El juego en cinco líneas
 
@@ -147,7 +148,7 @@ versión estamos, qué entra y qué deuda consciente arrastra.
 |---|---|
 | Última versión cerrada | **v0.2** — economía, producción, combate determinista y captura |
 | En curso | v0.3 — esquema, RLS, autoridad, resolución, auth, despliegue e interfaz |
-| Sobre la mesa | **Refactor RTS** — zonas, extracción y progresión. Propuesta sin aprobar |
+| Refactor RTS | **Implementado en el motor y la interfaz** — zonas, extracción, Colosos, edificios, grados y Políticas |
 | Tests | `npm test` (motor) **y** `npm run test:security` (RLS + autoridad) deben estar en verde |
 
 **Ya se puede jugar una campaña entera en solitario**: buscar partida sienta rivales
@@ -158,27 +159,29 @@ Ceniza. Es lo que hay que usar para probar el juego mientras no haya gente.
 la v1.0): diplomacia, Núcleo y consagración, anomalías, Sombra, doctrinas activas,
 investigación y metaprogresión persistente.
 
-### Hay un refactor grande sobre la mesa y no está aprobado
+### El refactor RTS está dentro
 
-[`docs/RTS_ZONES_REFACTOR.md`](docs/RTS_ZONES_REFACTOR.md) propone partir el mapa en tres
-zonas concéntricas con fronteras cerradas, triplicar su tamaño, añadir extracción de
-materiales, edificios con niveles, grados de tropa, Políticas y guardianes deterministas.
-Reordena el roadmap de v0.4 a v0.8 y sube `ENGINE_VERSION` y `MAPGEN_VERSION` de forma
-incompatible.
+El mapa son tres zonas concéntricas —**Solar, Marca y Corona**— separadas por Cercos que
+solo se cruzan por una Puerta, y cada Puerta la guarda un Coloso. Hay dos materiales que
+se extraen, cinco edificios con tres niveles, grados de tropa, seis Políticas y la postura
+Botín. `ENGINE_VERSION` 0.3.0 y `MAPGEN_VERSION` 0.2.0, incompatibles hacia atrás a
+propósito.
 
-**Ninguna de sus seis decisiones está aceptada** ([ADR-041 a ADR-046](docs/DECISIONS.md#adr-041)).
-Hasta que lo estén:
+**Antes de tocar cualquiera de esos sistemas, lee
+[RTS_ZONES_REFACTOR §19](docs/RTS_ZONES_REFACTOR.md#19-lo-que-cambió-al-construirlo).**
+Es lo que la especificación no podía saber, y una de esas cinco cosas hacía la partida
+imposible de ganar. Las tres reglas que salieron de ahí, resumidas, porque tienen pinta de
+detalle y no lo son:
 
 ```
-□ No implementes nada de ese documento
-□ Pero tampoco escribas código que dé por eterno lo que propone cambiar:
-  4 recursos fijos, 12 turnos, un solo espacio de mapa continuo
-□ Si tu tarea toca mapa, economía, producción o progresión, dilo en el PR
+□ El Coloso está en el lado de FUERA de su Puerta. Dentro, nadie puede llegar a él
+□ Ante un Coloso vivo NO hay guerra entre asientos. Sin eso, coordinarse es imposible
+□ Todo Bastión nace sobre una Mena y con su Extractora. Sin eso, la economía se
+  puede perder en el turno 1 y no se recupera nunca
 ```
 
-Y una cosa que sí depende del calendario: el refactor **tiene que entrar antes del
-despliegue público**. Una partida en curso nunca cambia de motor, así que el día que
-alguien real esté jugando, romper `ENGINE_VERSION` deja de ser gratis.
+**Lo que el refactor todavía NO trae**: diplomacia, Consagración del Núcleo y el
+simulador de balance. Las ~50 constantes nuevas son provisionales hasta que exista.
 
 ### Todo el arte 3D es un v0
 
@@ -208,7 +211,7 @@ en [`docs/GAME_DESIGN.md §18`](docs/GAME_DESIGN.md#18-glosario-bilingüe).
 | Facción | `faction`, `allegiance`, `schism` | Facción, Juramento, Cisma |
 | Fases | `parley` `war` `ashfall` | Parlamento, Guerra, Reposo |
 
-Y el vocabulario del refactor RTS, todavía **propuesto**
+Y el vocabulario del refactor RTS, ya **en el código**
 ([RTS_ZONES_REFACTOR §18](docs/RTS_ZONES_REFACTOR.md#18-vocabulario-nuevo)):
 
 | Concepto | Código (inglés) | Texto (español) |

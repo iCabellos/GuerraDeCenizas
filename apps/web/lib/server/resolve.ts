@@ -21,6 +21,7 @@ import {
 } from '@gdc/core';
 import { ordersSchema } from '../schemas';
 import { deadlineFor, isFinalTurn, type Cadence } from '../cadence';
+import { withoutMap } from './views';
 
 /** Transporte hacia las funciones de Postgres. Supabase en producción, `psql` en tests. */
 export type Rpc = (fn: string, args: Record<string, unknown>) => Promise<unknown>;
@@ -103,7 +104,7 @@ export async function resolveTurn(
     p_checksum: result.checksum,
     p_views: Object.entries(result.views).map(([seat, view]) => ({
       seat: Number(seat),
-      view,
+      view: withoutMap(view),
       events: view.events,
     })),
     p_applied: applied,

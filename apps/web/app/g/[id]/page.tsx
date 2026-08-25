@@ -1,9 +1,10 @@
 import { notFound, redirect } from 'next/navigation';
-import type { PlayerView } from '@gdc/core';
+import type { GameMap } from '@gdc/core';
 import { GameBoard } from '@/components/GameBoard';
 import { CampaignResult, type StandingRow } from '@/components/CampaignResult';
 import { currentViewer } from '@/lib/server/session';
 import { userClient } from '@/lib/server/supabase';
+import { withMap, type StoredView } from '@/lib/server/views';
 import { DICTIONARIES } from '@/lib/i18n/index';
 
 /**
@@ -47,6 +48,18 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
 
   if (!view) notFound();
 
+  // El mapa se guarda **una vez por partida** y se vuelve a pegar aquí ([ADR-044]): en
+  // cada vista eran el 84 % de la fila y no cambia nunca. También pasa por RLS — es
+  // público entre los jugadores de esta partida y de nadie más.
+  const { data: stored } = await supabase
+    .from('game_maps')
+    .select('map')
+    .eq('game_id', id)
+    .maybeSingle();
+
+  if (!stored) notFound();
+  const full = withMap(view.view as StoredView, stored.map as GameMap);
+
   if (game.status === 'finished') {
     // RLS ya limita esto a las partidas que jugaste; la página no filtra nada.
     const { data: rows } = await supabase
@@ -57,7 +70,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     return (
       <CampaignResult
         rows={(rows ?? []) as StandingRow[]}
-        view={view.view as PlayerView}
+        view={full}
         messages={DICTIONARIES[viewer.locale]}
       />
     );
@@ -76,7 +89,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     <GameBoard
       messages={DICTIONARIES[viewer.locale]}
       gameId={id}
-      view={view.view as PlayerView}
+      view={full}
       draft={(draft?.payload as unknown) ?? null}
       submitted={draft?.submitted_at !== null && draft?.submitted_at !== undefined}
       deadlineAt={(game.deadline_at as string | null) ?? null}
