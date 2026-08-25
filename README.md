@@ -5,7 +5,7 @@
 **War of Ashes** — 4X multijugador por turnos, mobile-first, donde la guerra es el
 idioma en el que se negocia.
 
-`v0.2.0 · Campaña jugable de 12 turnos · 163 tests en verde`
+`v0.2.0 · Campaña de 24 turnos en tres zonas · 429 tests en verde`
 
 [Concepto](#concepto) · [Core loop](#core-loop) · [Arquitectura](#arquitectura) ·
 [Instalación](#instalación) · [Documentación](#documentación) · [Roadmap](#roadmap) ·
@@ -37,7 +37,7 @@ es el argumento con el que se negocia.
 | **Género** | 4X por turnos, multijugador asíncrono, fuertemente diplomático |
 | **Plataforma** | Web mobile-first (PWA). Funciona en desktop sin cambiar reglas. |
 | **Jugadores** | 2, 3 o 5. El modo de referencia es **5**. |
-| **Duración** | 12 turnos. Blitz ≈ 50 min · Diaria ≈ 6 días · Relajada ≈ 12 días |
+| **Duración** | 24 turnos en tres actos ⚖️. La cifra la calibra el simulador ([ADR-046](docs/DECISIONS.md#adr-046)) |
 | **Ambientación** | Militar moderno + fantasía contemporánea. Universo 100 % original. |
 | **Idiomas** | Español e inglés desde la v1.0 |
 | **Filosofía** | Simple de aprender, difícil de dominar. 6 reglas, miles de situaciones. |
@@ -97,9 +97,15 @@ Detalle completo: **[docs/GAME_DESIGN.md](docs/GAME_DESIGN.md)**.
 
 ### En la v1.0
 
-- 🌍 **Mapas procedurales verificablemente justos** — grafo de regiones generado como
-  un sector replicado por rotación C<sub>n</sub>: la equidad es exacta *por
+- 🌍 **Mapas procedurales verificablemente justos** — grafo de 109 a 271 regiones generado
+  como un sector replicado por rotación C<sub>n</sub>: la equidad es exacta *por
   construcción*, no por heurística. Con validación posterior de 8 métricas.
+- 🗺️ **Tres zonas concéntricas** — Solar, Marca y Corona, separadas por **Cercos** que solo
+  se cruzan por una **Puerta**, y cada Puerta la guarda un **Coloso**. Matarlo la abre
+  **para todos**, pero lo paga quien lo mata: un problema de bien público en el punto del
+  mapa donde el juego quiere que la gente hable.
+- ⛏️ **Extracción y capa macro de RTS** — Menas, Extractoras, almacén por región que se
+  puede **saquear**, cinco edificios con tres niveles, grados de tropa y seis Políticas.
 - 🤝 **Diplomacia con 3 primitivas vinculantes** (Sello, Transferencia con depósito,
   Coalición) + negociación por plantillas traducidas: dos jugadores sin idioma común
   pueden cerrar un trato.
@@ -197,7 +203,7 @@ guerra-de-cenizas/
 │   ├── GAME_DESIGN.md           ← GDD
 │   ├── TECHNICAL_DESIGN.md      ← TDD
 │   ├── MAP_GENERATION.md        ← generación procedural + scoring
-│   ├── RTS_ZONES_REFACTOR.md    ← PROPUESTA: zonas, extracción y progresión
+│   ├── RTS_ZONES_REFACTOR.md    ← zonas, extracción y progresión · §19: qué cambió al construirlo
 │   ├── DIPLOMACY.md
 │   ├── METAPROGRESSION.md
 │   ├── MULTIPLAYER.md
@@ -304,7 +310,7 @@ Tablas principales: `profiles`, `cities`, `account_unlocks`, `games`, `game_play
 |---|---|
 | `npm run dev` | Next.js en modo desarrollo |
 | `npm run build` | Build de producción |
-| `npm test` | Vitest — motor, mapgen, facciones, combate, economía (163 tests) |
+| `npm test` | Vitest — motor, mapgen, zonas, Colosos, extracción, combate (257 tests) |
 | `npm run verify` | Todo lo anterior + typecheck + estructura + enlaces de docs |
 | `npm run check:deps` | Reglas estructurales del monorepo |
 | `npm run test:e2e` | Playwright — incluye viewports móviles |
@@ -406,7 +412,7 @@ reconstruir entera reproduciéndola. Ese es el truco que mantiene el coste plano
 | [GAME_DESIGN.md](docs/GAME_DESIGN.md) | Lore, facciones, recursos, combate, victoria, tutorial |
 | [TECHNICAL_DESIGN.md](docs/TECHNICAL_DESIGN.md) | Arquitectura, BD, RLS, API, concurrencia, seguridad |
 | [MAP_GENERATION.md](docs/MAP_GENERATION.md) | Generador procedural, métricas, scoring, pseudocódigo |
-| [RTS_ZONES_REFACTOR.md](docs/RTS_ZONES_REFACTOR.md) | **Propuesta**: zonas, extracción, edificios, Colosos y progresión |
+| [RTS_ZONES_REFACTOR.md](docs/RTS_ZONES_REFACTOR.md) | Zonas, extracción, edificios, Colosos y progresión. **Su §19 dice qué salió distinto al construirlo** |
 | [DIPLOMACY.md](docs/DIPLOMACY.md) | Las 3 primitivas vinculantes, reputación, traición |
 | [METAPROGRESSION.md](docs/METAPROGRESSION.md) | Progresión permanente vs. de partida, la Ciudad |
 | [FACTIONS.md](docs/FACTIONS.md) | Facciones ligadas a la cuenta, desbloqueos, Cisma, Concordia |
@@ -417,7 +423,7 @@ reconstruir entera reproduciéndola. Ese es el truco que mantiene el coste plano
 | [ROADMAP.md](docs/ROADMAP.md) | v0.1 → v1.0 con criterios de aceptación |
 | [DECISIONS.md](docs/DECISIONS.md) | Registro de decisiones arquitectónicas (ADR) |
 
-**PDF:** [`docs/GuerraDeCenizas.pdf`](docs/GuerraDeCenizas.pdf) — 190 páginas con portada,
+**PDF:** [`docs/GuerraDeCenizas.pdf`](docs/GuerraDeCenizas.pdf) — 193 páginas con portada,
 índice y paginación. Se regenera con `npm run docs:pdf` usando solo herramientas del
 repositorio (markdown-it + el Chromium de Playwright). Pipeline documentado en
 [tools/docs-pdf/](tools/docs-pdf/README.md).
@@ -431,12 +437,13 @@ repositorio (markdown-it + el Chromium de Playwright). Pipeline documentado en
 | **v0.1** ✅ | Prototipo | Mapa, jugadores, movimiento, turnos. Local, sin cuentas. |
 | **v0.2** ✅ | Núcleo jugable | Recursos, producción, combate, captura, log de eventos |
 | **v0.3** | Multijugador real | Auth, Supabase, persistencia, RLS, reconexión, cadencias |
-| **v0.4** | Diplomacia | Sellos, transferencias con depósito, visión compartida, reputación |
-| **v0.5** | El Núcleo | Objetivo especial, consagración, coaliciones, condiciones de victoria |
-| **v0.6** | Metaprogresión | La Ciudad, desbloqueos, resultados de partida |
-| **v0.7** | Anomalías | Sistema sobrenatural + operaciones de Sombra |
-| **v0.8** | Procedural + balance | Generador completo, simulador, ajuste de constantes |
-| **v0.9** | Pulido móvil | UX, onboarding, assets, accesibilidad, rendimiento |
+| **v0.4** ✅ | Refactor RTS | Zonas, Cercos, Colosos, extracción, edificios, grados y Políticas |
+| **v0.5** | Diplomacia | Sellos, transferencias con depósito, visión compartida, reputación |
+| **v0.6** | El Núcleo | Objetivo especial, consagración, coaliciones, condiciones de victoria |
+| **v0.7** | Metaprogresión | La Ciudad, desbloqueos, resultados de partida |
+| **v0.8** | Anomalías | Sistema sobrenatural + operaciones de Sombra |
+| **v0.9** | Procedural + balance | Generador completo, simulador, ajuste de constantes |
+| **v0.10** | Pulido móvil | UX, onboarding, assets, accesibilidad, rendimiento |
 | **v0.95** | Beta cerrada | Telemetría, feedback, estabilidad |
 | **v1.0** | Release | ES+EN completos, sin bugs críticos, documentación al día |
 
@@ -456,10 +463,10 @@ Criterios de aceptación por versión: **[docs/ROADMAP.md](docs/ROADMAP.md)**.
 
 ## Estado actual
 
-**v0.2 — Núcleo jugable completado y verificado.**
+**v0.4 — Refactor RTS: motor e interfaz completos.**
 
 - ✅ Fase 0 (Discovery): 7 contradicciones resueltas, 21 riesgos catalogados.
-- ✅ Documentación de diseño completa (14 documentos + PDF de 190 páginas).
+- ✅ Documentación de diseño completa (14 documentos + PDF de 193 páginas).
 - ✅ **Motor** (`@gdc/core`): estado, PRNG determinista, `reduce()` con validación,
   movimiento simultáneo, control territorial, visibilidad y eventos filtrados por asiento.
 - ✅ **Generador de mapas**: esqueleto C<sub>n</sub>, decoración y replicación por
@@ -470,16 +477,24 @@ Criterios de aceptación por versión: **[docs/ROADMAP.md](docs/ROADMAP.md)**.
 - ✅ **Economía**: renta con rendimiento decreciente, suministro por distancia, producción.
 - ✅ **Prototipo web**: mapa SVG accesible, hot seat, previsualización de combate,
   producción y registro del turno filtrado por asiento.
-- ✅ **163 tests** en verde · typecheck limpio · reglas estructurales verificadas.
-- ⏳ **Pendiente:** confirmar las 3 decisiones bloqueantes de
-  [DISCOVERY §5](docs/DISCOVERY.md#5-preguntas-que-sí-son-bloqueantes).
-- ⏭️ **Siguiente:** v0.3 — multijugador real (auth, Supabase, RLS, autoridad de servidor).
+- ✅ **Zonas, Cercos y Puertas**: 271 regiones con cinco jugadores, y el Núcleo
+  **inalcanzable** hasta que alguien pague dos Colosos. La equidad C<sub>n</sub> intacta.
+- ✅ **Colosos**: PvE determinista cuyo interés no es el combate sino la aritmética —
+  matarlo solo sale caro, entre dos sale a cuenta, y la Puerta se abre para los cinco.
+- ✅ **Extracción, edificios, grados y Políticas**, con la regla de oro de la
+  metaprogresión intacta: toda campaña empieza a nivel 1 ([ADR-045](docs/DECISIONS.md#adr-045)).
+- ✅ **La interfaz recorre el mapa por zonas**: 46–57 regiones en el DOM contra 96 antes,
+  medido a 360×640.
+- ✅ **257 tests de motor + 172 de web** en verde · typecheck limpio · build correcto.
+- ⚠️ **Las ~50 constantes del refactor están sin calibrar**, y con los rivales actuales no
+  se llega a la Corona en 24 turnos. Eso lo decide el simulador, que es v0.9.
+- ⏭️ **Siguiente:** v0.5 — diplomacia (Sellos, transferencias, reputación).
 
 ### Cómo verlo funcionando
 
 ```bash
 npm install && npm run dev     # http://localhost:3000
-npm test                       # 163 tests
+npm test                       # 257 tests del motor
 npm run verify                 # typecheck + estructura + tests + enlaces
 ```
 

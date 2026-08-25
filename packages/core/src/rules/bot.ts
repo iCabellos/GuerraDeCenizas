@@ -29,12 +29,14 @@
  */
 
 import type {
-  Adjacency, Arms, MoveOrder, Orders, PlayerView, ProductionOrder, RegionId, Seat,
-  TerrainKind,
+  Adjacency, Arms, BuildingKind, Colossus, MoveOrder, Orders, PlayerView, PolicyId,
+  ProductionOrder, RegionId, ResearchOrder, Seat, TerrainKind, WorkOrder,
 } from '../types/index';
 import { BALANCE, TERRAIN_YIELD } from '../balance/constants';
 import { makeRng, type Rng } from '../rng/index';
 import { previewAttack, totalOf } from './combat';
+import { buildWardIndex, canCross, type WardIndex } from './zones';
+import { terrainAllows } from './buildings';
 
 /** Los cuatro rivales. El nombre describe cómo juega, no cuánto «nivel» tiene. */
 export type BotTier = 'reckless' | 'steady' | 'canny' | 'ruthless';
@@ -109,11 +111,21 @@ export function botOrders(
   const rng = makeRng(seed ^ 0xb07, view.turn * 8 + view.seat + 1);
 
   const production = planProduction(view, profile);
+  const works = planWorks(view, profile);
+  const research = planResearch(view, profile);
 
   // En el Parlamento no se mueve nadie: el motor rechazaría cada orden con un evento.
-  if (view.phase !== 'war') return { turn: view.turn, moves: [], production };
+  if (view.phase !== 'war') {
+    return { turn: view.turn, moves: [], production, works, ...(research ? { research } : {}) };
+  }
 
-  return { turn: view.turn, moves: planMoves(view, adjacency, profile, rng), production };
+  return {
+    turn: view.turn,
+    moves: planMoves(view, adjacency, profile, rng),
+    production,
+    works,
+    ...(research ? { research } : {}),
+  };
 }
 
 // ───────────────────────────────── Movimiento ─────────────────────────────────
@@ -138,11 +150,16 @@ function planMoves(
   const moves: MoveOrder[] = [];
   // Dos fuerzas propias a la misma región se fusionan; el bot prefiere abrir frentes.
   const taken = new Set<RegionId>();
+  const wards = buildWardIndex(view.map);
 
   for (const force of own) {
-    const candidates = rank(view, adjacency, profile, force.id, force.regionId, taken);
+    const candidates = rank(view, adjacency, profile, force.id, force.regionId, taken, wards);
     const choice = choose(candidates, profile, rng);
-    if (choice.to !== undefined) taken.add(choice.to);
+    // Contra un Coloso **sí** se juntan. Es la única situación del juego en la que
+    // concentrar bate a repartir, porque el desgaste es simétrico: cuantos más vengan,
+    // menos sufre cada uno y antes cae. Prohibirlo aquí dejaría las Puertas cerradas
+    // para siempre, que es exactamente lo que pasaba.
+    if (choice.to !== undefined && !liveColossus(view, choice.to)) taken.add(choice.to);
     moves.push(
       choice.to === undefined
         ? { forceId: force.id, posture: choice.posture }
@@ -161,17 +178,35 @@ function rank(
   forceId: string,
   from: RegionId,
   taken: ReadonlySet<RegionId>,
+  wards: WardIndex,
 ): Candidate[] {
   const out: Candidate[] = [{ posture: 'hold', score: holdValue(view, adjacency, profile, from) }];
+  const force = view.forces.find((f) => f.id === forceId);
+  const ownPower = force ? (force.line ?? 0) + (force.fire ?? 0) + (force.sky ?? 0) : 0;
 
   for (const to of [...(adjacency[from] ?? [])].sort((a, b) => a - b)) {
     if (taken.has(to)) continue;
     const region = view.map.regions[to];
     if (!region) continue;
 
+    // Un Cerco cerrado no es un destino caro: es un destino imposible. Ofrecerlo llena
+    // el turno de rechazos y deja al bot empujando contra una puerta cerrada para
+    // siempre — literalmente: se le comprobó parándose en 7 regiones en el T6.
+    if (!canCross(wards, view.gatesOpen, from, to)) continue;
+
     // El agua exige Puente para Línea y Fuego. Sin él la orden se rechaza y el turno
     // del bot se va en eventos de error.
     if (region.kind === 'water' && !view.bridges[to]) continue;
+
+    // Los Colosos son públicos y previsibles: eso es lo que permite decidir si sale a
+    // cuenta. Un bot que se lanza con lo que tenga muere en la Puerta y deja de jugar.
+    const guard = liveColossus(view, to);
+    if (guard) {
+      const need = totalOf(guard) * profile.nerve;
+      if (ownPower < need) continue;
+      out.push({ to, posture: 'assault', score: 5 * (ownPower / Math.max(1, totalOf(guard))) });
+      continue;
+    }
 
     const value = regionValue(view, profile, to, region.kind);
     const preview = previewAttack(view, forceId, to, adjacency, region.kind);
@@ -258,6 +293,17 @@ function regionValue(
   else if (kind === 'bastion') strategic = 4;
   else if (kind === 'seam') strategic = 3;
 
+  // Una Mena vale por lo que da si la explotas, y más cuanto más rica: es el motivo
+  // por el que la Marca merece la pena y la razón de que nadie se quede en casa.
+  const vein = view.map.veins.find((v) => v.regionId === regionId);
+  if (vein) strategic += vein.grade * 1.2;
+
+  // Y si ya hay una Extractora encima, mejor: se captura, no se destruye.
+  const extractor = view.buildings.find(
+    (b) => b.regionId === regionId && b.kind === 'extractor',
+  );
+  if (extractor) strategic += extractor.level;
+
   // Quitarle una región a otro vale más que ocupar tierra de nadie: le resta a él.
   const owner = view.control[regionId];
   const contested = owner !== null && owner !== view.seat ? 1.3 : 1;
@@ -323,4 +369,127 @@ function counterTo(enemy: Arms): 'line' | 'fire' | 'sky' {
   if (enemy.line >= enemy.fire && enemy.line >= enemy.sky) return 'fire';
   if (enemy.fire >= enemy.sky) return 'sky';
   return 'line';
+}
+
+// ──────────────────────────── Obras e investigación ───────────────────────────
+
+/** El Coloso vivo que guarda una región, si lo hay. Es información pública. */
+function liveColossus(view: PlayerView, regionId: RegionId): Colossus | undefined {
+  return view.colossi.find((c) => c.alive && c.regionId === regionId);
+}
+
+/**
+ * En qué construye.
+ *
+ * Un orden fijo y corto, no un planificador: **Extractora primero** —sin material no
+ * hay nada más—, después Fundición (que es el techo de todo lo demás), después Acopio
+ * y Atalaya. Los bots no necesitan optimizar; necesitan no quedarse parados.
+ */
+function planWorks(view: PlayerView, profile: BotProfile): WorkOrder[] {
+  const out: WorkOrder[] = [];
+  const budget = { ore: view.self.resources.ore, ember: view.self.resources.ember };
+  const used = new Set<RegionId>();
+
+  const level = (regionId: RegionId, kind: BuildingKind): number =>
+    view.buildings.find((b) => b.regionId === regionId && b.kind === kind && b.own)?.level ?? 0;
+  const busy = (regionId: RegionId): boolean =>
+    used.has(regionId) ||
+    view.buildings.some((b) => b.regionId === regionId && b.own && b.building > 0);
+
+  const afford = (kind: BuildingKind, target: number): boolean => {
+    const cost = BALANCE.buildings.cost[kind][target];
+    if (!cost) return false;
+    if (budget.ore < cost.ore || budget.ember < cost.ember) return false;
+    budget.ore -= cost.ore;
+    budget.ember -= cost.ember;
+    return true;
+  };
+
+  const mine = view.control
+    .map((owner, regionId) => (owner === view.seat ? regionId : -1))
+    .filter((regionId) => regionId >= 0);
+
+  const foundryLevel = Math.max(0, ...mine.map((r) => level(r, 'foundry')));
+  const ceiling = Math.max(1, foundryLevel);
+
+  // 1 · Extractoras sobre las Menas propias, empezando por las más ricas.
+  const veins = view.map.veins
+    .filter((v) => view.control[v.regionId] === view.seat)
+    .sort((a, b) => b.grade - a.grade || a.regionId - b.regionId);
+  for (const vein of veins) {
+    if (out.length >= BALANCE.limits.maxWorks) break;
+    if (busy(vein.regionId)) continue;
+    const target = level(vein.regionId, 'extractor') + 1;
+    if (target > 3 || target > ceiling) continue;
+    if (!afford('extractor', target)) continue;
+    out.push({ regionId: vein.regionId, kind: 'extractor' });
+    used.add(vein.regionId);
+  }
+
+  // 2 · El resto, en el Bastión. Sube la Fundición solo si de verdad la va a usar: es
+  //     el techo de todo, pero también es lo más caro y bloquea la investigación.
+  const bastion = view.map.bastions[view.seat];
+  if (bastion !== undefined && view.control[bastion] === view.seat && !busy(bastion)) {
+    const order: BuildingKind[] = profile.greed >= 0.5
+      ? ['foundry', 'depot', 'arsenal', 'watch']
+      : ['arsenal', 'foundry', 'depot', 'watch'];
+    for (const kind of order) {
+      if (out.length >= BALANCE.limits.maxWorks) break;
+      if (!terrainAllows(kind, view.map.regions[bastion]?.kind)) continue;
+      const target = level(bastion, kind) + 1;
+      if (target > 3) continue;
+      if (kind !== 'foundry' && target > 1 && target > ceiling) continue;
+      if (!afford(kind, target)) continue;
+      out.push({ regionId: bastion, kind });
+      used.add(bastion);
+      break; // una obra por región y turno
+    }
+  }
+
+  return out;
+}
+
+/**
+ * Qué investiga.
+ *
+ * Los codiciosos van a la rama económica y los agresivos a la militar, y los dos suben
+ * grado en cuanto la Fundición se lo permite. No hay plan a largo plazo: hay una
+ * preferencia, que es lo que distingue a un rival de un generador de ruido.
+ */
+function planResearch(view: PlayerView, profile: BotProfile): ResearchOrder | undefined {
+  const bastion = view.map.bastions[view.seat];
+  const foundry = Math.max(
+    0,
+    ...view.buildings.filter((b) => b.own && b.kind === 'foundry' && b.building === 0)
+      .map((b) => b.level),
+  );
+  if (foundry === 0 || bastion === undefined) return undefined;
+
+  const { ore, ember } = view.self.resources;
+
+  // El grado es caro y no es retroactivo: solo compensa si hay con qué reemplazar.
+  const arms = ['line', 'fire', 'sky'] as const;
+  for (const arm of arms) {
+    const current = view.self.tiers[arm];
+    if (current >= 3) continue;
+    const target = current + 1;
+    if (foundry < (BALANCE.tiers.foundryRequired[target] as number)) continue;
+    const cost = BALANCE.tiers.cost[target];
+    if (!cost || ore < cost.ore || ember < cost.ember) continue;
+    if (profile.greed < 0.5) return { kind: 'tier', arm };
+    break;
+  }
+
+  const wanted: PolicyId[] = profile.greed >= 0.5
+    ? ['deepVeins', 'caravans', 'recasting', 'cadence', 'marchDoctrine', 'escalade']
+    : ['cadence', 'escalade', 'marchDoctrine', 'deepVeins', 'caravans', 'recasting'];
+  for (const policy of wanted) {
+    const rank = view.self.policies[policy] ?? 0;
+    if (rank >= 3) continue;
+    const cost = BALANCE.policies.cost[rank + 1];
+    if (!cost || ore < cost.ore || ember < cost.ember) continue;
+    return { kind: 'policy', policy };
+  }
+
+  return undefined;
 }

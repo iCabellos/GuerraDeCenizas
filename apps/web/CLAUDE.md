@@ -151,7 +151,13 @@ posible.
 
 **El mapa de campaña es SVG y se queda en SVG** ([ADR-035](../../docs/DECISIONS.md#adr-035)).
 El mundo 2.5D no lo puede representar: su tablero son 37 losas fijas y el mapa real es un
-grafo en polares de 45 a 96 regiones. No lo intentes otra vez sin leer el ADR.
+grafo en polares de 109 a 271 regiones. No lo intentes otra vez sin leer el ADR.
+
+**La vista que llega de la base de datos NO trae el mapa** ([ADR-044](../../docs/DECISIONS.md#adr-044)).
+Se guarda una vez en `game_maps` y la vuelve a pegar `lib/server/views.ts` al leerla: en
+cada fila de `player_views` eran el 84 % del peso y no cambia nunca. `PlayerView` sigue
+teniendo su `map`, así que ningún componente se entera — pero si escribes una ruta nueva
+que lea `player_views`, tienes que rehidratarla tú.
 
 ### La campaña se juega tocando el mapa
 
@@ -177,14 +183,12 @@ componente — ahí no se pueden probar.
 muevas por estado de React**: un botón de cámara no puede costar un render del mapa entero,
 y el gesto tampoco.
 
-### Si el mapa crece, se recorre — no se dibuja más pequeño
+### El mapa se recorre por zonas — no se dibuja entero
 
-[`docs/RTS_ZONES_REFACTOR.md`](../../docs/RTS_ZONES_REFACTOR.md) propone —**sin aprobar
-todavía**— pasar de 96 regiones a 271. El número que decide aquí ya está medido y está en
-las lecciones del repositorio: con 96 regiones, a escala 1 cada una mide **21 px**, la
-mitad del objetivo táctil. Con 271 caen a ~12.
+El mapa son **271 regiones** con cinco jugadores. Con 96, a escala 1 cada una medía
+**21 px**, la mitad del objetivo táctil; con 271 caerían a ~12.
 
-No es un problema de zoom. La respuesta es **dejar de dibujarlo entero**
+No es un problema de zoom. Por eso `MapView` recibe un **distrito** y solo pinta eso
 ([ADR-042](../../docs/DECISIONS.md#adr-042)):
 
 | Nivel | Qué es | ¿DOM? |
@@ -193,21 +197,27 @@ No es un problema de zoom. La respuesta es **dejar de dibujarlo entero**
 | 2 · Zona | Una zona o un Solar: 33–90 hexágonos a ≥ 44 px | **Sí, y solo esto** |
 | 3 · Ficha | Lo de hoy: acciones con nombre, pronóstico, obras | Sí |
 
-Con eso, **como mucho ~90 regiones enfocables a la vez: menos que las 96 de hoy**. El
-presupuesto de render no se relaja porque el mapa triplique — es justo al revés: triplica,
-y por eso hay que recorrerlo.
+Medido en el navegador a 360×640: **46 regiones en el DOM en el Solar y 57 en la Marca**,
+contra las 96 de antes. El presupuesto de render no se relaja porque el mapa triplique —
+es justo al revés: triplica, y por eso hay que recorrerlo. `MAX_DISTRICT` está en
+`lib/board.ts` y tiene test.
 
 ```
-□ El nivel 1 NO es un menú: es el mapa alejado. Cambiar de zona mueve la cámara
-□ Ningún panel nuevo flota sobre el mapa. Políticas y Obras ocupan sitio en la columna
-□ Seis recursos no caben en 360 px: Mineral y Brasa se enseñan DONDE se gastan,
-  no en la barra permanente
-□ Un destino en otra zona tiene que poder llevar la cámara allí, o no existe
+□ El raíl de zonas NO es un menú: es el mapa alejado. Tocarlo mueve la cámara
+□ Ningún panel flota sobre el mapa. Políticas y Obras ocupan sitio en la columna
+□ Seis recursos no caben en 360 px: Mineral y Brasa se enseñan DONDE se gastan
+  —el precio de cada obra, la pestaña de Investigación—, no en la barra permanente
+□ Un destino al otro lado de un Cerco cerrado NO se ofrece. No es un destino caro:
+  es imposible, y enseñar una regla con un rechazo del servidor es la peor forma
 ```
 
-Lo que se pierde con esto —y hay que decirlo en vez de descubrirlo— es la panorámica: hoy
-se abarca el mapa de un vistazo y después de esto no. Es el precio de que cada hexágono
-sea tocable de verdad.
+Lo que se pierde con esto —y hay que decirlo en vez de descubrirlo— es la panorámica: antes
+se abarcaba el mapa de un vistazo y ahora no. Es el precio de que cada hexágono sea tocable
+de verdad.
+
+**Cada píxel del cromo se lo quita al mapa.** El raíl de zonas nació con cuatro líneas por
+zona y dejó el mapa en el 30 % de la pantalla; se quedó en dos. Si añades una capa, mírala
+en `/dev/board` a 360×640 antes de darla por hecha.
 
 **No hay estado «con sesión pero sin perfil».** El perfil lo crea un trigger sobre
 `auth.users` ([ADR-030](../../docs/DECISIONS.md#adr-030)), no la API. No añadas una ruta de

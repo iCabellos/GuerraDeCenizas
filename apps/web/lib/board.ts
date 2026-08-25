@@ -1,5 +1,5 @@
 import {
-  TERRAIN_YIELD, canProduceInView,
+  ALL_BUILDINGS, BALANCE, TERRAIN_YIELD, canProduceInView, terrainAllows,
   type Adjacency, type FactionId, type PlayerView, type RegionId, type Seat, type TerrainKind,
   type VisibleForce, type Yield,
 } from '@gdc/core';
@@ -169,4 +169,173 @@ export function threatened(view: PlayerView, adjacency: Adjacency): Set<RegionId
     if ((adjacency[regionId] ?? []).some((other) => enemyAt.has(other))) found.add(regionId);
   }
   return found;
+}
+
+// ─────────────────────────── Zonas: recorrer, no abarcar ──────────────────────
+
+/**
+ * El mapa pasó de 96 regiones a 271 y no cabe entero en 360 px con hexágonos tocables:
+ * a escala 1 medirían ~12 px, la cuarta parte del objetivo táctil. La respuesta no es
+ * dibujar más pequeño, es **dejar de dibujarlo entero** ([ADR-042]).
+ *
+ * Un *distrito* es lo que se pinta de una vez. La regla es aburrida a propósito:
+ *
+ *   · **Solar** — tu sector, más todo lo que lo toca. La zona 1 entera son los cinco
+ *     Solares (165 regiones): la de los demás no es tu partida, y su frontera sí.
+ *   · **Marca** y **Corona** — la zona entera. Caben: 90 y 16.
+ *
+ * El tope es `MAX_DISTRICT` y no es decorativo: es el presupuesto de render de siempre,
+ * que **no se relaja porque el mapa haya triplicado**. Es justo al revés.
+ */
+export const MAX_DISTRICT = 96;
+
+export type ZoneId = 1 | 2 | 3;
+
+export function zoneOfRegion(view: PlayerView, regionId: RegionId): ZoneId {
+  return (view.map.regions[regionId]?.zone ?? 3) as ZoneId;
+}
+
+/** El sector de tu Bastión. Es «tu casa» a efectos de encuadre. */
+export function homeSector(view: PlayerView): number {
+  const bastion = view.map.bastions[view.seat];
+  return bastion === undefined ? 0 : (view.map.regions[bastion]?.sector ?? 0);
+}
+
+export function districtRegions(
+  view: PlayerView,
+  zone: ZoneId,
+  adjacency: Adjacency,
+): Set<RegionId> {
+  const out = new Set<RegionId>();
+
+  if (zone !== 1) {
+    for (const region of view.map.regions) {
+      if (region.zone === zone) out.add(region.id);
+    }
+    return out;
+  }
+
+  const sector = homeSector(view);
+  for (const region of view.map.regions) {
+    if (region.zone === 1 && region.sector === sector) out.add(region.id);
+  }
+  // Y el borde: sin él no se ve al vecino que viene, ni la Puerta que hay que pagar.
+  for (const id of [...out]) {
+    for (const neighbour of adjacency[id] ?? []) out.add(neighbour);
+  }
+  return out;
+}
+
+export interface ZoneSummary {
+  zone: ZoneId;
+  /** Regiones de la zona en todo el mapa. */
+  total: number;
+  /** Cuántas son tuyas. */
+  mine: number;
+  /** Menas de la zona, y cuántas explotas. */
+  veins: number;
+  worked: number;
+  /** Puertas que dan a esta zona, y cuántas están abiertas. */
+  gates: number;
+  gatesOpen: number;
+  /** ¿Se puede entrar hoy? La Corona con los Cercos cerrados no es una opción. */
+  reachable: boolean;
+}
+
+/**
+ * El nivel 1 del mapa: tres anillos con cifras. **No es un menú** — es el mapa alejado,
+ * y por eso enseña estado y no acciones.
+ */
+export function zoneSummaries(view: PlayerView, reachable: ReadonlySet<RegionId>): ZoneSummary[] {
+  return ([1, 2, 3] as ZoneId[]).map((zone) => {
+    const regions = view.map.regions.filter((r) => r.zone === zone);
+    const veins = view.map.veins.filter((v) => zoneOfRegion(view, v.regionId) === zone);
+    const gates = view.map.gates.filter((g) => g.to === zone);
+
+    return {
+      zone,
+      total: regions.length,
+      mine: regions.filter((r) => view.control[r.id] === view.seat).length,
+      veins: veins.length,
+      worked: veins.filter((v) =>
+        view.buildings.some((b) => b.regionId === v.regionId && b.kind === 'extractor' && b.own),
+      ).length,
+      gates: gates.length,
+      gatesOpen: gates.filter((g) => view.gatesOpen[g.id]).length,
+      reachable: zone === 1 || regions.some((r) => reachable.has(r.id)),
+    };
+  });
+}
+
+/** La Puerta que se cruza entre dos regiones, si la arista es un Cerco. */
+export function gateBetween(view: PlayerView, a: RegionId, b: RegionId) {
+  return view.map.gates.find(
+    (gate) => (gate.inner === a && gate.outer === b) || (gate.inner === b && gate.outer === a),
+  );
+}
+
+/** El Coloso vivo de una región. Público: su potencia exacta llega a las cinco vistas. */
+export function colossusAt(view: PlayerView, regionId: RegionId) {
+  return view.colossi.find((c) => c.alive && c.regionId === regionId);
+}
+
+export function veinAtRegion(view: PlayerView, regionId: RegionId) {
+  return view.map.veins.find((v) => v.regionId === regionId);
+}
+
+export function stockAtRegion(view: PlayerView, regionId: RegionId) {
+  return view.stock.find((s) => s.regionId === regionId) ?? null;
+}
+
+export interface BuildOption {
+  kind: 'extractor' | 'foundry' | 'arsenal' | 'depot' | 'watch';
+  /** Nivel al que se llegaría. `null` si ya está al máximo. */
+  target: 1 | 2 | 3 | null;
+  cost: { ore: number; ember: number } | null;
+  affordable: boolean;
+  /** Ya hay una obra en marcha aquí: una por región y turno. */
+  busy: boolean;
+  /** El techo de la Fundición no da para tanto. */
+  blocked: boolean;
+}
+
+/**
+ * Qué se puede levantar en una región, con su precio.
+ *
+ * **No decide nada**: `reduce()` lo vuelve a comprobar contra el estado autoritativo.
+ * Está aquí para que la ficha no ofrezca un botón que el servidor va a rechazar, que es
+ * la peor forma de enseñar una regla.
+ */
+export function buildOptions(view: PlayerView, regionId: RegionId): BuildOption[] {
+  const region = view.map.regions[regionId];
+  if (!region || view.control[regionId] !== view.seat) return [];
+
+  const busyHere = view.buildings.some((b) => b.regionId === regionId && b.own && b.building > 0);
+  const foundry = Math.max(
+    0,
+    ...view.buildings.filter((b) => b.own && b.kind === 'foundry' && b.building === 0)
+      .map((b) => b.level),
+  );
+  const ceiling = Math.max(1, foundry);
+  const hasVein = view.map.veins.some((v) => v.regionId === regionId);
+
+  return ALL_BUILDINGS
+    .filter((kind) => terrainAllows(kind, region.kind))
+    .filter((kind) => kind !== 'extractor' || hasVein)
+    .map((kind) => {
+      const current = view.buildings.find((b) => b.regionId === regionId && b.kind === kind && b.own);
+      const next = (current?.level ?? 0) + 1;
+      const target = next > 3 ? null : (next as 1 | 2 | 3);
+      const cost = target ? BALANCE.buildings.cost[kind][target] ?? null : null;
+      return {
+        kind,
+        target,
+        cost,
+        affordable: Boolean(
+          cost && view.self.resources.ore >= cost.ore && view.self.resources.ember >= cost.ember,
+        ),
+        busy: busyHere,
+        blocked: Boolean(target && kind !== 'foundry' && target > 1 && target > ceiling),
+      };
+    });
 }

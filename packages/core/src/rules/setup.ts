@@ -13,6 +13,9 @@ import { BALANCE } from '../balance/constants';
 import { FACTIONS, STARTING_ANOMALIES, concordanceGroups } from '../factions/index';
 import { bfsDistances, buildAdjacency } from '../mapgen/skeleton';
 import { generateMap } from '../mapgen/generate';
+import { initialColossi } from './colossus';
+import { emptyStock } from './extraction';
+import { emptyPolicies, startingTiers } from './research';
 import { ENGINE_VERSION } from './reduce';
 
 export interface SeatSetup {
@@ -66,6 +69,10 @@ export function createGame(options: CreateGameOptions): CreatedGame {
     // La segunda fuerza se despliega hacia el Núcleo. Es la misma elección para todos
     // por construcción rotacional, así que no introduce ventaja. En v0.2 la elegirá el
     // jugador durante el Parlamento, que es donde debe estar esa decisión.
+    //
+    // La distancia se mide sobre la adyacencia COMPLETA, no la transitable: aquí se
+    // busca una dirección, no una ruta. Con los Cercos cerrados el Núcleo es
+    // inalcanzable por definición, y entonces todas las distancias serían infinitas.
     const forward = forwardRegion(adjacency, bastion, toCoreFromEverywhere);
     control[forward] = seat;
     forces.push({
@@ -96,11 +103,30 @@ export function createGame(options: CreateGameOptions): CreatedGame {
       doctrineId: setup.doctrineId ?? FACTIONS[setup.factionId].originDoctrine,
       anomalies: [...STARTING_ANOMALIES],
       resources: { ...BALANCE.start.resources },
+      // Todo el mundo empieza en grado 1 y con cero Políticas: cuenta nueva y cuenta
+      // veterana ([ADR-045]). Lo que la cuenta guarda es QUÉ puedes llevar, no en qué
+      // nivel lo dejaste, y por eso la mesa sigue siendo una mesa justa.
+      tiers: startingTiers(),
+      policies: emptyPolicies(),
     })),
     forces: forces.sort((a, b) => a.seat - b.seat || (a.id < b.id ? -1 : 1)),
     control,
     fortification: map.regions.map(() => 0),
     bridges: map.regions.map(() => false),
+    // Y una Extractora de nivel 1 sobre esa veta, ya en marcha. Idéntica para todos por
+    // construcción rotacional, así que no introduce ventaja: introduce un suelo.
+    buildings: map.bastions.map((regionId) => ({
+      regionId,
+      kind: 'extractor' as const,
+      level: 1 as const,
+      target: 1 as const,
+      building: 0,
+    })),
+    stock: emptyStock(map),
+    colossi: initialColossi(map.gates),
+    // Todas las Puertas empiezan selladas. El Núcleo es inalcanzable hasta que alguien
+    // pague dos Colosos, y esa es la forma del juego entero.
+    gatesOpen: map.gates.map(() => false),
     rngCursor: generated.rngCursor,
   };
 

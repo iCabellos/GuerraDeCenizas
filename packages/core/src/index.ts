@@ -9,7 +9,16 @@
 export * from './types/index';
 
 export { Rng, makeRng } from './rng/index';
-export { canonicalJson, checksum, deepFreeze, round4 } from './util/canonical';
+export {
+  canonicalJson, checksum, deepFreeze, round4,
+  /**
+   * El checksum de un estado de partida se calcula **siempre** con `stateChecksum`, no
+   * con `checksum`: el mapa entra por su propio checksum en vez de volver a serializarse
+   * entero cada turno. Dan valores distintos, así que mezclarlos es comparar peras con
+   * manzanas — y eso ya cazó un test de reproducibilidad.
+   */
+  stateChecksum,
+} from './util/canonical';
 
 export { BALANCE, TERRAIN_YIELD, TERRAIN_COMBAT, type Balance } from './balance/constants';
 
@@ -23,7 +32,8 @@ export {
 } from './factions/index';
 
 export {
-  SECTOR_SPEC, sectorSize, mapSize, bastionSlot, assertSpecConsistency,
+  SECTOR_SPEC, VEIN_GRADE, sectorSize, zoneSize, mapSize, fairShare, bastionSlot,
+  zoneOfRing, ringsOfZone, wardBoundaries, assertSpecConsistency,
   type SectorSpec,
 } from './mapgen/spec';
 export {
@@ -33,6 +43,22 @@ export {
 export { generateMap, MAPGEN_VERSION, type GeneratedMap } from './mapgen/generate';
 
 export { reduce, ENGINE_VERSION } from './rules/reduce';
+export {
+  zoneOf, actOfTurn, buildWardIndex, canCross, passableAdjacency, reachableFrom,
+  gatesBetween, gateOfColossus, openGate, type WardIndex,
+} from './rules/zones';
+export {
+  ALL_BUILDINGS, buildingLevel, buildingAt, bestLevel, terrainAllows,
+} from './rules/buildings';
+export {
+  ALL_ARMS, ALL_POLICIES, POLICY_BRANCH, POLICY_MATERIAL,
+  emptyPolicies, startingTiers, policyEffect, tierMultiplier, bestFoundryLevel,
+} from './rules/research';
+export {
+  emptyStock, veinAt, extractionRate, applyExtraction, applyHauling, applyPlunder,
+  takePlunder, creditMaterials,
+} from './rules/extraction';
+export { applyColossi, initialColossi, guardedRegions, wardIndexOf } from './rules/colossus';
 export { projectViews } from './rules/views';
 export {
   combatPower, resolveCombat, previewCombat, previewAttack, totalOf,

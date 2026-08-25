@@ -298,3 +298,45 @@ describe('todas las tablas del esquema tienen RLS', () => {
     expect(naked).toEqual([]);
   });
 });
+
+describe('game_maps — el mapa es público entre los de la mesa, y de nadie más', () => {
+  // El mapa dejó de viajar en cada vista ([ADR-044]) y pasó a una tabla propia. Una
+  // tabla nueva es una superficie nueva: la topología no es secreta entre quienes juegan
+  // la partida, pero eso no significa que sea de dominio público.
+
+  it('un jugador de la partida lo lee', () => {
+    expect(column(asSeat0, "select map->>'marca' from game_maps"))
+      .toEqual(['MAPA_DE_ESTA_PARTIDA']);
+    expect(column(asSeat2, "select map->>'marca' from game_maps"))
+      .toEqual(['MAPA_DE_ESTA_PARTIDA']);
+  });
+
+  it('alguien que no juega esta partida NO lo lee', () => {
+    expect(column(asOutsider, "select map->>'marca' from game_maps")).toEqual([]);
+  });
+
+  it('un anónimo tampoco', () => {
+    expect(column(asAnon, "select map->>'marca' from game_maps")).toEqual([]);
+  });
+
+  it('nadie lo escribe desde el cliente: lo pone la autoridad y no cambia nunca', () => {
+    const inserted = query(
+      asSeat0,
+      `insert into game_maps (game_id, map) values
+         ('22222222-2222-4222-8222-222222222222', '{}'::jsonb)`,
+    );
+    expect(inserted.ok).toBe(false);
+
+    const updated = query(asSeat0, `update game_maps set map = '{"marca":"FALSO"}'::jsonb`);
+    expect(updated.ok).toBe(false);
+
+    const deleted = query(asSeat0, 'delete from game_maps');
+    expect(deleted.ok).toBe(false);
+  });
+
+  it('el motor sí lo lee: la tabla no está simplemente vacía', () => {
+    // Lección nº 4: un test que no puede fallar no prueba nada. Sin esta comprobación,
+    // los tres anteriores pasarían igual con la tabla vacía.
+    expect(count(asService, `game_maps where game_id = '${GAME}'`)).toBe(1);
+  });
+});

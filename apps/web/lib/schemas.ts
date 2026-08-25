@@ -14,10 +14,37 @@ import { z } from 'zod';
  * en la petición ([TECHNICAL_DESIGN §7.2](../../../docs/TECHNICAL_DESIGN.md#72-validación-en-dos-niveles)).
  */
 
-const regionId = z.number().int().min(0).max(400);
+/**
+ * El tope sube con el mapa: 271 regiones con cinco jugadores desde el refactor de
+ * zonas, y hay que dejar sitio a que crezca sin volver a tocar esto. Sigue siendo un
+ * tope, que es lo que importa — un `regionId` sin cota es una petición sin cota.
+ */
+const regionId = z.number().int().min(0).max(999);
 const quantity = z.number().int().min(0).max(9999);
 
-export const postureSchema = z.enum(['assault', 'hold', 'screen']);
+export const postureSchema = z.enum(['assault', 'hold', 'screen', 'plunder']);
+
+export const buildingKindSchema = z.enum([
+  'extractor', 'foundry', 'arsenal', 'depot', 'watch',
+]);
+
+export const workOrderSchema = z.strictObject({
+  regionId,
+  kind: buildingKindSchema,
+});
+
+/**
+ * Investigación. Es una unión discriminada porque son dos cosas distintas: subir un
+ * arma de grado y adoptar una Política. Un objeto con los dos campos opcionales
+ * aceptaría `{}` y `{ arm, policy }`, que no significan nada.
+ */
+export const researchOrderSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('tier'), arm: z.enum(['line', 'fire', 'sky']) }),
+  z.strictObject({
+    kind: z.literal('policy'),
+    policy: z.enum(['deepVeins', 'caravans', 'recasting', 'cadence', 'escalade', 'marchDoctrine']),
+  }),
+]);
 
 export const moveOrderSchema = z.strictObject({
   forceId: z.string().min(1).max(40),
@@ -42,6 +69,10 @@ export const ordersSchema = z.strictObject({
   turn: z.number().int().min(0).max(99),
   moves: z.array(moveOrderSchema).max(120),
   production: z.array(productionOrderSchema).max(60).optional(),
+  /** El motor acepta 4 por turno; el tope de forma es holgado y sigue siendo tope. */
+  works: z.array(workOrderSchema).max(30).optional(),
+  /** Una y solo una. Que sea legal lo decide el motor contra el estado autoritativo. */
+  research: researchOrderSchema.optional(),
 });
 
 export const submitOrdersSchema = z.strictObject({

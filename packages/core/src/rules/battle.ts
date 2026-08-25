@@ -12,6 +12,7 @@ import type {
 } from '../types/index';
 import { EventLog } from './events';
 import { resolveCombat, totalOf, type CombatSide } from './combat';
+import { buildWardIndex, canCross, type WardIndex } from './zones';
 
 export interface BattleResult {
   forces: Force[];
@@ -41,11 +42,28 @@ export function applyBattles(
   const result = new Map(forces.map((f) => [f.id, { ...f }]));
   const retreating: { force: Force; from: RegionId }[] = [];
 
+  // Regiones donde espera un Coloso vivo. Ahí no se pelea entre asientos.
+  const guarded = new Set(state.colossi.filter((c) => c.alive).map((c) => c.regionId));
+
   // Orden de región ascendente: los combates se resuelven en orden determinista.
   for (const regionId of [...byRegion.keys()].sort((a, b) => a - b)) {
     const present = byRegion.get(regionId) as Force[];
     const seats = [...new Set(present.map((f) => f.seat))].sort((a, b) => a - b);
     if (seats.length < 2) continue;
+
+    // ── Ante el Coloso no hay guerra ─────────────────────────────────────────────
+    //
+    // Mientras el Coloso vive, dos asientos en su región **no combaten entre sí**.
+    // Sin esta regla el sistema entero no funciona: la coordinación contra un Coloso
+    // exige estar los dos ahí, y estar los dos ahí significaba aniquilarse antes de
+    // llegar a él. Se comprobó: dos asientos con 40 de Línea cada uno perdían los 40
+    // enteros peleando entre ellos y el Coloso ni se despeinaba.
+    //
+    // Y la regla se paga sola en tensión: en cuanto cae, la tregua se acaba y os
+    // quedáis los dos de pie en la misma casilla. Cooperar para abrir la puerta y
+    // tener que resolver lo vuestro justo después es exactamente la partida que este
+    // juego quiere provocar.
+    if (guarded.has(regionId)) continue;
 
     const terrain = (state.map.regions[regionId]?.kind ?? 'plain') as TerrainKind;
     const fortLevel = state.fortification[regionId] ?? 0;
@@ -113,8 +131,12 @@ export function applyBattles(
 
   // Las retiradas se aplican después de resolver todo: una fuerza no puede retirarse
   // a una región cuyo combate aún no se ha resuelto.
+  //
+  // El índice de Cercos se construye UNA vez: recorrerlo por cada fuerza que se retira
+  // era recorrer las ~700 aristas del mapa nuevo tantas veces como retiradas hubiera.
+  const wards = buildWardIndex(state.map);
   for (const { force, from } of retreating) {
-    const destination = retreatDestination(state, force.seat, from, adjacency);
+    const destination = retreatDestination(state, force.seat, from, adjacency, wards);
     if (destination === null) {
       force.line = 0;
       force.fire = 0;
@@ -161,15 +183,22 @@ function supportFor(
   return total;
 }
 
-/** Región amiga adyacente a la que retirarse. Desempata por id: nunca al azar. */
+/**
+ * Región amiga adyacente a la que retirarse. Desempata por id: nunca al azar.
+ *
+ * Un Cerco cerrado **no** es una salida. Retirarse cruzándolo sería la única forma de
+ * atravesar una Puerta sellada en todo el juego, y encima la conseguiría quien acaba
+ * de perder una batalla.
+ */
 function retreatDestination(
   state: GameState,
   seat: Seat,
   from: RegionId,
   adjacency: Adjacency,
+  wards: WardIndex,
 ): RegionId | null {
   const candidates = [...(adjacency[from] as readonly RegionId[])]
-    .filter((r) => state.control[r] === seat)
+    .filter((r) => state.control[r] === seat && canCross(wards, state.gatesOpen, from, r))
     .sort((a, b) => a - b);
   return candidates[0] ?? null;
 }

@@ -63,18 +63,15 @@ va a clonar el repositorio.
 | `UX_MOBILE.md` | Cualquier cosa con interfaz |
 | `ASSET_PIPELINE.md` | Cualquier cosa visual |
 | `TESTING_AND_SIMULATION.md` | Antes de escribir tests |
-| `RTS_ZONES_REFACTOR.md` | Mapa, economía, producción o progresión. **Es propuesta, no está implementada** |
+| `RTS_ZONES_REFACTOR.md` | Mapa, economía, producción o progresión. **Empieza por su §19** |
 | `ROADMAP.md` | Antes de empezar cualquier tarea |
 | `DECISIONS.md` | Antes de contradecir algo |
 
 ## Un documento en estado «propuesta» se marca en su primera línea
 
-[`RTS_ZONES_REFACTOR.md`](RTS_ZONES_REFACTOR.md) describe un juego que **todavía no
-existe**: zonas, extracción, edificios con niveles, Colosos. El resto de esta carpeta
-describe uno que sí existe, o que existirá tal cual está escrito.
-
-Confundir los dos registros es la forma más rápida de que alguien implemente algo que no
-se ha decidido. Por eso:
+Confundir una especificación con una descripción es la forma más rápida de que alguien
+implemente algo que no se ha decidido, o de que alguien dé por hecho algo que no existe.
+Por eso:
 
 ```
 □ Un documento propuesto lo dice en su cita de apertura, antes del índice
@@ -84,6 +81,15 @@ se ha decidido. Por eso:
   se corrigen EN EL MISMO commit — no después
 ```
 
-Ese último punto es la regla de esta carpeta aplicada a un cambio grande: si el código y
-el documento discrepan, uno de los dos está mal. Un refactor a medio documentar deja
-**catorce** documentos discrepando a la vez.
+## Y cuando se implementa, se escribe qué salió distinto
+
+Ésta es la regla que sale del refactor RTS y la que más valor tiene de esta carpeta.
+
+[`RTS_ZONES_REFACTOR.md §19`](RTS_ZONES_REFACTOR.md#19-lo-que-cambió-al-construirlo)
+enumera **cinco cosas de su propia especificación que resultaron estar mal**, una de ellas
+capaz de dejar la partida imposible de ganar, y sustituye sus estimaciones ⚖️ por medidas.
+Nada de eso se borró del documento: se corrigió al final, diciendo qué lo cazó.
+
+Un documento que se reescribe hasta parecer que siempre tuvo razón pierde justo lo que lo
+hace útil — dentro de seis meses, alguien propondrá otra vez poner el Coloso al otro lado
+de la puerta, y lo único que puede evitarlo es que esté escrito que ya se probó.

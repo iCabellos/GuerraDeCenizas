@@ -77,11 +77,11 @@ Faltan las anomalías (8), la diplomacia (6) y buena parte de estados e interfaz
 con los sistemas que las usan, no antes. Un asset sin sistema detrás es un asset que se
 dibuja dos veces.
 
-Y por esa misma razón, **nada del refactor RTS se dibuja todavía**. Sus zonas, materiales,
-edificios y Colosos ([`docs/RTS_ZONES_REFACTOR.md`](../docs/RTS_ZONES_REFACTOR.md)) suman
-unos 20 iconos más, pero el documento es una propuesta sin aprobar: dibujarlos ahora es
-comprometerse a dibujarlos dos veces. Cuando entren, dos cosas de su inventario tocan a
-esta carpeta más de lo que parece:
+El refactor RTS **ya está en el motor y en la interfaz**, y por ahora se pinta con
+rótulos y cifras: sus zonas, materiales, edificios y Colosos suman unos 20 iconos que
+todavía no existen. Eso está bien —la pantalla dice el nombre de cada cosa, que es lo que
+exige [ADR-038](../docs/DECISIONS.md#adr-038)— pero cuando se dibujen, dos cosas del
+inventario tocan a esta carpeta más de lo que parece:
 
 - **Mena y Yacimiento tienen que distinguirse a 16 px**, y son dos cosas parecidas
   (depósito en el suelo) que hacen cosas distintas. Es exactamente el fallo que ya cazó la

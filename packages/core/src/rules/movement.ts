@@ -12,11 +12,12 @@
 
 import type {
   Adjacency, Arms, Force, ForceId, GameState, OrdersBySeat, ProductionOrder,
-  RegionId, Seat,
+  RegionId, ResearchOrder, Seat, WorkOrder,
 } from '../types/index';
 import { BALANCE } from '../balance/constants';
 import { EventLog } from './events';
 import { canProduceAt } from './economy';
+import { buildWardIndex, canCross } from './zones';
 
 export type RejectReason =
   | 'unknown_force'
@@ -29,10 +30,13 @@ export type RejectReason =
   | 'wrong_turn'
   | 'no_movement_in_parley'
   | 'water_needs_bridge'
+  | 'ward_sealed'
   | 'support_needs_hold'
   | 'support_not_adjacent'
   | 'cannot_produce_here'
-  | 'not_enough_industry';
+  | 'not_enough_industry'
+  | 'too_many_works'
+  | 'duplicate_work';
 
 interface Intent {
   force: Force;
@@ -45,6 +49,14 @@ interface Intent {
 
 export interface MovementResult {
   forces: Force[];
+  /**
+   * De dónde salió cada fuerza que se movió este turno.
+   *
+   * Lo necesita el Botín: una fuerza que saquea **vuelve a su casilla**, y sin saber
+   * cuál era habría que inventarla. No forma parte del estado — es información del
+   * turno, y muere con él.
+   */
+  origins: Map<ForceId, RegionId>;
 }
 
 export interface ValidatedOrders {
@@ -53,6 +65,10 @@ export interface ValidatedOrders {
   /** `forceId` → región adyacente a la que presta su Fuego. */
   fireSupport: Map<ForceId, RegionId>;
   production: Map<Seat, ProductionOrder[]>;
+  /** Obras aceptadas para su etapa. Lo que se puede construir lo decide `buildings.ts`. */
+  works: Map<Seat, WorkOrder[]>;
+  /** Como mucho una por asiento: investigar es una decisión, no una lista. */
+  research: Map<Seat, ResearchOrder>;
 }
 
 /**
@@ -70,7 +86,10 @@ export function validateOrders(
   const postures = new Map<ForceId, Force['posture']>();
   const fireSupport = new Map<ForceId, RegionId>();
   const production = new Map<Seat, ProductionOrder[]>();
+  const works = new Map<Seat, WorkOrder[]>();
+  const research = new Map<Seat, ResearchOrder>();
   const forcesById = new Map(state.forces.map((f) => [f.id, f]));
+  const wards = buildWardIndex(state.map);
 
   // Orden de asiento ascendente: los desempates del motor jamás son aleatorios.
   const seats = Object.keys(ordersBySeat)
@@ -117,7 +136,12 @@ export function validateOrders(
         // El apoyo exige quedarse quieto: es fuego indirecto, no una carga.
         if (move.posture !== 'hold' || move.to !== undefined) {
           reject(log, seat, move.forceId, 'support_needs_hold');
-        } else if (!(adjacency[force.regionId] as readonly RegionId[]).includes(move.fireSupport)) {
+        } else if (
+          !(adjacency[force.regionId] as readonly RegionId[]).includes(move.fireSupport) ||
+          !canCross(wards, state.gatesOpen, force.regionId, move.fireSupport)
+        ) {
+          // El fuego indirecto tampoco atraviesa un Cerco: si las tropas no pasan,
+          // los proyectiles tampoco. Un apoyo que cruzara sería una vía de escape.
           reject(log, seat, move.forceId, 'support_not_adjacent');
         } else {
           fireSupport.set(force.id, move.fireSupport);
@@ -132,6 +156,11 @@ export function validateOrders(
       }
       if (!(adjacency[force.regionId] as readonly RegionId[]).includes(move.to)) {
         reject(log, seat, move.forceId, 'not_adjacent');
+        continue;
+      }
+      // Un Cerco no es terreno difícil: está cerrado. Ni se rodea ni cuesta más.
+      if (!canCross(wards, state.gatesOpen, force.regionId, move.to)) {
+        reject(log, seat, move.forceId, 'ward_sealed');
         continue;
       }
 
@@ -191,11 +220,33 @@ export function validateOrders(
       queued.push({ regionId: order.regionId, item: order.item, qty });
     }
     if (queued.length > 0) production.set(seat, queued);
+
+    // Obras. Aquí solo se comprueban forma y cupo: si se puede construir eso ahí, y si
+    // hay material, lo decide `applyWorks` contra el estado autoritativo. Duplicar la
+    // condición en dos sitios es la forma más fiable de que un día discrepen.
+    const wanted: WorkOrder[] = [];
+    const seenRegions = new Set<RegionId>();
+    for (const work of orders.works ?? []) {
+      if (wanted.length >= BALANCE.limits.maxWorks) {
+        reject(log, seat, null, 'too_many_works');
+        continue;
+      }
+      // Una obra por región y turno: no hay colas, y tampoco por la puerta de atrás.
+      if (seenRegions.has(work.regionId)) {
+        reject(log, seat, null, 'duplicate_work');
+        continue;
+      }
+      seenRegions.add(work.regionId);
+      wanted.push({ regionId: work.regionId, kind: work.kind });
+    }
+    if (wanted.length > 0) works.set(seat, wanted);
+
+    if (orders.research) research.set(seat, orders.research);
   }
 
   // Determinismo: el orden de aplicación no puede depender del orden de llegada.
   intents.sort((a, b) => a.force.seat - b.force.seat || cmp(a.force.id, b.force.id));
-  return { intents, postures, fireSupport, production };
+  return { intents, postures, fireSupport, production, works, research };
 }
 
 /**
@@ -212,6 +263,7 @@ export function applyMovement(
   log: EventLog,
 ): MovementResult {
   const blocked = detectCrossings(intents);
+  const origins = new Map<ForceId, RegionId>();
 
   let created = 0;
   const forces: Force[] = state.forces.map((f) => ({
@@ -250,6 +302,7 @@ export function applyMovement(
       };
       forces.push(detached);
       byId.set(detached.id, detached);
+      origins.set(detached.id, force.regionId);
       log.emit({
         type: 'FORCE_MOVED',
         seat: force.seat,
@@ -260,6 +313,7 @@ export function applyMovement(
       const from = force.regionId;
       force.regionId = intent.to;
       force.posture = intent.posture;
+      origins.set(force.id, from);
       log.emit({
         type: 'FORCE_MOVED',
         seat: force.seat,
@@ -269,7 +323,7 @@ export function applyMovement(
     }
   }
 
-  return { forces: mergeAndPrune(forces, log) };
+  return { forces: mergeAndPrune(forces, log, origins), origins };
 }
 
 /** Pares que intentan intercambiar posición. Ambos quedan bloqueados. */
@@ -293,7 +347,11 @@ function detectCrossings(intents: readonly Intent[]): Set<ForceId> {
  * vacías. Sin esto, el límite de 6 fuerzas por jugador (una restricción de UX móvil)
  * se podría burlar acumulando fuerzas de tamaño 1.
  */
-function mergeAndPrune(forces: readonly Force[], log: EventLog): Force[] {
+function mergeAndPrune(
+  forces: readonly Force[],
+  log: EventLog,
+  origins: Map<ForceId, RegionId>,
+): Force[] {
   const groups = new Map<string, Force[]>();
   for (const force of forces) {
     if (total(force) <= 0) continue;
@@ -326,6 +384,12 @@ function mergeAndPrune(forces: readonly Force[], log: EventLog): Force[] {
       // Al fusionarse, la peor situación de suministro manda: no se lava reagrupando.
       unsupplied: Math.max(...group.map((f) => f.unsupplied)),
     };
+    // Al fusionarse, la fuerza resultante hereda el origen de la que le da el id: si
+    // saquea, vuelve ahí. Cualquier otra elección sería igual de arbitraria y menos
+    // predecible para quien dio la orden.
+    for (const f of group) {
+      if (f.id !== head.id && origins.has(f.id)) origins.delete(f.id);
+    }
     merged.push(result);
     log.emit({
       type: 'FORCE_MERGED',

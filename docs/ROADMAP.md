@@ -1,6 +1,6 @@
 # Roadmap — de v0.1 a v1.0
 
-> **Versión:** 1.2 · Estado actual: **v0.2 completada y verificada.** Siguiente: v0.3.
+> **Versión:** 1.3 · Estado actual: **v0.4 (refactor RTS) con motor e interfaz completos.**
 > Cada versión debe ser **jugable**, tener **criterios de aceptación**, **tests**,
 > **documentación actualizada** y **entrada en CHANGELOG**.
 
@@ -40,9 +40,13 @@ Cada versión se apoya en la anterior y **ninguna deja deuda para la siguiente**
 versión no cumple sus criterios, **no se pasa a la siguiente**: se termina.
 
 ```
-v0.1 ─► v0.2 ─► v0.3 ─► v0.4 ─► v0.5 ─► v0.6 ─► v0.7 ─► v0.8 ─► v0.9 ─► v0.95 ─► v1.0
-motor   juego   online  diplo   Núcleo   meta   anom.  balance  móvil    beta    release
+v0.1 ─► v0.2 ─► v0.3 ─► v0.4 ─► v0.5 ─► v0.6 ─► v0.7 ─► v0.8 ─► v0.9 ─► v0.10 ─► v0.95 ─► v1.0
+motor   juego   online   RTS    diplo   Núcleo   meta   anom.  balance  móvil    beta   release
 ```
+
+El **refactor RTS** entró en v0.4 y corrió cuatro números todo lo que venía detrás. La
+razón del orden es que la diplomacia se construye **sobre** la economía y el mapa: hacerla
+antes habría obligado a hacerla dos veces.
 
 ---
 
@@ -199,32 +203,53 @@ motor   juego   online  diplo   Núcleo   meta   anom.  balance  móvil    beta 
 
 ---
 
-## ⚠️ Antes de empezar la v0.4: hay un refactor propuesto que la reordena
+## v0.4 — Refactor RTS ✅ **motor e interfaz completos**
 
-[`RTS_ZONES_REFACTOR.md`](RTS_ZONES_REFACTOR.md) propone partir el mapa en tres zonas
-concéntricas con fronteras cerradas, triplicar su tamaño y añadir extracción de materiales,
-edificios con niveles, grados de tropa, Políticas y guardianes deterministas. Si se acepta,
-**v0.4 deja de ser Diplomacia** y el orden pasa a ser:
+El mapa se parte en tres zonas concéntricas —**Solar, Marca y Corona**— separadas por
+Cercos que solo se cruzan por una Puerta, y cada Puerta la guarda un Coloso. Entran dos
+materiales que se extraen, cinco edificios con tres niveles, grados de tropa, seis
+Políticas y la postura Botín. Las siete decisiones están aceptadas
+([ADR-041 a ADR-047](DECISIONS.md#adr-041)).
 
+**Alcance entregado**
+- `rules/zones.ts`, `colossus.ts`, `extraction.ts`, `buildings.ts`, `research.ts` y seis
+  etapas más en `reduce()`.
+- `SECTOR_SPEC` de 7 anillos con bandas de zona: 109 · 163 · **271** regiones.
+- Interfaz que **recorre el mapa por zonas**: 46–57 regiones en el DOM contra 96 antes.
+- `game_maps` y la vista sin mapa ([ADR-044](DECISIONS.md#adr-044)): 5,2 MB → 0,85 MB
+  por campaña.
+- `ENGINE_VERSION` 0.3.0 y `MAPGEN_VERSION` 0.2.0, incompatibles a propósito.
+
+**Criterios de aceptación**
 ```
-v0.4 Zonas → v0.5 Extracción → v0.6 Colosos → v0.7 Ciudad de campaña → v0.8 Balance
-   └─ y Diplomacia, Núcleo, Metaprogresión y Anomalías se corren cuatro números
+✅ Una campaña de 24 turnos se juega entera con rivales artificiales
+✅ El Núcleo es INALCANZABLE con los Cercos cerrados, en 1 000 semillas × {2,3,5}
+✅ Una Puerta se abre matando a su Coloso, y se abre PARA TODOS
+✅ Matarlo solo sale caro; entre dos, cada uno pierde menos    ← intención, no número
+✅ Ninguna Puerta cae sobre agua                                ← si no, no se puede abrir
+✅ Subir de grado NO mejora lo ya desplegado
+✅ Toda campaña empieza a nivel 1, grado 1 y cero Políticas     ← la regla de oro sigue
+✅ El distrito nunca pasa de 96 regiones en el DOM
+✅ 257 tests de motor + 172 de web en verde
+□  La Corona se alcanza de verdad en 24 turnos                  ← calibración, v0.8
 ```
 
-La razón del orden es que la diplomacia se construye **sobre** la economía y el mapa:
-hacerla antes obliga a hacerla dos veces.
+**Deuda consciente que hereda la siguiente versión**
+- **Las ~50 constantes nuevas están sin calibrar.** Salieron de jugar dos campañas y de
+  que los tests de intención pasaran, no de un barrido. El juego funciona; que esté
+  equilibrado es otra cosa, y la decide el simulador.
+- Con los rivales actuales no se llega a la Corona. Es lo primero que hay que medir, y
+  puede que la respuesta sea bajar de 24 a 18 turnos ([ADR-046](DECISIONS.md#adr-046)).
+- `game_states` sigue guardando el mapa dentro del estado. Pesa menos que las vistas
+  —hay retención— pero es la siguiente parada si el presupuesto aprieta.
 
-**Ninguna de sus seis decisiones está aceptada** ([ADR-041 a ADR-046](DECISIONS.md#adr-041));
-la única que bloquea es [ADR-045](DECISIONS.md#adr-045), sobre si la metaprogresión puede
-tocar números. Mientras no se decida, **lo que sigue en este documento es el plan vigente**.
-
-Y un detalle de calendario que no admite aplazamiento: el refactor sube `ENGINE_VERSION` y
-`MAPGEN_VERSION` de forma incompatible, y **una partida en curso nunca cambia de motor**.
-Hoy no hay nada que migrar; el día del despliegue público, sí.
+**Cinco hallazgos que cambiaron el diseño**, en
+[RTS_ZONES_REFACTOR §19](RTS_ZONES_REFACTOR.md#19-lo-que-cambió-al-construirlo). El
+primero dejaba la partida imposible de ganar.
 
 ---
 
-## v0.4 — Diplomacia
+## v0.5 — Diplomacia
 
 > **Ya construido en v0.3:** el **reparto** ([ADR-040](DECISIONS.md#adr-040)) enseña
 > regiones, yacimientos, Núcleo y frontera de cada asiento —todo público en el motor— y
@@ -252,7 +277,7 @@ Hoy no hay nada que migrar; el día del despliegue público, sí.
 
 ---
 
-## v0.5 — El Núcleo
+## v0.6 — El Núcleo
 
 **Alcance**
 - Región Núcleo, activación en el T3, renta.
@@ -278,7 +303,7 @@ Ese último criterio es la primera validación del pilar P1 del juego.
 
 ---
 
-## v0.6 — Metaprogresión
+## v0.7 — Metaprogresión
 
 **Alcance**
 - `match_results`, cálculo del depósito.
@@ -299,7 +324,7 @@ Ese último criterio es la primera validación del pilar P1 del juego.
 
 ---
 
-## v0.7 — Anomalías y Sombra
+## v0.8 — Anomalías y Sombra
 
 **Alcance**
 - Las 8 anomalías, con las dos fases de resolución.
@@ -321,7 +346,7 @@ Ese último criterio es la primera validación del pilar P1 del juego.
 
 ---
 
-## v0.8 — Procedural y balance
+## v0.9 — Procedural y balance
 
 **Alcance**
 - Perturbación acotada, las 8 métricas de equidad, las 4 de interés.
@@ -343,7 +368,7 @@ Ese último criterio es la primera validación del pilar P1 del juego.
 
 ---
 
-## v0.9 — Pulido móvil, UX y assets
+## v0.10 — Pulido móvil, UX y assets
 
 **Alcance**
 - Los ~55 assets originales + Galería + comprobaciones automáticas.

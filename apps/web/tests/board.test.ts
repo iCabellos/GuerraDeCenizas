@@ -14,7 +14,10 @@ import {
   ENGINE_VERSION, botOrders, botProfile, buildAdjacency, createGame, projectViews, reduce,
   type OrdersBySeat, type PlayerView, type Seat,
 } from '@gdc/core';
-import { briefOf, dominantArm, ledger, ownForces, sizeOf, threatened } from '../lib/board';
+import {
+  MAX_DISTRICT, briefOf, buildOptions, districtRegions, dominantArm, homeSector, ledger,
+  ownForces, sizeOf, threatened, zoneSummaries,
+} from '../lib/board';
 
 const SEED = 424242;
 
@@ -186,6 +189,100 @@ describe('amenazas', () => {
       if (view.control[regionId] !== view.seat) continue;
       const touches = (adjacency[regionId] ?? []).some((other) => enemyAt.has(other));
       expect(marked.has(regionId), `región ${regionId}`).toBe(touches);
+    }
+  });
+});
+
+// ─────────────────────── Zonas: recorrer sin pasarse del DOM ──────────────────
+
+describe('el distrito acota lo que se pinta', () => {
+  it('nunca pasa del presupuesto de render, con ningún número de jugadores', () => {
+    // Ésta es LA propiedad de [ADR-042]: el mapa triplicó y el presupuesto no se relaja.
+    // Si algún día una zona crece por encima del tope, este test lo dice antes de que un
+    // jugador se encuentre 271 hexágonos de 12 px en un móvil.
+    for (const players of [2, 3, 5] as const) {
+      const state = createGame({
+        gameId: '00000000-0000-4000-8000-0000000000c0',
+        seed: 91,
+        players,
+        seats: Array.from({ length: players }, (_, i) => ({
+          name: `P${i}`,
+          factionId: (['vantera', 'koldvik', 'saranth', 'meridia', 'oshara'] as const)[i]!,
+        })),
+      }).state;
+      const view = projectViews(state)[0] as PlayerView;
+      const adjacency = buildAdjacency(view.map.regions.length, view.map.edges);
+
+      for (const zone of [1, 2, 3] as const) {
+        const district = districtRegions(view, zone, adjacency);
+        expect(district.size).toBeGreaterThan(0);
+        expect(district.size).toBeLessThanOrEqual(MAX_DISTRICT);
+      }
+    }
+  });
+
+  it('el Solar que se pinta es el TUYO, no la zona 1 entera', () => {
+    // La zona 1 son los cinco Solares: 165 regiones con cinco jugadores. La de los demás
+    // no es tu partida; su frontera sí, y por eso el distrito la incluye.
+    const { view, adjacency } = played(3);
+    const district = districtRegions(view, 1, adjacency);
+    const mine = view.map.regions.filter(
+      (r) => r.zone === 1 && r.sector === homeSector(view),
+    );
+
+    for (const region of mine) expect(district.has(region.id)).toBe(true);
+    const wholeZone = view.map.regions.filter((r) => r.zone === 1).length;
+    expect(district.size).toBeLessThan(wholeZone);
+  });
+
+  it('las cifras de las tres zonas cuadran con el mapa', () => {
+    const { view } = played(3);
+    const zones = zoneSummaries(view, new Set(view.visible));
+
+    expect(zones.map((z) => z.zone)).toEqual([1, 2, 3]);
+    const total = zones.reduce((sum, z) => sum + z.total, 0);
+    expect(total).toBe(view.map.regions.length);
+
+    // Todas las Puertas empiezan cerradas, así que la Corona no es alcanzable todavía.
+    const crown = zones.find((z) => z.zone === 3)!;
+    expect(crown.gates).toBeGreaterThan(0);
+  });
+});
+
+describe('lo que se puede construir', () => {
+  it('la Extractora solo se ofrece donde hay Mena', () => {
+    const { view } = played(3);
+    const bastion = view.map.bastions[view.seat]!;
+
+    // Todo Bastión se funda sobre una veta: ahí siempre hay Extractora que subir.
+    expect(buildOptions(view, bastion).some((o) => o.kind === 'extractor')).toBe(true);
+
+    const barren = view.map.regions.find(
+      (r) => view.control[r.id] === view.seat
+        && !view.map.veins.some((v) => v.regionId === r.id),
+    );
+    if (barren) {
+      expect(buildOptions(view, barren.id).some((o) => o.kind === 'extractor')).toBe(false);
+    }
+  });
+
+  it('en una región ajena no se ofrece nada', () => {
+    const { view } = played(3);
+    const theirs = view.map.regions.find(
+      (r) => view.control[r.id] !== null && view.control[r.id] !== view.seat,
+    );
+    if (theirs) expect(buildOptions(view, theirs.id)).toEqual([]);
+  });
+
+  it('el techo de la Fundición se enseña, no se esconde', () => {
+    const { view } = played(3);
+    const bastion = view.map.bastions[view.seat]!;
+    // Sin Fundición, cualquier nivel 2 está bloqueado — y la ficha tiene que decirlo en
+    // vez de ofrecer un botón que el servidor va a rechazar.
+    for (const option of buildOptions(view, bastion)) {
+      if (option.kind !== 'foundry' && option.target !== null && option.target > 1) {
+        expect(option.blocked).toBe(true);
+      }
     }
   });
 });

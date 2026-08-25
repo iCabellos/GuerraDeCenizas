@@ -38,6 +38,20 @@ export interface CombatSide {
   unsupplied: number;
 }
 
+/**
+ * **El Grado no aparece aquí, y es deliberado.**
+ *
+ * El multiplicador se aplica al **producir** (`economy.applyProduction`), no al pelear:
+ * una Línea fabricada en grado 2 entra al mapa valiendo 12,5 en vez de 10, y ahí se
+ * queda. Si el grado se aplicara en el combate, subirlo mejoraría también a las tropas
+ * ya desplegadas —sería retroactivo— y subir de grado dejaría de ser una decisión para
+ * pasar a ser una compra obvia en cuanto se pueda pagar.
+ *
+ * Como efecto secundario, la rueda de armas conserva su signo para todo par de grados
+ * **por construcción**: el grado nunca toca la composición porque nunca llega hasta
+ * aquí. No hay nada que comprobar porque no hay nada que romper.
+ */
+
 export interface SideOutcome {
   seat: Seat;
   power: number;
@@ -113,6 +127,11 @@ function postureModifier(posture: Posture, defender: boolean): number {
       return defender ? holdDef : 1;
     case 'screen':
       return screenMod;
+    // Botín penaliza en los dos papeles, y es la misma razón las dos veces: vienes a
+    // llevarte algo, no a sostener terreno. Atacando pegas menos; sorprendido a mitad
+    // del saqueo, aguantas menos.
+    case 'plunder':
+      return BALANCE.extraction.plunderPenalty;
   }
 }
 

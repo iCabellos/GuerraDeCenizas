@@ -8,10 +8,14 @@
  */
 
 import type {
-  Adjacency, Force, GameState, PlayerView, RegionId, Seat, VisibleForce,
+  Adjacency, Force, GameState, PlayerView, RegionId, Seat, VisibleBuilding, VisibleForce,
+  VisibleStock, Zone,
 } from '../types/index';
+import { BALANCE } from '../balance/constants';
 import { EventLog } from './events';
 import { total } from './movement';
+import { actOfTurn, passableAdjacency } from './zones';
+import { buildingLevel } from './buildings';
 
 /**
  * Recalcula quién controla cada región.
@@ -79,7 +83,14 @@ export function recomputeControl(
 
 /**
  * Regiones que observa cada asiento: las que controla, aquellas donde tiene fuerzas, y
- * las adyacentes a ambas.
+ * las adyacentes a ambas — **sin cruzar un Cerco cerrado**.
+ *
+ * Eso último es un regalo del refactor de zonas y conviene no perderlo: mientras la
+ * Puerta esté sellada no se ve nada del otro lado, así que la vista del acto I es más
+ * pequeña que la del mapa antiguo pese a que el mapa sea el triple. El pico de datos se
+ * desplaza al final de la partida, que es cuando quedan menos turnos que servir.
+ *
+ * La Atalaya alarga el alcance: es lo único que lo hace, y por eso vale la pena.
  */
 export function computeObservers(
   state: GameState,
@@ -90,17 +101,37 @@ export function computeObservers(
   const observers = new Map<Seat, Set<RegionId>>();
   for (const seatState of state.seats) observers.set(seatState.seat, new Set<RegionId>());
 
-  const seed = (seat: Seat, regionId: RegionId): void => {
+  const passable = passableAdjacency(state.map, adjacency, state.gatesOpen);
+
+  const seed = (seat: Seat, regionId: RegionId, extra: number): void => {
     const set = observers.get(seat);
     if (!set) return;
+    // Anillos concéntricos por la adyacencia transitable. `extra` los que añade la
+    // Atalaya sobre el primero, que todo el mundo tiene gratis.
+    let frontier: RegionId[] = [regionId];
     set.add(regionId);
-    for (const neighbour of adjacency[regionId] as readonly RegionId[]) set.add(neighbour);
+    for (let ring = 0; ring <= extra; ring++) {
+      const next: RegionId[] = [];
+      for (const current of frontier) {
+        for (const neighbour of passable[current] as readonly RegionId[]) {
+          if (set.has(neighbour)) continue;
+          set.add(neighbour);
+          next.push(neighbour);
+        }
+      }
+      frontier = next;
+    }
+  };
+
+  const sightAt = (regionId: RegionId): number => {
+    const level = buildingLevel(state.buildings, regionId, 'watch');
+    return BALANCE.buildings.watchSight[level] ?? 0;
   };
 
   control.forEach((seat, regionId) => {
-    if (seat !== null) seed(seat, regionId);
+    if (seat !== null) seed(seat, regionId, sightAt(regionId));
   });
-  for (const force of forces) seed(force.seat, force.regionId);
+  for (const force of forces) seed(force.seat, force.regionId, 0);
 
   return observers;
 }
@@ -164,12 +195,20 @@ export function projectView(
     seat,
     turn: state.meta.turn,
     phase: state.meta.phase,
+    act: actOfTurn(state.meta.turn) as Zone,
     map: state.map,
     visible: [...observed].sort((a, b) => a - b),
     control: control.slice(),
     fortification: state.fortification.slice(),
     bridges: state.bridges.slice(),
     forces: visible.sort((a, b) => a.regionId - b.regionId || cmp(a.id, b.id)),
+    // Puertas y Colosos son PÚBLICOS, y no por descuido: la aritmética de la Puerta es
+    // la negociación de este juego, y una negociación sobre cifras que no se ven es
+    // una adivinanza. Quién pagó una Puerta lo ven los cinco.
+    gatesOpen: state.gatesOpen.slice(),
+    colossi: state.colossi.map((c) => ({ ...c })),
+    buildings: visibleBuildings(state, seat, control, observed),
+    stock: visibleStock(state, observed),
     self,
     opponents: state.seats
       .filter((s) => s.seat !== seat)
@@ -185,6 +224,53 @@ export function projectView(
     events: events.filter((e) => e.visibleTo.includes(seat)),
     checksum,
   };
+}
+
+/**
+ * Edificios que llegan a un asiento: los suyos y los que están en regiones que observa.
+ * Un edificio en un territorio que no ves no existe para ti — y eso es lo que hace que
+ * asomarse a la Marca sirva para algo.
+ */
+function visibleBuildings(
+  state: GameState,
+  seat: Seat,
+  control: readonly (Seat | null)[],
+  observed: ReadonlySet<RegionId>,
+): VisibleBuilding[] {
+  const out: VisibleBuilding[] = [];
+  for (const building of state.buildings) {
+    const own = control[building.regionId] === seat;
+    if (!own && !observed.has(building.regionId)) continue;
+    out.push({
+      regionId: building.regionId,
+      kind: building.kind,
+      level: building.level,
+      building: building.building,
+      target: building.target,
+      own,
+    });
+  }
+  return out.sort(
+    (a, b) => a.regionId - b.regionId || (a.kind < b.kind ? -1 : a.kind > b.kind ? 1 : 0),
+  );
+}
+
+/**
+ * Almacenes de las regiones observadas, y solo de ésas.
+ *
+ * Se ve lo que hay porque se ve la Extractora trabajando. Es lo que convierte el Botín
+ * en una decisión con información en vez de una apuesta: sabes cuánto hay antes de ir.
+ * Las regiones vacías no viajan — con 271 regiones, mandar 271 ceros por asiento y
+ * turno es la clase de despilfarro que rompe el presupuesto de datos.
+ */
+function visibleStock(state: GameState, observed: ReadonlySet<RegionId>): VisibleStock[] {
+  const out: VisibleStock[] = [];
+  state.stock.forEach((entry, regionId) => {
+    if (entry.ore <= 0 && entry.ember <= 0) return;
+    if (!observed.has(regionId)) return;
+    out.push({ regionId, ore: entry.ore, ember: entry.ember });
+  });
+  return out.sort((a, b) => a.regionId - b.regionId);
 }
 
 function cmp(a: string, b: string): number {

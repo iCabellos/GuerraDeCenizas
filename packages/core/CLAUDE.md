@@ -131,14 +131,14 @@ y el criterio de auditabilidad de v0.3 se caería.
 **Todavía no** (ver [ROADMAP](../../docs/ROADMAP.md)): diplomacia, Núcleo y consagración,
 anomalías, Sombra, doctrinas activas, investigación, perturbación y evaluación de mapas.
 
-### El refactor RTS toca este paquete más que a ningún otro
+### El refactor RTS está dentro, y toca este paquete más que a ningún otro
 
-[`docs/RTS_ZONES_REFACTOR.md`](../../docs/RTS_ZONES_REFACTOR.md) es una **propuesta sin
-aprobar**. Si se acepta, aquí entran cinco módulos nuevos (`zones`, `colossus`,
-`extraction`, `buildings`, `research`), seis etapas más en el pipeline, dos recursos más y
-7 anillos por sector en vez de 4.
+Cinco módulos nuevos (`zones`, `colossus`, `extraction`, `buildings`, `research`), seis
+etapas más en el pipeline, dos recursos más y 7 anillos por sector en vez de 4.
 
-Tres cosas que hay que saber **antes** de escribir nada en `rules/`, se apruebe o no:
+**Antes de tocar `rules/`, lee
+[RTS_ZONES_REFACTOR §19](../../docs/RTS_ZONES_REFACTOR.md#19-lo-que-cambió-al-construirlo).**
+Y tres cosas que hay que saber sí o sí:
 
 1. **Los Colosos van en su propio array, no en `Force`.** Hacer `Force.seat` anulable para
    meter neutrales obliga a revisar `control.ts`, `economy.ts`, `views.ts` y todos los
@@ -152,9 +152,26 @@ Tres cosas que hay que saber **antes** de escribir nada en `rules/`, se apruebe 
    zonas de la distancia al centro, es que no ha leído por qué la rotación conserva el
    anillo.
 
-No implementes nada de ese documento hasta que sus ADR estén aceptadas. Pero tampoco
-escribas código que dé por eterno lo que propone cambiar: 4 campos en `Resources`, 12
-turnos en `BALANCE.campaign`, un solo espacio de mapa continuo.
+Y tres reglas que parecen detalles y sostienen el sistema entero ([ADR-047](../../docs/DECISIONS.md#adr-047)):
+
+```
+□ El Coloso vive en gate.OUTER. En gate.inner nadie puede llegar a él, la Puerta no se
+  abre nunca y la partida es imposible de ganar. Pasó, y lo cazó jugar 24 turnos
+□ Ante un Coloso vivo NO hay combate entre asientos (battle.ts). Sin la tregua, dos
+  asientos que se juntan para matarlo se aniquilan entre ellos primero
+□ Todo Bastión nace con Mena y Extractora. El material solo sale de Extractoras y las
+  Extractoras cuestan material: sin ese suelo, la economía se pierde y no vuelve
+```
+
+**El Grado vive en la producción, no en el combate.** Multiplica lo que nace y solo lo que
+nace: si se aplicara al pelear, subir de grado mejoraría también a las tropas ya
+desplegadas. Como efecto secundario, la rueda de armas conserva su signo para todo par de
+grados **por construcción** — el grado nunca llega a `combat.ts`.
+
+**El checksum de un estado se calcula con `stateChecksum`, no con `checksum`.** El mapa
+entra por su propio checksum en vez de volver a serializarse entero cada turno: era el
+80 % del coste de `reduce()`. Mezclar las dos funciones no detecta una divergencia,
+inventa una — y ya rompió el test de reproducibilidad una vez.
 
 ### Dónde va cada cosa
 
@@ -166,6 +183,11 @@ turnos en `BALANCE.campaign`, un solo espacio de mapa continuo.
 | `rules/movement.ts` | Validación de todas las órdenes + movimiento simultáneo. |
 | `rules/standing.ts` | Órdenes Permanentes y Mando Automático. **La ausencia nunca daña a un tercero.** |
 | `rules/views.ts` | Proyección de vistas sin resolver: la necesita el turno 0, que no pasa por `reduce()`. |
+| `rules/zones.ts` | Zonas, Cercos y Puertas. La zona es **función del anillo**, y de ahí sale que la equidad C_n no cueste nada. |
+| `rules/colossus.ts` | Los guardianes. Array propio, **nunca** dentro de `Force`. |
+| `rules/extraction.ts` | Menas, Extractoras, almacén por región, logística y Botín. |
+| `rules/buildings.ts` | Cinco edificios, tres niveles, obras que tardan y captura con un nivel menos. |
+| `rules/research.ts` | Grados y Políticas. **No puede importar `factions/`**: el techo no depende de quién juega. |
 
 Si una regla nueva necesita estado del turno, va en `battle.ts` o en su etapa propia,
 **nunca** dentro de `combat.ts`: ahí se rompería la previsualización.

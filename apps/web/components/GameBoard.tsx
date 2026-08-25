@@ -3,15 +3,20 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  BALANCE, buildAdjacency, previewAttack,
-  type Buildable, type MoveOrder, type Orders, type PlayerView, type Posture,
-  type ProductionOrder, type RegionId, type Seat,
+  BALANCE, buildAdjacency, buildWardIndex, canCross, previewAttack,
+  type Buildable, type BuildingKind, type MoveOrder, type Orders, type PlayerView, type Posture,
+  type ProductionOrder, type RegionId, type ResearchOrder, type Seat, type WorkOrder,
 } from '@gdc/core';
 import { MapView, type MapHandle } from '@/components/MapView';
-import { CampaignHeader, MapControls, PhaseRail, RivalLedger } from '@/components/BoardHud';
+import { CampaignHeader, MapControls, PhaseRail, RivalLedger, ZoneRail } from '@/components/BoardHud';
 import { RegionSheet, type BuildChoice } from '@/components/RegionSheet';
 import { CommitBar, OrderSlate, type BuildRow, type OrderKind, type SlateRow } from '@/components/OrderSlate';
-import { briefOf, dominantArm, ledger, ownForces, sizeOf, threatened } from '@/lib/board';
+import { ResearchPanel } from '@/components/ResearchPanel';
+import {
+  briefOf, buildOptions, colossusAt, districtRegions, dominantArm, homeSector, ledger,
+  ownForces, sizeOf, stockAtRegion, threatened, veinAtRegion, zoneSummaries,
+  type ZoneId,
+} from '@/lib/board';
 import { browserClient } from '@/lib/supabase-browser';
 
 type Messages = Record<string, string>;
@@ -44,6 +49,10 @@ interface Draft {
    * Industria**, mientras los bots sí producían: doce turnos de asimetría creciente.
    */
   production: ProductionOrder[];
+  /** Obras: una por región y turno. El motor lo vuelve a comprobar. */
+  works: WorkOrder[];
+  /** Investigación: como mucho una por turno. `null` = este turno no se investiga. */
+  research: ResearchOrder | null;
 }
 
 type DraftAction =
@@ -51,7 +60,10 @@ type DraftAction =
   | { type: 'cancel'; forceId: string }
   | { type: 'produce'; regionId: RegionId; item: Buildable }
   | { type: 'unproduce'; index: number }
-  | { type: 'load'; moves: MoveOrder[]; production: ProductionOrder[] }
+  | { type: 'work'; regionId: RegionId; kind: BuildingKind }
+  | { type: 'unwork'; regionId: RegionId }
+  | { type: 'research'; order: ResearchOrder | null }
+  | { type: 'load'; moves: MoveOrder[]; production: ProductionOrder[]; works: WorkOrder[]; research: ResearchOrder | null }
   | { type: 'clear' };
 
 /** Las órdenes de producción, agrupadas y en orden estable. */
@@ -98,21 +110,61 @@ function draftReducer(draft: Draft, action: DraftAction): Draft {
         i === action.index ? { ...order, qty: order.qty - 1 } : order);
       return { ...draft, production: next.filter((order) => order.qty > 0) };
     }
+    case 'work': {
+      // Una obra por región: pedir dos es pedir una cola, y aquí no hay colas.
+      const rest = draft.works.filter((work) => work.regionId !== action.regionId);
+      return {
+        ...draft,
+        works: [...rest, { regionId: action.regionId, kind: action.kind }]
+          .sort((a, b) => a.regionId - b.regionId || (a.kind < b.kind ? -1 : 1)),
+      };
+    }
+    case 'unwork':
+      return { ...draft, works: draft.works.filter((work) => work.regionId !== action.regionId) };
+    case 'research':
+      return { ...draft, research: action.order };
     case 'load':
       return {
         moves: [...action.moves].sort((a, b) => (a.forceId < b.forceId ? -1 : 1)),
         production: tidy(action.production),
+        works: [...action.works].sort((a, b) => a.regionId - b.regionId || (a.kind < b.kind ? -1 : 1)),
+        research: action.research,
       };
     case 'clear':
-      return { moves: [], production: [] };
+      return { moves: [], production: [], works: [], research: null };
   }
+}
+
+/**
+ * El cuerpo que viaja a la API.
+ *
+ * Existe una sola vez a propósito: el borrador automático y el envío mandaban el mismo
+ * objeto construido en dos sitios, y el día que uno de los dos se olvide de un campo la
+ * diferencia es un turno que se envía a medias sin que falle nada.
+ *
+ * `undefined` en vez de vacío: el esquema es `strictObject` y el motor trata «ausente»
+ * como «no hay», así que mandar `[]` y `null` solo engorda la fila del borrador.
+ */
+function ordersPayload(draft: Draft, turn: number): Orders {
+  return {
+    turn,
+    moves: draft.moves,
+    ...(draft.production.length > 0 ? { production: draft.production } : {}),
+    ...(draft.works.length > 0 ? { works: draft.works } : {}),
+    ...(draft.research ? { research: draft.research } : {}),
+  };
 }
 
 /** Con qué fuerza se está apuntando, y a qué. */
 interface Aim {
   forceId: string;
   from: RegionId;
-  kind: 'move' | 'support';
+  /**
+   * `plunder` es una clase propia y no una variante de `move` a propósito: el Botín se
+   * **declara antes** de tocar el destino. Que sea una decisión anunciada es lo que
+   * permite prometerla —y mentir sobre ella—, que es de lo que va el juego.
+   */
+  kind: 'move' | 'support' | 'plunder';
 }
 
 export function GameBoard({
@@ -140,7 +192,17 @@ export function GameBoard({
   const [selected, setSelected] = useState<RegionId | null>(null);
   const [aim, setAim] = useState<Aim | null>(null);
   const [spotlight, setSpotlight] = useState<Seat | null>(null);
-  const [tab, setTab] = useState<'orders' | 'ledger'>(view.phase === 'parley' ? 'ledger' : 'orders');
+  const [tab, setTab] = useState<'orders' | 'ledger' | 'research'>(
+    view.phase === 'parley' ? 'ledger' : 'orders',
+  );
+  /**
+   * Qué zona se está mirando. Empieza en el Solar, que es donde estás.
+   *
+   * No es un modo ni una pantalla: es **dónde está la cámara**. Cambiarla mueve el
+   * encuadre, y por eso [ADR-026](../../docs/DECISIONS.md#adr-026) sigue en pie — no hay
+   * peaje nuevo entre el jugador y su turno.
+   */
+  const [zone, setZone] = useState<ZoneId>(1);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
   const [sent, setSent] = useState(submitted);
@@ -150,6 +212,8 @@ export function GameBoard({
     return {
       moves: Array.isArray(parsed?.moves) ? parsed.moves : [],
       production: Array.isArray(parsed?.production) ? tidy(parsed.production) : [],
+      works: Array.isArray(parsed?.works) ? parsed.works : [],
+      research: parsed?.research ?? null,
     };
   }, [savedDraft]);
 
@@ -163,12 +227,29 @@ export function GameBoard({
   const forces = useMemo(() => ownForces(view), [view]);
   const rows = useMemo(() => ledger(view, adjacency), [adjacency, view]);
   const threats = useMemo(() => threatened(view, adjacency), [adjacency, view]);
+  const wards = useMemo(() => buildWardIndex(view.map), [view.map]);
+
+  /** Lo que se pinta ahora mismo. Nunca el mapa entero: 271 hexágonos no caben. */
+  const district = useMemo(
+    () => districtRegions(view, zone, adjacency),
+    [adjacency, view, zone],
+  );
 
   // En el Parlamento no hay combate, así que tampoco hay a dónde ir.
   const isParley = view.phase === 'parley';
-  const reachable = useMemo(
-    () => (aim && !isParley ? (adjacency[aim.from] ?? []) : []),
-    [adjacency, aim, isParley],
+  const reachable = useMemo(() => {
+    if (!aim || isParley) return [];
+    // Un Cerco cerrado no es un destino caro: es un destino imposible. Ofrecerlo sería
+    // enseñar una regla con un rechazo del servidor, que es la peor forma de enseñarla.
+    return (adjacency[aim.from] ?? []).filter(
+      (to) => canCross(wards, view.gatesOpen, aim.from, to),
+    );
+  }, [adjacency, aim, isParley, view.gatesOpen, wards]);
+
+  /** Las tres zonas con sus cifras: el nivel 1 del mapa, que no es un menú. */
+  const zones = useMemo(
+    () => zoneSummaries(view, new Set(view.visible)),
+    [view],
   );
 
   /** Cómo se llama una región: por su terreno y su número, que es lo que existe. */
@@ -272,6 +353,23 @@ export function GameBoard({
    * Sale del mismo `reduce()` que resuelve el turno, así que no puede mentir sobre las
    * reglas — pero **no se envía nunca**: es exclusivamente para pintar.
    */
+  /** Qué se puede levantar aquí, con su precio. No decide nada: `reduce()` lo revisa. */
+  const works = useMemo(
+    () => (selected === null ? [] : buildOptions(view, selected)),
+    [selected, view],
+  );
+
+  /** Lo que hay bajo el suelo de la región mirada, y lo que guarda encima. */
+  const ground = useMemo(() => {
+    if (selected === null) return null;
+    return {
+      vein: veinAtRegion(view, selected) ?? null,
+      stock: stockAtRegion(view, selected),
+      colossus: colossusAt(view, selected) ?? null,
+      buildings: view.buildings.filter((b) => b.regionId === selected),
+    };
+  }, [selected, view]);
+
   const forecast = useMemo(() => {
     if (selected === null) return null;
     const move = draft.moves.find((m) => m.to === selected);
@@ -314,19 +412,18 @@ export function GameBoard({
 
   // ── Borrador con retardo: cerrar la pestaña no puede costar el trabajo hecho ──
   useEffect(() => {
-    if (sent || (draft.moves.length === 0 && draft.production.length === 0)) return;
+    const empty = draft.moves.length === 0 && draft.production.length === 0
+      && draft.works.length === 0 && draft.research === null;
+    if (sent || empty) return;
     const timer = setTimeout(() => {
       void fetch(`/api/g/${gameId}/orders`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          orders: { turn: view.turn, moves: draft.moves, production: draft.production },
-          submit: false,
-        }),
+        body: JSON.stringify({ orders: ordersPayload(draft, view.turn), submit: false }),
       }).catch(() => { /* un borrador perdido se reintenta al siguiente cambio */ });
     }, 2000);
     return () => clearTimeout(timer);
-  }, [draft.moves, draft.production, gameId, sent, view.turn]);
+  }, [draft, gameId, sent, view.turn]);
 
   async function submit() {
     setSending(true);
@@ -335,10 +432,7 @@ export function GameBoard({
       const response = await fetch(`/api/g/${gameId}/orders`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          orders: { turn: view.turn, moves: draft.moves, production: draft.production },
-          submit: true,
-        }),
+        body: JSON.stringify({ orders: ordersPayload(draft, view.turn), submit: true }),
       });
       const payload = (await response.json()) as {
         ok: boolean; code?: string; pending?: number; resolvedTurn?: number | null;
@@ -368,10 +462,17 @@ export function GameBoard({
    */
   function choose(regionId: RegionId) {
     if (aim && reachable.includes(regionId)) {
-      dispatch(aim.kind === 'move'
-        ? { type: 'order', forceId: aim.forceId, to: regionId, posture: 'assault' }
-        // El apoyo de Fuego exige postura Firme y no moverse (GDD §7.5).
-        : { type: 'order', forceId: aim.forceId, posture: 'hold', fireSupport: regionId });
+      dispatch(
+        aim.kind === 'support'
+          // El apoyo de Fuego exige postura Firme y no moverse (GDD §7.5).
+          ? { type: 'order', forceId: aim.forceId, posture: 'hold', fireSupport: regionId }
+          : {
+            type: 'order',
+            forceId: aim.forceId,
+            to: regionId,
+            posture: aim.kind === 'plunder' ? 'plunder' : 'assault',
+          },
+      );
       setAim(null);
       setSelected(regionId);
       setSpotlight(null);
@@ -409,6 +510,7 @@ export function GameBoard({
         <MapView
           ref={map}
           view={view}
+          district={district}
           selected={selected}
           reachable={reachable}
           ordered={ordered}
@@ -435,7 +537,7 @@ export function GameBoard({
         <div className="pointer-events-none absolute inset-x-0 top-24 flex items-start
           justify-between px-3"
         >
-          <PhaseRail phase={view.phase} label={t('a11y.phase')} t={t} />
+          <PhaseRail phase={view.phase} label={t('a11y.phase')} t={t} act={view.act} />
           <MapControls
             onHome={() => { if (home !== undefined) map.current?.focus(home, { bias: 0.42 }); }}
             onCore={() => map.current?.focus(view.map.coreId)}
@@ -459,6 +561,29 @@ export function GameBoard({
       {/* Un solo panel abierto a la vez (UX_MOBILE §11): la ficha de región sustituye a la
           pizarra en vez de apilarse encima. La barra de confirmar no se va nunca. */}
       <div className="flex shrink-0 flex-col">
+        {/*
+          Las tres zonas. No es un menú: es el mapa alejado, y por eso enseña estado —
+          cuántas regiones tienes ahí, cuántas Menas explotas, cuántas Puertas quedan— y
+          no acciones. Cambiar de zona mueve la cámara y nada más.
+        */}
+        <ZoneRail
+          zones={zones}
+          active={zone}
+          onZone={(next: ZoneId) => {
+            setZone(next);
+            setSelected(null);
+            setAim(null);
+            const target = next === 3
+              ? view.map.coreId
+              : next === 1
+                ? (home ?? view.map.coreId)
+                : view.map.regions.find(
+                  (r) => r.zone === 2 && r.sector === homeSector(view),
+                )?.id ?? view.map.coreId;
+            map.current?.focus(target, { bias: 0.2 });
+          }}
+          t={t}
+        />
         {brief ? (
           <RegionSheet
             brief={brief}
@@ -491,6 +616,10 @@ export function GameBoard({
               const force = brief.mine[0];
               if (force) setAim({ forceId: force.id, from: brief.id, kind: 'support' });
             }}
+            onPlunder={() => {
+              const force = brief.mine[0];
+              if (force) setAim({ forceId: force.id, from: brief.id, kind: 'plunder' });
+            }}
             onCancel={() => {
               const force = brief.mine[0];
               if (force) dispatch({ type: 'cancel', forceId: force.id });
@@ -498,6 +627,11 @@ export function GameBoard({
             }}
             builds={choices}
             onBuild={(item) => dispatch({ type: 'produce', regionId: brief.id, item })}
+            works={works}
+            workOrdered={draft.works.find((w) => w.regionId === brief.id)?.kind ?? null}
+            onWork={(kind: BuildingKind) => dispatch({ type: 'work', regionId: brief.id, kind })}
+            onUnwork={() => dispatch({ type: 'unwork', regionId: brief.id })}
+            ground={ground}
             forecast={forecast}
             onClose={() => { setSelected(null); setAim(null); }}
             t={t}
@@ -505,7 +639,7 @@ export function GameBoard({
         ) : (
           <>
             <Tabs tab={tab} onTab={setTab} given={given} total={slate.length} t={t} />
-            {tab === 'orders' ? (
+            {tab === 'orders' && (
               <OrderSlate
                 rows={slate}
                 builds={builds}
@@ -515,16 +649,25 @@ export function GameBoard({
                 onUnbuild={(index) => dispatch({ type: 'unproduce', index })}
                 t={t}
               />
-            ) : (
+            )}
+            {tab === 'ledger' && (
               <div className="max-h-[28dvh] overflow-y-auto bg-panel px-3 pb-2 pt-2">
                 <RivalLedger rows={rows} spotlight={spotlight} onSpotlight={spot} t={t} />
               </div>
+            )}
+            {tab === 'research' && (
+              <ResearchPanel
+                view={view}
+                chosen={draft.research}
+                onChoose={(order) => dispatch({ type: 'research', order })}
+                t={t}
+              />
             )}
           </>
         )}
 
         <CommitBar
-          canClear={given > 0 || builds.length > 0}
+          canClear={given > 0 || builds.length > 0 || draft.works.length > 0 || draft.research !== null}
           onClear={() => { dispatch({ type: 'clear' }); setAim(null); }}
           onSubmit={submit}
           disabled={sending || sent}
@@ -543,11 +686,19 @@ export function GameBoard({
  * delante decide con quién se habla. Y en el Parlamento entra abierto, que es el turno en
  * el que no se puede mover y sí se puede negociar.
  */
+type Tab = 'orders' | 'ledger' | 'research';
+
+const TAB_LABEL: Record<Tab, string> = {
+  orders: 'orders.title',
+  ledger: 'ledger.title',
+  research: 'research.title',
+};
+
 function Tabs({
   tab, onTab, given, total, t,
 }: {
-  tab: 'orders' | 'ledger';
-  onTab: (tab: 'orders' | 'ledger') => void;
+  tab: Tab;
+  onTab: (tab: Tab) => void;
   /** Cuántas fuerzas tienen orden, de cuántas. Va en la pestaña: se lee sin abrirla. */
   given: number;
   total: number;
@@ -555,7 +706,7 @@ function Tabs({
 }) {
   return (
     <div role="tablist" className="flex border-t border-line bg-panel">
-      {(['orders', 'ledger'] as const).map((key) => (
+      {(['orders', 'ledger', 'research'] as const).map((key) => (
         <button
           key={key}
           type="button"
@@ -566,7 +717,7 @@ function Tabs({
             tab === key ? 'border-b-rust !text-rust' : 'border-b-transparent'
           }`}
         >
-          {t(key === 'orders' ? 'orders.title' : 'ledger.title')}
+          {t(TAB_LABEL[key])}
           {key === 'orders' && (
             <span className="type-figure text-xs">
               <span className={given === total ? 'text-success' : 'text-ink'}>{given}</span>

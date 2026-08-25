@@ -10,6 +10,91 @@ Este proyecto sigue [SemVer](https://semver.org/lang/es/).
 
 ---
 
+## [Sin publicar] — v0.4: refactor RTS
+
+### Añadido
+
+- **Zonas, Cercos y Puertas.** El mapa se parte en tres bandas concéntricas —Solar, Marca
+  y Corona— separadas por fronteras que solo se cruzan por una Puerta. De 45–96 regiones a
+  **109 · 163 · 271**. La zona es una **función del anillo**, y de ahí sale que la equidad
+  exacta por rotación C<sub>n</sub> no cueste nada: la rotación conserva el anillo, luego
+  conserva la zona ([ADR-041](docs/DECISIONS.md#adr-041)).
+
+- **Colosos.** Cada Puerta la guarda uno. Al morir la abre **para todos**, pero lo paga
+  quien lo mata: un problema de bien público en el punto exacto del mapa donde el juego
+  quiere que la gente hable ([ADR-043](docs/DECISIONS.md#adr-043)). Tres tests fijan esa
+  aritmética como intención, no como número.
+
+- **Extracción.** Menas, Extractoras, almacén **por región** —que por eso se puede robar— y
+  logística que pierde por salto. Dos materiales nuevos: **Mineral** y **Brasa**.
+
+- **Edificios, grados y Políticas.** Cinco edificios con tres niveles, tres armas con tres
+  grados y seis Políticas en dos ramas. Todo es progresión **de campaña**: sube durante la
+  partida y se pierde al terminarla ([ADR-045](docs/DECISIONS.md#adr-045)).
+
+- **La postura Botín.** Ganas, te llevas parte del almacén, **no capturas** y vuelves por
+  donde viniste. Es la jugada que le queda a quien va perdiendo, y por eso está al lado de
+  las demás y no escondida en un menú.
+
+- **La interfaz recorre el mapa por zonas.** 271 hexágonos no caben en 360 px: a escala 1
+  cada uno caería a ~12 px. `MapView` recibe un distrito y solo pinta eso — medido en el
+  navegador, **46 regiones en el DOM en el Solar y 57 en la Marca**, contra las 96 de antes
+  ([ADR-042](docs/DECISIONS.md#adr-042)).
+
+- **`game_maps`**: el mapa se guarda una vez por partida en vez de en cada vista
+  ([ADR-044](docs/DECISIONS.md#adr-044)). Medido: el mapa era el **84 %** de cada fila de
+  `player_views`, y una campaña pasa de **5,2 MB a 0,85 MB**. Sobre los 500 MB del free
+  tier, ~580 campañas archivadas en vez de ~95.
+
+### Cambiado
+
+- `ENGINE_VERSION` **0.3.0** y `MAPGEN_VERSION` **0.2.0**, incompatibles hacia atrás a
+  propósito: el estado cambia de forma, no de contenido, y no hay migración que valga.
+- La campaña dura **24 turnos en tres actos** ⚖️, y la cifra es provisional: es lo primero
+  que el simulador tiene que atacar ([ADR-046](docs/DECISIONS.md#adr-046)).
+- La «parte justa» del rendimiento decreciente pasa a ser el **Solar**, no el sector.
+- El checksum de un estado se calcula con **`stateChecksum`**: el mapa entra por su propio
+  checksum en vez de volver a serializarse entero cada turno. Era el **80 % del coste de
+  `reduce()`** y no aportaba un bit de información nueva después del turno 0.
+
+### Corregido — cinco cosas que solo se ven jugando
+
+Están todas en
+[RTS_ZONES_REFACTOR §19](docs/RTS_ZONES_REFACTOR.md#19-lo-que-cambió-al-construirlo).
+
+1. **El Coloso estaba al otro lado del Cerco que guardaba.** Nadie podía llegar a él, así
+   que nadie podía matarlo, así que la Puerta no se abría nunca: **la partida era
+   imposible de ganar**. Lo cazó jugar 24 turnos completos y ver que ningún bot pisaba una
+   Puerta. Ahora espera delante ([ADR-047](docs/DECISIONS.md#adr-047)).
+
+2. **Dos asientos que asediaban al mismo Coloso se aniquilaban entre ellos** antes de
+   tocarlo — 40 de Línea cada uno, 40 de pérdida — de modo que coordinarse, que es el
+   único punto del sistema, era literalmente imposible. **Ante un Coloso vivo no hay
+   guerra**; la tregua se acaba en cuanto cae, y os deja a los dos de pie en la misma
+   casilla.
+
+3. **El material solo salía de Extractoras y las Extractoras costaban material.** Quien
+   gastara su capital inicial en otra cosa se quedaba sin economía para el resto de la
+   partida: se comprobó jugando, 24 turnos, cero Extractoras, cero material. Ahora toda
+   ciudad se funda sobre una veta.
+
+4. **Una Puerta podía caer sobre agua**, y sin Puente solo Cielo cruza el agua mientras que
+   Cielo no captura terreno. Las Puertas eligen terreno antes que nadie.
+
+5. **El desgaste del asedio era simétrico** y salía a 45 % de bajas por turno: no era un
+   problema diplomático, era un muro que ningún bot tocó en dos campañas.
+
+- **`diminishingK` recalibrada de 0,015 a 0,0088.** Con la parte justa en el Solar (33
+  regiones en vez de 19), doblar el territorio daba 1,24× donde el diseño pide 1,55×. Lo
+  cazó el mismo test que ya lo cazó en la v0.2: el que fija la intención en vez del número.
+
+- **Los bots daban órdenes imposibles.** Elegían el primer vecino de la lista de
+  adyacencia, que con siete anillos apunta hacia dentro, se estrellaban contra una Puerta
+  sellada y la orden se rechazaba **todos los turnos**. La expansión se paraba en 7
+  regiones por asiento en el T6: 225 rechazos y 25 movimientos en toda una campaña.
+
+---
+
 ## [Sin publicar] — v0.3 en curso
 
 ### Añadido

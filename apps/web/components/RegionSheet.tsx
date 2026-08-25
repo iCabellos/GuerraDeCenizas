@@ -1,10 +1,13 @@
 'use client';
 
-import type { Buildable, CombatPreview as Preview, Seat, VisibleForce } from '@gdc/core';
+import type {
+  Buildable, BuildingKind, Colossus, CombatPreview as Preview, Seat, Vein, VisibleBuilding,
+  VisibleForce, VisibleStock,
+} from '@gdc/core';
 import {
   Ash, Bridge, Close, Fire, Fortified, Hold, Industry, Intel, Line, Move, Sky, Supply, Support,
 } from '@/components/art/generated';
-import { dominantArm, sizeOf, type RegionBrief } from '@/lib/board';
+import { dominantArm, sizeOf, type BuildOption, type RegionBrief } from '@/lib/board';
 import { seatColor } from '@/lib/theme';
 
 /**
@@ -34,16 +37,23 @@ const BUILD_ICON: Record<Buildable, typeof Line> = {
   line: Line, fire: Fire, sky: Sky, fort: Fortified, bridge: Bridge,
 };
 
+export interface Ground {
+  vein: Vein | null;
+  stock: VisibleStock | null;
+  colossus: Colossus | null;
+  buildings: readonly VisibleBuilding[];
+}
+
 export function RegionSheet({
-  brief, place, seat, aiming, orderText, canOrder, onMove, onHold, onSupport, onCancel,
-  builds, onBuild, forecast, onClose, t,
+  brief, place, seat, aiming, orderText, canOrder, onMove, onHold, onSupport, onPlunder,
+  onCancel, builds, onBuild, works, workOrdered, onWork, onUnwork, ground, forecast, onClose, t,
 }: {
   brief: RegionBrief;
   /** Cómo se llama la región, ya traducido. */
   place: string;
   seat: Seat;
   /** Se está eligiendo destino desde aquí. */
-  aiming: 'move' | 'support' | null;
+  aiming: 'move' | 'support' | 'plunder' | null;
   /** La orden que ya tiene la fuerza de aquí, ya resuelta a texto. */
   orderText: string | null;
   /** Hay fuerza propia y la fase permite ordenarla. */
@@ -51,9 +61,18 @@ export function RegionSheet({
   onMove: () => void;
   onHold: () => void;
   onSupport: () => void;
+  onPlunder: () => void;
   onCancel: () => void;
   builds: readonly BuildChoice[];
   onBuild: (item: Buildable) => void;
+  /** Qué se puede levantar aquí. Lo calcula `lib/board.ts`, no esta pantalla. */
+  works: readonly BuildOption[];
+  /** La obra que ya se ordenó aquí este turno, si la hay. Una por región. */
+  workOrdered: BuildingKind | null;
+  onWork: (kind: BuildingKind) => void;
+  onUnwork: () => void;
+  /** Lo que hay bajo el suelo y encima de él. */
+  ground: Ground | null;
   forecast: Preview | null;
   onClose: () => void;
   t: T;
@@ -127,6 +146,15 @@ export function RegionSheet({
           <Action onClick={onSupport} label={t('action.support')} active={aiming === 'support'}>
             <Support size={18} />
           </Action>
+          {/* Saquear: pega menos y no captura, pero se lleva el almacén y vuelve a casa.
+              Es la jugada que le queda a quien va perdiendo, y por eso está al lado de
+              las demás y no escondida en un menú. */}
+          <Action
+            onClick={onPlunder} label={t('region.plunder')} active={aiming === 'plunder'}
+            tone="attack"
+          >
+            <Ash size={18} />
+          </Action>
           {orderText && (
             <Action onClick={onCancel} label={t('action.cancel')}>
               <Close size={18} />
@@ -137,7 +165,7 @@ export function RegionSheet({
 
       {aiming && (
         <p className="type-label mt-2 !text-rust">
-          {t(aiming === 'move' ? 'region.pickTarget' : 'region.pickSupport')}
+          {t(aiming === 'support' ? 'region.pickSupport' : 'region.pickTarget')}
         </p>
       )}
 
@@ -165,7 +193,116 @@ export function RegionSheet({
           </div>
         </div>
       )}
+
+      {ground && <Ground ground={ground} t={t} />}
+
+      {works.length > 0 && (
+        <div className="mt-3 border-t border-line/70 pt-2">
+          <span className="type-label">{t('work.title')}</span>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {works.map((option) => {
+              const ordered = workOrdered === option.kind;
+              const blocked = option.target === null || option.blocked
+                || (option.busy && !ordered);
+              return (
+                <button
+                  key={option.kind}
+                  type="button"
+                  onClick={() => (ordered ? onUnwork() : onWork(option.kind))}
+                  disabled={blocked || (!ordered && !option.affordable)}
+                  aria-pressed={ordered}
+                  className={`flex min-h-11 flex-col items-start justify-center border px-2.5
+                    text-sm font-semibold disabled:border-line/50 disabled:text-faint ${
+                      ordered ? 'border-rust bg-rust/20 text-rust' : 'border-line bg-raised'
+                    }`}
+                >
+                  <span>
+                    {t(`work.${option.kind}`)}
+                    {option.target !== null && (
+                      <span className="type-figure ml-1 text-xs text-muted">
+                        {t('work.level', { level: option.target })}
+                      </span>
+                    )}
+                  </span>
+                  {/* El precio en material, siempre a la vista: la decisión de subir de
+                      nivel es «renta ahora o renta después», y sin el número no se toma. */}
+                  {option.cost && (
+                    <span className="type-figure text-[11px] text-muted tabular-nums">
+                      {option.cost.ore > 0 && t('res.ore.short', { n: option.cost.ore })}
+                      {option.cost.ore > 0 && option.cost.ember > 0 ? ' · ' : ''}
+                      {option.cost.ember > 0 && t('res.ember.short', { n: option.cost.ember })}
+                    </span>
+                  )}
+                  {option.target === null && (
+                    <span className="type-figure text-[11px] text-faint">{t('work.max')}</span>
+                  )}
+                  {option.blocked && (
+                    <span className="type-figure text-[11px] text-faint">{t('work.ceiling')}</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </section>
+  );
+}
+
+/**
+ * Lo que hay debajo del suelo y encima de él: Mena, almacén, edificios y Coloso.
+ *
+ * El almacén se enseña **cuando se observa la región**, y eso es lo que convierte al
+ * Botín en una decisión con información en vez de una apuesta: se sabe cuánto hay antes
+ * de ir a por ello.
+ */
+function Ground({ ground, t }: { ground: Ground; t: T }) {
+  const { vein, stock, colossus, buildings } = ground;
+  if (!vein && !stock && !colossus && buildings.length === 0) return null;
+
+  return (
+    <div className="mt-3 border-t border-line/70 pt-2">
+      {colossus && (
+        // Público y exacto a propósito: un Coloso previsible es un Coloso sobre el que
+        // se puede prometer ayuda y comprobar después si la diste.
+        <p className="type-label !text-danger">
+          {t('colossus.here', {
+            power: Math.round(colossus.line + colossus.fire + colossus.sky),
+            peak: Math.round(colossus.peak),
+          })}
+        </p>
+      )}
+
+      {vein && (
+        <p className="type-label !text-ash">
+          {t(`vein.${vein.material}`, { grade: vein.grade })}
+        </p>
+      )}
+
+      {stock && (
+        <p className="type-figure text-xs text-muted tabular-nums">
+          {t('stock.here', { ore: Math.round(stock.ore), ember: Math.round(stock.ember) })}
+        </p>
+      )}
+
+      {buildings.length > 0 && (
+        <ul className="mt-1 flex flex-wrap gap-1.5">
+          {buildings.map((building) => (
+            <li
+              key={building.kind}
+              className="type-figure border border-line/70 px-1.5 py-0.5 text-[11px] text-muted"
+            >
+              {t(`work.${building.kind}`)} {building.level}
+              {building.building > 0 && (
+                <span className="ml-1 text-rust">
+                  {t('work.building', { turns: building.building, level: building.target })}
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 

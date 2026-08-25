@@ -450,9 +450,30 @@ describe('niebla de guerra — no hay fugas en PlayerView', () => {
 
   it('las fuerzas ajenas no exponen su desglose en bosque', () => {
     const base = toWar(game(2, 12).state);
-    const forest = base.map.regions.findIndex((r) => r.kind === 'forest');
+    // El vecino tiene que estar del MISMO lado del Cerco: un Cerco cerrado corta la
+    // visión, así que un observador al otro lado no vería nada y el test mediría la
+    // regla de las zonas en vez de la del bosque.
     const adjacency = buildAdjacency(base.map.regions.length, base.map.edges);
-    const watcher = (adjacency[forest] as RegionId[])[0] as RegionId;
+    const sealed = new Set(base.map.edges.filter((e) => e.ward).map((e) => `${e.a}-${e.b}`));
+    const open = (a: RegionId, b: RegionId): boolean =>
+      !sealed.has(a < b ? `${a}-${b}` : `${b}-${a}`);
+
+    // Ni el bosque ni el observador pueden tener un Coloso encima: si lo tuvieran, la
+    // fuerza escondida pelearía contra él y llegaría al final del turno con otro tamaño.
+    // El test mide qué se ve, no cuánto sobrevive.
+    const guarded = new Set(base.colossi.filter((c) => c.alive).map((c) => c.regionId));
+    let forest = -1;
+    let watcher = -1;
+    for (let id = 0; id < base.map.regions.length; id++) {
+      if (base.map.regions[id]?.kind !== 'forest' || guarded.has(id)) continue;
+      const neighbour = (adjacency[id] as RegionId[]).find((n) => open(id, n) && !guarded.has(n));
+      if (neighbour !== undefined) {
+        forest = id;
+        watcher = neighbour;
+        break;
+      }
+    }
+    expect(forest).toBeGreaterThanOrEqual(0);
 
     const state: GameState = {
       ...base,
